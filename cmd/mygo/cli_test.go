@@ -95,20 +95,24 @@ func TestIcons(t *testing.T) {
 	if string(icns[:4]) != "icns" || int(binary.BigEndian.Uint32(icns[4:])) != len(icns) {
 		t.Fatalf("bad icns header")
 	}
-	// Walk the entries and decode one of them.
+	// Walk the entries and decode one of them; the 1024 pixel one comes
+	// first, for apps that take the first entry.
 	found := 0
 	for off := 8; off < len(icns); {
 		kind, size := string(icns[off:off+4]), int(binary.BigEndian.Uint32(icns[off+4:]))
-		if kind == "ic07" {
+		if found == 0 && kind != "ic10" {
+			t.Errorf("first icns entry is %s, want ic10", kind)
+		}
+		if kind == "ic08" {
 			img, err := png.Decode(bytes.NewReader(icns[off+8 : off+size]))
-			if err != nil || img.Bounds().Dx() != 128 {
-				t.Errorf("ic07 entry: %v", err)
+			if err != nil || img.Bounds().Dx() != 256 {
+				t.Errorf("ic08 entry: %v", err)
 			}
 		}
 		off += size
 		found++
 	}
-	if found != 10 {
+	if found != 5 {
 		t.Errorf("icns has %d entries", found)
 	}
 	ico, err := pngToICO(src)
