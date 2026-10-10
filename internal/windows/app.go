@@ -70,6 +70,8 @@ type Backend struct {
 
 	// surfaces are the windows of the content MyGo draws (surface.go).
 	surfaces map[uintptr]*surface
+	// webHosts are the windows of embedded web views (embed.go).
+	webHosts map[uintptr]*embedView
 }
 
 var (
@@ -88,6 +90,7 @@ func New() *Backend {
 		captions:      map[uintptr]*captionBar{},
 		captionFonts:  map[int]captionFont{},
 		surfaces:      map[uintptr]*surface{},
+		webHosts:      map[uintptr]*embedView{},
 	}
 }
 
@@ -295,6 +298,10 @@ func wndProc(hwnd, m, wp, lp uintptr) uintptr {
 			}
 		} else if s := b.surfaces[hwnd]; s != nil {
 			if r, ok := s.message(hwnd, uint32(m), wp, lp); ok {
+				return r
+			}
+		} else if v := b.webHosts[hwnd]; v != nil {
+			if r, ok := v.message(uint32(m), wp); ok {
 				return r
 			}
 		}

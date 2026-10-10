@@ -28,8 +28,12 @@ var (
 
 func initDownloadCallbacks() {
 	cbDownloadStarted = purego.NewCallback(func(ctx, d, data ptr) {
-		w := theBackend.byWebView[webkitDownloadGetWebView(d)]
+		web := webkitDownloadGetWebView(d)
+		w := theBackend.byWebView[web]
 		if w == nil {
+			if theBackend.isEmbedded(web) {
+				webkitDownloadCancel(d) // embedded web views download nothing
+			}
 			return
 		}
 		downloads[d] = &download{w: w, url: goStr(webkitURIRequestGetURI(webkitDownloadGetRequest(d)))}

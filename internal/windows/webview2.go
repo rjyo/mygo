@@ -28,6 +28,8 @@ const (
 	ctlGetZoomFactor                     = 7
 	ctlPutZoomFactor                     = 8
 	ctlMoveFocus                         = 12
+	ctlAddGotFocus                       = 15
+	ctlAddLostFocus                      = 17
 	ctlAddAcceleratorKeyPressed          = 19
 	ctlNotifyParentWindowPositionChanged = 23
 	ctlClose                             = 24
@@ -43,6 +45,7 @@ const (
 	wvAddContentLoading                   = 9
 	wvAddPermissionRequested              = 23
 	wvAddNavigationCompleted              = 15
+	wvAddFrameNavigationStarting          = 17
 	wvAddProcessFailed                    = 25
 	wvAddScriptToExecuteOnDocumentCreated = 27
 	wvExecuteScript                       = 29
@@ -79,6 +82,7 @@ const (
 	navStartingGetURI             = 3
 	navStartingGetIsUserInitiated = 4
 	navStartingPutCancel          = 8
+	navStartingGetNavigationID    = 9
 	navCompletedGetIsSuccess      = 3
 	navCompletedGetWebErrorStatus = 4
 	msgTryGetWebMessageAsString   = 5
@@ -109,7 +113,13 @@ const (
 	iterMoveNext                  = 5
 	deferralComplete              = 3
 	procFailedGetKind             = 3
-	wv4AddDownloadStarting        = 75  // ICoreWebView2_4
+	wv4AddFrameCreated            = 73 // ICoreWebView2_4
+	wv4AddDownloadStarting        = 75 // ICoreWebView2_4
+	frameCreatedGetFrame          = 3
+	frameAddDestroyed             = 8   // ICoreWebView2Frame
+	frame2AddNavigationStarting   = 11  // ICoreWebView2Frame2
+	frame2AddWebMessageReceived   = 22  // ICoreWebView2Frame2
+	frame7AddFrameCreated         = 30  // ICoreWebView2Frame7
 	wv13GetProfile                = 105 // ICoreWebView2_13
 	profile2ClearBrowsingDataAll  = 12  // ICoreWebView2Profile2
 	dlStartGetOperation           = 3
@@ -137,6 +147,8 @@ var (
 	iidICoreWebView2_4                           = guid("20d02d59-6df2-42dc-bd06-f98a694b1302")
 	iidICoreWebView2_13                          = guid("f75f09a8-667e-4983-88d6-c8773f315e84")
 	iidICoreWebView2Profile2                     = guid("fa740d4b-5eae-4344-a8ad-74be31925397")
+	iidICoreWebView2Frame2                       = guid("7a6a5834-d185-4dbf-b63f-4a9bc43107d4")
+	iidICoreWebView2Frame7                       = guid("3598cfa2-d85d-5a9f-9228-4dde1f59ec64")
 )
 
 // The WebView2 Runtime channels, most stable first.
