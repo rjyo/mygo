@@ -6,6 +6,9 @@ import (
 	"bytes"
 	"image"
 	"image/png"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/transfer"
@@ -42,6 +45,25 @@ func TestClipboardNativeAliasesAndFileList(t *testing.T) {
 		img, err := png.Decode(bytes.NewReader(b))
 		if err != nil || img.Bounds() != image.Rect(0, 0, 2, 3) {
 			t.Fatalf("TIFF conversion: %v", err)
+		}
+	})
+}
+
+func TestFileReferenceURLResolves(t *testing.T) {
+	load()
+	path := filepath.Join(t.TempDir(), "a b.txt")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	withPool(func() {
+		ref := goString(send(send(fileURL(path), "fileReferenceURL"), "absoluteString"))
+		if !strings.HasPrefix(ref, "file:///.file/id=") {
+			t.Fatalf("reference URL %q", ref)
+		}
+		files, err := transfer.New(transfer.NewItem(transfer.Bytes(transfer.FileList, filePathURLBytes([]byte(ref))))).Files()
+		want, _ := filepath.EvalSymlinks(path)
+		if err != nil || len(files) != 1 || files[0] != want {
+			t.Fatalf("files %q, %v; want %q", files, err, want)
 		}
 	})
 }
