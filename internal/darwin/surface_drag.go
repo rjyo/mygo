@@ -327,7 +327,7 @@ func (s *surface) nativeDataEvent(info id, kind platform.SurfaceEventKind) bool 
 				}
 			}
 			if available != 0 {
-				reps = append(reps, transfer.Bytes(f, goBytes(available)))
+				reps = append(reps, transfer.Bytes(f, filePathURLBytes(goBytes(available))))
 			}
 		}
 		if len(reps) > 0 {
