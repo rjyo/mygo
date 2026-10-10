@@ -181,6 +181,9 @@ func (w *window) create() {
 	}
 	if w.trafficLights != nil {
 		w.layoutTrafficLights()
+		// Setting the window's own appearance lays its title bar out
+		// again, which the application's appearance doesn't tell of.
+		send(w.win, "addObserver:forKeyPath:options:context:", uintptr(w.delegate), uintptr(nsString("effectiveAppearance")), 0, 0)
 	}
 
 	b.byDelegate[w.delegate] = w
@@ -273,6 +276,9 @@ func (w *window) cleanup() {
 	w.closed = true
 	b := w.b
 	send(w.web, "removeObserver:forKeyPath:", uintptr(w.delegate), uintptr(nsString("title")))
+	if w.trafficLights != nil {
+		send(w.win, "removeObserver:forKeyPath:", uintptr(w.delegate), uintptr(nsString("effectiveAppearance")))
+	}
 	send(w.ucc, "removeScriptMessageHandlerForName:", uintptr(nsString("mygo")))
 	send(w.ucc, "removeAllUserScripts")
 	send(w.web, "stopLoading")
@@ -1126,8 +1132,16 @@ func registerWindowClasses() {
 
 			// Key-value observing of the page title.
 			method("observeValueForKeyPath:ofObject:change:context:", func(self id, _ objc.SEL, keyPath, object, change id, ctx uintptr) {
-				if w := b().windowFor(self); w != nil && goString(keyPath) == "title" {
+				w := b().windowFor(self)
+				if w == nil {
+					return
+				}
+				switch goString(keyPath) {
+				case "title":
 					w.h.TitleChanged(goString(send(w.web, "title")))
+				case "effectiveAppearance":
+					// AppKit lays the title bar out again after telling us.
+					b().post(w.layoutTrafficLights)
 				}
 			}),
 
