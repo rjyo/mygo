@@ -30,6 +30,9 @@ func (*Backend) Wake()                                               {}
 func (*Backend) NewWindow(*platform.WindowOptions, platform.WindowHandler) (platform.Window, error) {
 	return nil, errUnsupported
 }
+func (*Backend) NewWebView(platform.Window, *platform.WebViewOptions, platform.WebViewHandler) (platform.WebView, error) {
+	return nil, errUnsupported
+}
 func (*Backend) SetApplicationMenu(*platform.Menu)                          {}
 func (*Backend) PopupMenu(*platform.Menu, platform.Window, *platform.Point) {}
 func (*Backend) UpdateMenuItem(*platform.MenuItem)                          {}

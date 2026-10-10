@@ -49,7 +49,11 @@ type window struct {
 	icons [2]uintptr // small and big, from SetIcon
 	// surface shows the content MyGo draws, in place of the webview.
 	surface *surface
-	saved   struct {
+	// embeds are the web views embedded over the surface; embedFocus is
+	// the one the keyboard goes back to when the window is activated.
+	embeds     []*embedView
+	embedFocus *embedView
+	saved      struct {
 		style, exStyle uintptr
 		placement      windowPlacement
 	}
@@ -290,6 +294,11 @@ func (w *window) message(m uint32, wp, lp uintptr) (uintptr, bool) {
 		if w.controller != 0 {
 			comCall(w.controller, ctlNotifyParentWindowPositionChanged)
 		}
+		for _, v := range w.embeds {
+			if v.controller != 0 {
+				comCall(v.controller, ctlNotifyParentWindowPositionChanged)
+			}
+		}
 		w.h.Moved()
 		return 0, true
 	case wmActivate:
@@ -303,7 +312,9 @@ func (w *window) message(m uint32, wp, lp uintptr) (uintptr, bool) {
 		}
 		return 0, false
 	case wmSetFocus:
-		if w.surface != nil {
+		if v := w.embedFocus; v != nil && v.shown && v.ready {
+			v.moveFocus()
+		} else if w.surface != nil {
 			procSetFocus.Call(w.surface.hwnd)
 		} else {
 			w.focusWebView()
@@ -467,6 +478,9 @@ func (w *window) cleanup() {
 		cb("", errDestroyed)
 	}
 	w.failPending(errDestroyed)
+	for _, v := range append([]*embedView(nil), w.embeds...) {
+		v.Destroy()
+	}
 	if w.caption != nil {
 		w.caption.forget()
 	}

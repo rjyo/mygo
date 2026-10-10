@@ -21,11 +21,12 @@ type Backend struct {
 	mainLoop uintptr
 
 	// Lookup tables for Objective-C callbacks. Main thread only.
-	byDelegate map[id]*window
-	byWebView  map[id]*window
-	byNSWindow map[id]*window
-	bySurface  map[id]*surface
-	byAccess   map[id]*accessElement
+	byDelegate        map[id]*window
+	byWebView         map[id]*window
+	byNSWindow        map[id]*window
+	bySurface         map[id]*surface
+	byWebViewDelegate map[id]*webView
+	byAccess          map[id]*accessElement
 
 	menuTarget id
 	menuItems  map[int][]id
@@ -225,6 +226,7 @@ func registerClasses() {
 	registerSchemeHandler()
 	registerTrayTarget()
 	registerNotificationDelegate()
+	registerWebViewClasses()
 }
 
 const (

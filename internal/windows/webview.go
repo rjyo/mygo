@@ -206,17 +206,7 @@ func (w *window) setUp(controller uintptr) {
 		scripts = append(scripts[:len(scripts):len(scripts)], platform.UserScript{Source: w.titleBarScript()})
 	}
 	for _, us := range scripts {
-		src := us.Source
-		if us.AtDocumentEnd {
-			src = "document.readyState===\"loading\"?document.addEventListener(\"DOMContentLoaded\",()=>{\n" + src + "\n},{once:true}):(()=>{\n" + src + "\n})();"
-		}
-		if !us.AllFrames {
-			// Scripts run in every frame unless told otherwise.
-			src = "if(window===window.top){\n" + src + "\n}"
-		}
-		withHandler(func(uintptr, uintptr) {}, func(h uintptr) uintptr {
-			return comCall(w.webview, wvAddScriptToExecuteOnDocumentCreated, uintptr(unsafe.Pointer(u16(src))), h)
-		})
+		addUserScript(w.webview, us)
 	}
 
 	var token int64
@@ -294,6 +284,21 @@ func (w *window) setUp(controller uintptr) {
 		}
 		c.run()
 	}
+}
+
+// addUserScript has WebView2 run us in the documents of webview, which runs
+// scripts at the start of every frame's documents unless told otherwise.
+func addUserScript(webview uintptr, us platform.UserScript) {
+	src := us.Source
+	if us.AtDocumentEnd {
+		src = "document.readyState===\"loading\"?document.addEventListener(\"DOMContentLoaded\",()=>{\n" + src + "\n},{once:true}):(()=>{\n" + src + "\n})();"
+	}
+	if !us.AllFrames {
+		src = "if(window===window.top){\n" + src + "\n}"
+	}
+	withHandler(func(uintptr, uintptr) {}, func(h uintptr) uintptr {
+		return comCall(webview, wvAddScriptToExecuteOnDocumentCreated, uintptr(unsafe.Pointer(u16(src))), h)
+	})
 }
 
 func (w *window) addFilter(pattern string) {
@@ -587,45 +592,49 @@ func (w *window) Eval(js string) {
 // CallAsyncFunction evaluates through the DevTools protocol, which awaits
 // promises, reports syntax errors and ignores the page's CSP.
 func (w *window) CallAsyncFunction(body string, cb func(string, error)) {
+	w.withWebViewOr(func() { callAsync(w.devtools, body, cb) }, func(err error) { cb("", err) })
+}
+
+// callAsync runs body as the body of an async function in the top
+// document through devtools, and passes cb the string it returns.
+func callAsync(devtools func(method, params string, done func(string, error)), body string, cb func(string, error)) {
 	params, _ := json.Marshal(map[string]any{
 		"expression":    "(async () => {\n" + body + "\n})()",
 		"awaitPromise":  true,
 		"returnByValue": true,
 	})
-	w.withWebViewOr(func() {
-		w.devtools("Runtime.evaluate", string(params), func(result string, err error) {
-			if err != nil {
-				cb("", err)
-				return
+	devtools("Runtime.evaluate", string(params), func(result string, err error) {
+		if err != nil {
+			cb("", err)
+			return
+		}
+		var out struct {
+			Result struct {
+				Value json.RawMessage `json:"value"`
+			} `json:"result"`
+			ExceptionDetails *struct {
+				Text      string `json:"text"`
+				Exception *struct {
+					Description string `json:"description"`
+				} `json:"exception"`
+			} `json:"exceptionDetails"`
+		}
+		if err := json.Unmarshal([]byte(result), &out); err != nil {
+			cb("", err)
+			return
+		}
+		if d := out.ExceptionDetails; d != nil {
+			msg := d.Text
+			if d.Exception != nil && d.Exception.Description != "" {
+				msg = d.Exception.Description
 			}
-			var out struct {
-				Result struct {
-					Value json.RawMessage `json:"value"`
-				} `json:"result"`
-				ExceptionDetails *struct {
-					Text      string `json:"text"`
-					Exception *struct {
-						Description string `json:"description"`
-					} `json:"exception"`
-				} `json:"exceptionDetails"`
-			}
-			if err := json.Unmarshal([]byte(result), &out); err != nil {
-				cb("", err)
-				return
-			}
-			if d := out.ExceptionDetails; d != nil {
-				msg := d.Text
-				if d.Exception != nil && d.Exception.Description != "" {
-					msg = d.Exception.Description
-				}
-				cb("", errors.New(msg))
-				return
-			}
-			var s string
-			_ = json.Unmarshal(out.Result.Value, &s)
-			cb(s, nil)
-		})
-	}, func(err error) { cb("", err) })
+			cb("", errors.New(msg))
+			return
+		}
+		var s string
+		_ = json.Unmarshal(out.Result.Value, &s)
+		cb(s, nil)
+	})
 }
 
 // devtools calls a DevTools protocol method; done may be nil.
@@ -800,7 +809,7 @@ func (w *window) resourceRequested(_, args uintptr) {
 
 	if html, ok := w.htmlFor[uri]; ok {
 		delete(w.htmlFor, uri)
-		w.respond(args, 0, http.StatusOK, http.Header{"Content-Type": {"text/html; charset=utf-8"}}, []byte(html))
+		w.b.respond(args, 0, http.StatusOK, http.Header{"Content-Type": {"text/html; charset=utf-8"}}, []byte(html))
 		return
 	}
 	target := w.appURL(uri)
@@ -858,7 +867,7 @@ func requestHeaders(req uintptr) http.Header {
 
 // respond answers a WebResourceRequested event; deferral is 0 for a
 // synchronous answer.
-func (w *window) respond(args, deferral uintptr, status int, header http.Header, body []byte) {
+func (b *Backend) respond(args, deferral uintptr, status int, header http.Header, body []byte) {
 	var raw strings.Builder
 	for k, vs := range header {
 		for _, v := range vs {
@@ -867,7 +876,7 @@ func (w *window) respond(args, deferral uintptr, status int, header http.Header,
 	}
 	stream := memStream(body)
 	var resp uintptr
-	hr := comCall(w.b.env, envCreateWebResourceResponse, stream, uintptr(status),
+	hr := comCall(b.env, envCreateWebResourceResponse, stream, uintptr(status),
 		uintptr(unsafe.Pointer(u16(http.StatusText(status)))), uintptr(unsafe.Pointer(u16(raw.String()))), uintptr(unsafe.Pointer(&resp)))
 	release(stream)
 	if !failed(hr) && resp != 0 {
@@ -917,13 +926,13 @@ func (r *schemeResponse) Finish() {
 	if r.document && r.status < 300 && isDownload(r.header) && !r.w.closed {
 		// WebView2 does not download what it gets from here: the page
 		// stays, and the app serves the URL again into a download.
-		r.w.respond(r.args, r.deferral, http.StatusNoContent, nil, nil)
+		r.w.b.respond(r.args, r.deferral, http.StatusNoContent, nil, nil)
 		r.w.h.SchemeDownload(r.url)
 		r.release()
 		return
 	}
 	if !r.w.closed {
-		r.w.respond(r.args, r.deferral, r.status, r.header, r.body.Bytes())
+		r.w.b.respond(r.args, r.deferral, r.status, r.header, r.body.Bytes())
 	} else {
 		comCall(r.deferral, deferralComplete)
 	}
@@ -936,7 +945,7 @@ func (r *schemeResponse) Fail(err error) {
 	}
 	r.done = true
 	if !r.w.closed {
-		r.w.respond(r.args, r.deferral, http.StatusBadGateway, http.Header{"Content-Type": {"text/plain; charset=utf-8"}}, []byte(err.Error()))
+		r.w.b.respond(r.args, r.deferral, http.StatusBadGateway, http.Header{"Content-Type": {"text/plain; charset=utf-8"}}, []byte(err.Error()))
 	} else {
 		comCall(r.deferral, deferralComplete)
 	}
