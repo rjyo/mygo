@@ -25,6 +25,10 @@ const (
 	// it as the system's file-list format as well as text/uri-list.
 	FileList Format = "application/x-mygo-file-list"
 	PNG      Format = "image/png"
+	// Promised is a file promise (Promise): a file the source writes only
+	// once a destination such as Finder accepts the drop. Read returns the
+	// file's name.
+	Promised Format = "application/x-mygo-file-promise"
 )
 
 // ErrFormat means the requested item or representation is not available.
@@ -39,6 +43,7 @@ type value struct {
 	provider func() ([]byte, error)
 	bytes    []byte
 	err      error
+	write    func(path string) error
 }
 
 // Representation is one format of an item, made with Bytes or Lazy.
@@ -64,6 +69,38 @@ func Lazy(format Format, provider func() ([]byte, error)) Representation {
 		panic("transfer: nil provider")
 	}
 	return Representation{format: format, value: &value{provider: provider}}
+}
+
+// Promise offers a file that does not exist yet, named name, for a drag to
+// another application. Once a destination accepts the drop and picks a
+// folder, write runs once, on its own goroutine, to create the file at
+// path (that folder joined with name). It may take as long as it needs,
+// as a download does; the destination shows the file when write returns
+// and fails the copy when it returns an error. An item offering a promise
+// can offer other formats as well, for destinations that take those.
+//
+// Promises reach other applications on macOS only. Other backends offer
+// just the name, in a format other applications don't read, so give such
+// items another format as well or check runtime.GOOS. A destination in the
+// same process reads the name.
+func Promise(name string, write func(path string) error) Representation {
+	if name == "" || strings.ContainsAny(name, "/\\\x00") || name == "." || name == ".." {
+		panic("transfer: invalid promised file name")
+	}
+	if write == nil {
+		panic("transfer: nil promise writer")
+	}
+	return Representation{format: Promised, value: &value{bytes: []byte(name), write: write}}
+}
+
+// Promise returns the item's file promise: the file's name and its writer.
+func (i Item) Promise() (name string, write func(path string) error, ok bool) {
+	for _, r := range i.reps {
+		if r.format == Promised {
+			return string(r.value.bytes), r.value.write, true
+		}
+	}
+	return "", nil, false
 }
 
 func validateFormat(f Format) {
@@ -168,7 +205,7 @@ func (d Data) Snapshot() Data {
 	items := make([]Item, len(d.items))
 	for n, i := range d.items {
 		for _, r := range i.reps {
-			v := &value{provider: r.value.provider}
+			v := &value{provider: r.value.provider, write: r.value.write}
 			if v.provider == nil {
 				v.bytes = bytes.Clone(r.value.bytes)
 			}
