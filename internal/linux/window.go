@@ -54,6 +54,8 @@ type window struct {
 	// controls are the title buttons over the page of a window with a
 	// hidden title bar (titlebar.go), in an overlay with the web view.
 	controls *windowControls
+	// overlay holds the surface.
+	overlay ptr
 
 	closed       bool
 	programmatic bool
@@ -178,9 +180,17 @@ func (b *Backend) NewWindow(o *platform.WindowOptions, h platform.WindowHandler)
 	} else {
 		w.createWebView()
 	}
-	if w.controls != nil {
+	switch {
+	case w.controls != nil:
 		gtkContainerAdd(w.controls.overlay, w.contentWidget())
-	} else {
+		w.overlay = w.controls.overlay
+	case o.Surface:
+		// Native views can go over the surface: moving it into an overlay
+		// once it is realized would lose its GL context.
+		w.overlay = gtkOverlayNew()
+		gtkContainerAdd(w.overlay, w.contentWidget())
+		gtkBoxPackStart(w.box, w.overlay, true, true, 0)
+	default:
 		gtkBoxPackStart(w.box, w.contentWidget(), true, true, 0)
 	}
 	w.accel = gtkAccelGroupNew()
