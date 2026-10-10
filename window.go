@@ -333,6 +333,8 @@ type Window struct {
 	// preloadAllFrames.
 	preload          string
 	preloadAllFrames bool
+	// scripts are PageOptions.Scripts, which pages loaded later keep too.
+	scripts []Script
 
 	// native is only accessed on the main thread; nil once destroyed.
 	native    platform.Window
@@ -369,6 +371,8 @@ type Window struct {
 	// current page. Main thread only.
 	untrusted bool
 	origin    string
+	// frameNavs is PageOptions.FrameNavigations.
+	frameNavs bool
 	// html is the document LoadHTML loaded, while it is the page's or
 	// about to be. Main thread only.
 	html *htmlDocument
@@ -583,7 +587,7 @@ func newWindow(opts WindowOptions, bg, tint *background, native uintptr, flyout 
 	id := windows.nextID
 	windows.Unlock()
 
-	w := &Window{id: id, parent: opts.Parent, trustedOrigins: opts.Page.TrustedOrigins, untrusted: opts.Page.Untrusted, secret: randomText(), stateKey: opts.StateKey, background: bg, vibrancyTint: tint, content: opts.Content != nil, panel: opts.Panel && flyout == nil, active: true}
+	w := &Window{id: id, parent: opts.Parent, trustedOrigins: opts.Page.TrustedOrigins, untrusted: opts.Page.Untrusted, frameNavs: opts.Page.FrameNavigations, secret: randomText(), stateKey: opts.StateKey, background: bg, vibrancyTint: tint, content: opts.Content != nil, panel: opts.Panel && flyout == nil, active: true}
 	w.pg = &Page{w}
 	if flyout != nil {
 		w.fit = flyout.fit
@@ -749,7 +753,7 @@ func (w *Window) platformOptions(o *WindowOptions) *platform.WindowOptions {
 			p.X, p.Y = overFlyout(o.Parent.native.Bounds(), platform.Size{Width: p.Width, Height: p.Height})
 		}
 	}
-	w.preload, w.preloadAllFrames = po.PreloadScript, po.PreloadAllFrames
+	w.preload, w.preloadAllFrames, w.scripts = po.PreloadScript, po.PreloadAllFrames, po.Scripts
 	if w.fit != nil {
 		w.fit.zoom = p.Zoom
 	}
@@ -1939,7 +1943,8 @@ func (p *Page) OnPageTitleUpdated(fn func(e *TitleEvent)) (off func()) {
 
 // OnWillNavigate is called before the page navigates to another URL, for
 // example after a link click. Preventing the event cancels the navigation.
-// It is not called for LoadURL and friends.
+// It is not called for LoadURL and friends, nor for iframes unless the
+// page has PageOptions.FrameNavigations.
 func (p *Page) OnWillNavigate(fn func(e *NavigateEvent)) (off func()) {
 	return p.w.onWillNavigate.add(fn, false)
 }
@@ -2092,13 +2097,15 @@ func (h *windowHandler) WillNavigate(nav platform.Navigation) bool {
 		})
 		return false
 	}
-	if !nav.IsMainFrame || nav.Unasked {
+	if !nav.IsMainFrame && !h.w.frameNavs || nav.Unasked {
 		return true
 	}
-	if h.w.untrusted && h.w.onWillNavigate.len() == 0 {
+	// An iframe's navigation, asked of with FrameNavigations, stays the
+	// iframe's: only the page's own leaves the untrusted page's origin.
+	if h.w.untrusted && nav.IsMainFrame && h.w.onWillNavigate.len() == 0 {
 		return pageOrigin(nav.URL) == h.w.origin
 	}
-	e := &NavigateEvent{URL: nav.URL, UserInitiated: nav.UserInitiated}
+	e := &NavigateEvent{URL: nav.URL, UserInitiated: nav.UserInitiated, InFrame: !nav.IsMainFrame}
 	fire1(&h.w.onWillNavigate, e)
 	return !e.prevented
 }
