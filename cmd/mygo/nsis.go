@@ -282,8 +282,8 @@ func writeInstaller(c *Config, stage, work, exe string, installed []string) (str
 		}
 	}
 	icon := ""
-	if c.Icon != "" {
-		src, err := os.ReadFile(c.path(c.Icon))
+	if png := c.iconFor("windows"); png != "" {
+		src, err := os.ReadFile(c.path(png))
 		if err != nil {
 			return "", err
 		}
