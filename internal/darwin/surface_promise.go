@@ -109,7 +109,11 @@ func (src *macDataSource) filePromise(item transfer.Item, name string, write fun
 	}
 	// The provider is its own delegate; init checks for its methods.
 	obj := send(class(promiseClass), "alloc")
-	obj = send(obj, "initWithFileType:delegate:", uintptr(nsString(promiseFileType(name))), uintptr(obj))
+	typ := promiseFileType(name)
+	if item.PromisesFolder() {
+		typ = "public.folder"
+	}
+	obj = send(obj, "initWithFileType:delegate:", uintptr(nsString(typ)), uintptr(obj))
 	p := &macPromise{src: src, obj: obj, item: item, name: name, write: write, types: itemTypes(item)}
 	macPromises[obj] = p
 	src.promises = append(src.promises, p)
