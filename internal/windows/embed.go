@@ -234,6 +234,30 @@ func (v *embedView) failPending(err error) {
 	}
 }
 
+// applyBackground paints the controller before and under the page.
+// WebView2 takes only opaque or fully transparent colors, and a
+// transparent one shows black in a child window, not the surface: a
+// transparent web view shows Background where it has one.
+func (v *embedView) applyBackground() {
+	ctl2 := queryInterface(v.controller, &iidICoreWebView2Controller2)
+	if ctl2 == 0 {
+		return
+	}
+	defer release(ctl2)
+	bg := v.o.Background
+	switch {
+	case bg.A != 0:
+		comCall(ctl2, ctl2PutDefaultBackgroundColor, 0xFF|uintptr(bg.R)<<8|uintptr(bg.G)<<16|uintptr(bg.B)<<24)
+	case v.o.Transparent:
+		comCall(ctl2, ctl2PutDefaultBackgroundColor, 0)
+	}
+}
+
+func (v *embedView) SetBackground(c platform.Color) {
+	v.o.Background = c
+	v.do(v.applyBackground, nil)
+}
+
 // do runs fn once the controller exists, or fail, unless nil, with the
 // reason it never will.
 func (v *embedView) do(fn func(), fail func(error)) {
@@ -268,12 +292,7 @@ func (v *embedView) setUp(controller uintptr) {
 	comCall(s, setPutAreDefaultContextMenusEnabled, 1)
 	comCall(s, setPutIsZoomControlEnabled, 0)
 	release(s)
-	if v.o.Transparent {
-		if ctl2 := queryInterface(controller, &iidICoreWebView2Controller2); ctl2 != 0 {
-			comCall(ctl2, ctl2PutDefaultBackgroundColor, 0)
-			release(ctl2)
-		}
-	}
+	v.applyBackground()
 
 	addUserScript(v.webview, platform.UserScript{Source: embedShim, AllFrames: true})
 	for _, us := range v.o.Scripts {

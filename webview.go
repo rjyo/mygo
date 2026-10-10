@@ -37,8 +37,13 @@ type WebViewOptions struct {
 	// DevTools allows the web inspector (right click, Inspect Element).
 	DevTools bool
 	// Transparent shows the window through until the page paints a
-	// background.
+	// background (macOS, Linux). Windows shows BackgroundColor there
+	// instead, or black without one.
 	Transparent bool
+	// BackgroundColor (a CSS color: #rgb, #rrggbb, rgb(…)) is shown where
+	// the page paints nothing: under a transparent page on Windows, and
+	// under any page elsewhere unless Transparent. It defaults to white.
+	BackgroundColor string
 	// CornerRadius rounds the corners in Corners, or all of them.
 	CornerRadius float64
 	Corners      Corners
@@ -151,7 +156,12 @@ type webViewResult struct {
 func (r webViewResult) get() (*WebView, error) { return r.v, r.err }
 
 func newWebView(parent platform.Window, opts WebViewOptions) webViewResult {
+	bg, err := parseColor(opts.BackgroundColor)
+	if err != nil {
+		return webViewResult{err: err}
+	}
 	po := &platform.WebViewOptions{
+		Background:  bg,
 		DevTools:    opts.DevTools,
 		Transparent: opts.Transparent,
 		Radius:      opts.CornerRadius,
@@ -229,6 +239,17 @@ func (v *WebView) Blur() { v.do(func(n platform.WebView) { n.Blur() }) }
 // Focused reports whether the page has the keyboard.
 func (v *WebView) Focused() bool {
 	return onMainValue(func() bool { return !v.h.closed && v.native.Focused() })
+}
+
+// SetBackgroundColor changes WebViewOptions.BackgroundColor (a theme
+// switch).
+func (v *WebView) SetBackgroundColor(css string) error {
+	c, err := parseColor(css)
+	if err != nil {
+		return err
+	}
+	v.do(func(n platform.WebView) { n.SetBackground(c) })
+	return nil
 }
 
 // Snapshot renders x, y, w, h of the page, in its CSS pixels, to a PNG

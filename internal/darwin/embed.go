@@ -37,7 +37,9 @@ type webView struct {
 	delegate id       // MyGoWebViewDelegate
 	h        platform.WebViewHandler
 	rect     platform.RectF
-	shown    bool
+	// transparent: the surface shows through, Background or not.
+	transparent bool
+	shown       bool
 	// mainFrame is the frameID of the top document's frame, for telling
 	// its children from deeper frames in navigations.
 	mainFrame uint64
@@ -95,12 +97,15 @@ func (b *Backend) NewWebView(parent platform.Window, o *platform.WebViewOptions,
 	if o.DevTools && respondsTo(v.view, "setInspectable:") {
 		send(v.view, "setInspectable:", 1)
 	}
+	send(v.view, "setWantsLayer:", 1)
+	v.transparent = o.Transparent
 	if o.Transparent {
 		withPool(func() {
 			send(v.view, "setValue:forKey:", uintptr(nsBool(false)), uintptr(nsString("drawsBackground")))
 		})
+	} else {
+		v.SetBackground(o.Background)
 	}
-	send(v.view, "setWantsLayer:", 1)
 	if layer := send(v.view, "layer"); layer != 0 && o.Radius > 0 {
 		msgSetFloat(layer, sel("setCornerRadius:"), o.Radius)
 		send(layer, "setMasksToBounds:", 1)
@@ -233,6 +238,23 @@ func (v *webView) Focused() bool {
 	fr := send(v.s.w.win, "firstResponder")
 	return fr != 0 && sendBool(fr, "isKindOfClass:", uintptr(class("NSView"))) &&
 		sendBool(fr, "isDescendantOf:", uintptr(v.view))
+}
+
+// SetBackground paints c behind the page: WebKit draws no background of
+// its own and the view's layer shows c.
+func (v *webView) SetBackground(c platform.Color) {
+	if v.transparent || c.A == 0 {
+		return
+	}
+	withPool(func() {
+		send(v.view, "setValue:forKey:", uintptr(nsBool(false)), uintptr(nsString("drawsBackground")))
+		if layer := send(v.view, "layer"); layer != 0 {
+			send(layer, "setBackgroundColor:", uintptr(send(nsColor(c), "CGColor")))
+		}
+		if respondsTo(v.view, "setUnderPageBackgroundColor:") {
+			send(v.view, "setUnderPageBackgroundColor:", uintptr(nsColor(c)))
+		}
+	})
 }
 
 func (v *webView) Snapshot(r platform.RectF, pixelWidth float64, done func([]byte, error)) {

@@ -94,6 +94,12 @@ func (v *WebView) Focused() bool {
 	return v.focused
 }
 
+func (v *WebView) SetBackground(c platform.Color) {
+	v.mu.Lock()
+	v.Opts.Background = c
+	v.mu.Unlock()
+}
+
 func (v *WebView) Snapshot(_ platform.RectF, _ float64, done func([]byte, error)) {
 	done(v.SnapshotPNG, nil)
 }
