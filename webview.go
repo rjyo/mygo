@@ -20,6 +20,11 @@ import (
 // MyGo draws covers it: hide it while a menu or dialog drawn in the window
 // overlaps it. Methods are safe from any goroutine; callbacks run on the
 // main thread.
+//
+// Platform differences: on Windows, Transparent clears the page's
+// background but the window doesn't show through, and corners are clipped
+// without antialiasing; on Linux, corners aren't rounded and LoadFile
+// can't limit what a page reads to readAccess.
 type WebView struct {
 	native platform.WebView
 	h      *webViewHandler
@@ -32,8 +37,13 @@ type WebViewOptions struct {
 	// DevTools allows the web inspector (right click, Inspect Element).
 	DevTools bool
 	// Transparent shows the window through until the page paints a
-	// background.
+	// background (macOS, Linux). Windows shows BackgroundColor there
+	// instead, or black without one.
 	Transparent bool
+	// BackgroundColor (a CSS color: #rgb, #rrggbb, rgb(…)) is shown where
+	// the page paints nothing: under a transparent page on Windows, and
+	// under any page elsewhere unless Transparent. It defaults to white.
+	BackgroundColor string
 	// CornerRadius rounds the corners in Corners, or all of them.
 	CornerRadius float64
 	Corners      Corners
@@ -82,7 +92,10 @@ const (
 type WebViewFrame uint8
 
 const (
-	// FrameUnknown: the platform can't tell.
+	// FrameUnknown: the platform can't tell. On Linux, WebKitGTK doesn't
+	// say which frame a navigation is for: iframes' navigations,
+	// redirects and scripted navigations of a document of no origin are
+	// unknown. A navigation is never reported as FrameMain wrongly.
 	FrameUnknown = WebViewFrame(platform.FrameUnknown)
 	// FrameMain is the top document.
 	FrameMain = WebViewFrame(platform.FrameMain)
@@ -109,7 +122,7 @@ type WebViewNavigation struct {
 	URL   string
 	Frame WebViewFrame
 	// UserInitiated: a link click or a form submission, not a script or a
-	// redirect.
+	// redirect. On Linux, any navigation during a user gesture counts.
 	UserInitiated bool
 }
 
@@ -143,7 +156,12 @@ type webViewResult struct {
 func (r webViewResult) get() (*WebView, error) { return r.v, r.err }
 
 func newWebView(parent platform.Window, opts WebViewOptions) webViewResult {
+	bg, err := webViewColor(opts.BackgroundColor)
+	if err != nil {
+		return webViewResult{err: err}
+	}
 	po := &platform.WebViewOptions{
+		Background:  bg,
 		DevTools:    opts.DevTools,
 		Transparent: opts.Transparent,
 		Radius:      opts.CornerRadius,
@@ -160,6 +178,14 @@ func newWebView(parent platform.Window, opts WebViewOptions) webViewResult {
 		return webViewResult{err: err}
 	}
 	return webViewResult{v: &WebView{native: n, h: h}}
+}
+
+// webViewColor parses a CSS color; "" is none.
+func webViewColor(css string) (platform.Color, error) {
+	if css == "" {
+		return platform.Color{}, nil
+	}
+	return parseColor(css)
 }
 
 // do runs fn on the main thread unless the web view is closed.
@@ -221,6 +247,17 @@ func (v *WebView) Blur() { v.do(func(n platform.WebView) { n.Blur() }) }
 // Focused reports whether the page has the keyboard.
 func (v *WebView) Focused() bool {
 	return onMainValue(func() bool { return !v.h.closed && v.native.Focused() })
+}
+
+// SetBackgroundColor changes WebViewOptions.BackgroundColor (a theme
+// switch).
+func (v *WebView) SetBackgroundColor(css string) error {
+	c, err := webViewColor(css)
+	if err != nil {
+		return err
+	}
+	v.do(func(n platform.WebView) { n.SetBackground(c) })
+	return nil
 }
 
 // Snapshot renders x, y, w, h of the page, in its CSS pixels, to a PNG

@@ -11,8 +11,9 @@ package platform
 type WebViewFrame uint8
 
 const (
-	// FrameUnknown: the backend can't tell (WebKitGTK for some subframe
-	// navigations).
+	// FrameUnknown: the backend can't tell. WebKitGTK doesn't say which
+	// frame a navigation is for: iframes' navigations, redirects and
+	// scripted navigations of a document of no origin are unknown there.
 	FrameUnknown WebViewFrame = iota
 	// FrameMain is the top document, the one LoadURL or LoadHTML loads.
 	FrameMain
@@ -27,7 +28,8 @@ type WebViewNavigation struct {
 	URL   string
 	Frame WebViewFrame
 	// UserInitiated: a link click or a form submission, as opposed to a
-	// script or a redirect.
+	// script or a redirect. WebKitGTK counts any navigation during a user
+	// gesture, Eval's included.
 	UserInitiated bool
 }
 
@@ -38,8 +40,14 @@ type WebViewOptions struct {
 	Scripts []UserScript
 	// DevTools allows the web inspector.
 	DevTools bool
-	// Transparent: no background of its own until the page paints one.
+	// Transparent: no background of its own until the page paints one,
+	// so the window shows through (macOS, Linux; on Windows it shows
+	// Background, or black).
 	Transparent bool
+	// Background is shown where the page paints nothing: under a
+	// transparent page on Windows, under any page elsewhere unless
+	// Transparent. A 0 alpha leaves the platform's default (white).
+	Background Color
 	// Radius rounds the corners in Corners (all of them when 0).
 	Radius  float64
 	Corners Corners
@@ -98,6 +106,8 @@ type WebView interface {
 	// Blur gives the keyboard back to the surface if the page has it.
 	Blur()
 	Focused() bool
+	// SetBackground changes Background.
+	SetBackground(c Color)
 	// Snapshot renders r of the page, in its coordinates, to a PNG
 	// pixelWidth pixels wide.
 	Snapshot(r RectF, pixelWidth float64, done func(png []byte, err error))
