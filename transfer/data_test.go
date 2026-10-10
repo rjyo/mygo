@@ -177,6 +177,9 @@ func TestPromise(t *testing.T) {
 	if b, _ := s.Read(Promised); string(b) != "report.pdf" {
 		t.Fatalf("read %q", b)
 	}
+	if s.Items()[0].PromisesFolder() || !New(NewItem(FolderPromise("src", func(string) error { return nil }))).Snapshot().Items()[0].PromisesFolder() {
+		t.Fatal("folder flag")
+	}
 	if _, _, ok := TextData("x").Items()[0].Promise(); ok {
 		t.Fatal("text item has a promise")
 	}
