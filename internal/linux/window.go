@@ -54,8 +54,10 @@ type window struct {
 	// controls are the title buttons over the page of a window with a
 	// hidden title bar (titlebar.go), in an overlay with the web view.
 	controls *windowControls
-	// overlay holds the surface.
-	overlay ptr
+	// overlay holds the surface, under fixed, which holds the embedded
+	// web views (embed.go).
+	overlay, fixed ptr
+	webViews       []*webView
 
 	closed       bool
 	programmatic bool
@@ -185,8 +187,8 @@ func (b *Backend) NewWindow(o *platform.WindowOptions, h platform.WindowHandler)
 		gtkContainerAdd(w.controls.overlay, w.contentWidget())
 		w.overlay = w.controls.overlay
 	case o.Surface:
-		// Native views can go over the surface: moving it into an overlay
-		// once it is realized would lose its GL context.
+		// Embedded web views go over the surface: moving it into an
+		// overlay once it is realized would lose its GL context.
 		w.overlay = gtkOverlayNew()
 		gtkContainerAdd(w.overlay, w.contentWidget())
 		gtkBoxPackStart(w.box, w.overlay, true, true, 0)
@@ -319,6 +321,7 @@ func (w *window) cleanup() {
 	delete(w.b.windows, w.id)
 	delete(w.b.byWebView, w.web)
 	dropOwner(w.owner)
+	w.destroyWebViews()
 	if w.surface != nil {
 		w.surface.destroy()
 	}
