@@ -177,6 +177,16 @@ func TestTrafficLights(handle uintptr) (x, y float64) {
 	return math.Min(a.X, b.X), msgRect(win, sel("frame")).Size.Height - math.Max(a.Y, b.Y)
 }
 
+// TestSetWindowAppearance gives a window its own dark or light appearance,
+// apart from the application's.
+func TestSetWindowAppearance(handle uintptr, dark bool) {
+	name := "NSAppearanceNameAqua"
+	if dark {
+		name = "NSAppearanceNameDarkAqua"
+	}
+	send(id(handle), "setAppearance:", uintptr(send(class("NSAppearance"), "appearanceNamed:", uintptr(nsString(name)))))
+}
+
 // TestWebViewAttached reports whether a window's web view is in its view
 // hierarchy.
 func TestWebViewAttached(handle uintptr) bool {
