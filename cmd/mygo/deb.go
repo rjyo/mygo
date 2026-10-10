@@ -20,6 +20,8 @@ import (
 
 // Linux configures Linux packaging.
 type Linux struct {
+	// Icon replaces icon for the desktop entry and the Debian package.
+	Icon string `json:"icon"`
 	// Maintainer of the Debian package, "Name <email>" (default: the
 	// author in package.json, else the app's name).
 	Maintainer string `json:"maintainer"`
@@ -128,14 +130,14 @@ func writeDeb(c *Config, stage, name, goarch string, app []string) (string, erro
 	desktop := []byte(linuxDesktopEntry(c, "/"+opt+"/"+name, name))
 	data.file("usr/share/applications/"+name+".desktop", desktop, 0o644)
 	fmt.Fprintf(md5sums, "%x  usr/share/applications/%s.desktop\n", md5.Sum(desktop), name)
-	if c.Icon != "" {
-		src, err := os.ReadFile(c.path(c.Icon))
+	if icon := c.iconFor("linux"); icon != "" {
+		src, err := os.ReadFile(c.path(icon))
 		if err != nil {
 			return "", err
 		}
 		img, err := png.Decode(bytes.NewReader(src))
 		if err != nil {
-			return "", fmt.Errorf("icon %s: %w", c.Icon, err)
+			return "", fmt.Errorf("icon %s: %w", icon, err)
 		}
 		for _, px := range []int{256, 512} {
 			dir := fmt.Sprintf("usr/share/icons/hicolor/%dx%d/apps", px, px)
