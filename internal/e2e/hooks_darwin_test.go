@@ -92,6 +92,10 @@ func trafficLights(w *mygo.Window) (x, y float64, supported bool) {
 	return x, y, true
 }
 
+func setWindowAppearance(w *mygo.Window, dark bool) {
+	mygo.RunOnMain(func() { darwin.TestSetWindowAppearance(w.NativeHandle(), dark) })
+}
+
 // Frameless windows keep native resize borders here.
 func movePointer(int, int) bool                { return false }
 func pressButton(bool) bool                    { return false }

@@ -678,8 +678,8 @@ func TestFullScreenToolbar(t *testing.T) {
 	}
 }
 
-// AppKit lays the title bar out again when the title or the appearance
-// changes, which must not move the traffic lights back.
+// AppKit lays the title bar out again when the title or the appearance,
+// the application's or the window's own, changes, which must not move the traffic lights back.
 func TestTrafficLightPosition(t *testing.T) {
 	w := newWindow(t, mygo.WindowOptions{Width: 400, Height: 240, TitleBarStyle: mygo.TitleBarHidden,
 		TrafficLightPosition: &mygo.Point{X: 18, Y: 19}})
@@ -704,6 +704,8 @@ func TestTrafficLightPosition(t *testing.T) {
 		mygo.Theme.SetSource(mygo.ThemeDark)
 	}
 	placed("after the appearance changed")
+	setWindowAppearance(w, !mygo.Theme.IsDark())
+	placed("after the window took an appearance of its own")
 }
 
 // GTK gives frameless windows no resize borders, so the outer pixels of
