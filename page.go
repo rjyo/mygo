@@ -27,11 +27,29 @@ func (p *Page) Window() *Window { return p.w.top() }
 // window.
 func (p *Page) WebView() *WebView { return p.w.webView }
 
+// Script is JavaScript injected into pages (PageOptions.Scripts).
+type Script struct {
+	Source string
+	// AtDocumentEnd injects it once the document is parsed, instead of
+	// before the page's own scripts run.
+	AtDocumentEnd bool
+	// AllFrames injects it into the page's iframes too, cross-origin ones
+	// included.
+	AllFrames bool
+}
+
 // PageOptions configure the web page of a window.
 type PageOptions struct {
 	// PreloadScript is JavaScript injected into every page before the
 	// page's own scripts, after window.mygo is available.
 	PreloadScript string
+	// Scripts are injected into every page after PreloadScript, in order.
+	// One with AllFrames also runs in the page's iframes, which have no
+	// window.mygo.
+	Scripts []Script
+	// FrameNavigations has OnWillNavigate asked about the navigations of
+	// the page's iframes too, which NavigateEvent.InFrame tells apart.
+	FrameNavigations bool
 	// TrustedOrigins lists extra origins, such as "https://example.com",
 	// whose pages may call bound Go methods. By default only the app's own
 	// content can: custom schemes registered with Protocol, file: and
