@@ -507,8 +507,8 @@ func formatSize(n int64) string {
 func writeLinuxDesktop(c *Config, dir, name string) ([]string, error) {
 	var files []string
 	icon := ""
-	if c.Icon != "" {
-		data, err := os.ReadFile(c.path(c.Icon))
+	if png := c.iconFor("linux"); png != "" {
+		data, err := os.ReadFile(c.path(png))
 		if err != nil {
 			return nil, err
 		}
