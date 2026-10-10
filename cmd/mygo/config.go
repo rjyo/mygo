@@ -31,6 +31,8 @@ type Config struct {
 	// Icon is a square PNG, ideally 1024x1024 (default:
 	// resources/icon.png when it exists). Beside it, the same name with
 	// -dev, as icon-dev.png, is the development app's, when it exists.
+	// windows.icon and linux.icon replace it on those platforms, e.g. for
+	// a tile without macOS's margin and shadow.
 	Icon string `json:"icon"`
 	// Main is the Go package of the app (default ".").
 	Main string `json:"main"`
@@ -192,6 +194,18 @@ type Notarize struct {
 	// Keychain is the keychain holding the profile (default: the login
 	// keychain).
 	Keychain string `json:"keychain"`
+}
+
+// iconFor returns the icon of goos's apps: windows.icon or linux.icon
+// when set, else icon.
+func (c *Config) iconFor(goos string) string {
+	switch {
+	case goos == "windows" && c.Windows.Icon != "":
+		return c.Windows.Icon
+	case goos == "linux" && c.Linux.Icon != "":
+		return c.Linux.Icon
+	}
+	return c.Icon
 }
 
 func loadConfig(root string) (*Config, error) {
