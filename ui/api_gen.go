@@ -3620,6 +3620,22 @@ func (_handle Element) NoWrap() Element {
 	return wrapElement(_node.NoWrap())
 }
 
+// OnPaste has fn see a paste into a text input, by Cmd+V, Ctrl+V or a
+// Paste menu item, before it is inserted: text is the clipboard's text,
+// empty when it holds none, as with an image. fn reports whether it took
+// the paste; a paste taken inserts nothing and deletes the selection, as
+// when the app attaches a large block instead of inserting it. Like
+// ReadOnly, it holds for the input that comes until the next frame.
+func (_handle Element) OnPaste(fn func(text string) bool) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.OnPaste(func(text string) bool { return fn(text) }))
+}
+
 // Opacity makes the element and its children translucent.
 func (_handle Element) Opacity(o float32) Element {
 	_node := _handle.node()
