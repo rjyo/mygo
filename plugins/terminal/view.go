@@ -23,7 +23,11 @@ import (
 // elsewhere) to open a hyperlink (OSC 8) on click.
 func View(c *ui.Context, t *Terminal) ui.Element {
 	v := t.viewOf(c)
-	e := ui.Box(c).Focusable().FocusRing(false).Cursor(ui.CursorText).Clip().Label("Terminal")
+	cursor := ui.CursorText
+	if v.hoverLink {
+		cursor = ui.CursorPointer
+	}
+	e := ui.Box(c).Focusable().FocusRing(false).Cursor(cursor).Clip().Label("Terminal")
 	v.build(c, e)
 	e.HandleInput(v.input)
 	e.TextCaret(v.caret())
@@ -90,8 +94,13 @@ type view struct {
 	// press went to the program, which gets the release too.
 	selecting, reporting bool
 	pointer              [2]float32
-	scrolled             float32 // scrolling not yet a whole row
-	ticking              bool    // an autoscroll tick is due
+	// hoverLink: Command is held over a link, which a click opens.
+	hoverLink bool
+	// opening is the link a click asked to open, opened once t.mu is
+	// released.
+	opening  string
+	scrolled float32 // scrolling not yet a whole row
+	ticking  bool    // an autoscroll tick is due
 }
 
 type pendingKey struct {
@@ -241,7 +250,14 @@ func (v *view) input(ev ui.InputEvent) bool {
 		}
 		return true
 	case ui.InputPointerDown, ui.InputPointerUp, ui.InputPointerMove:
-		return v.pointerEvent(ev)
+		took := v.pointerEvent(ev)
+		if link := v.opening; link != "" {
+			v.opening = ""
+			if open := v.t.opts.OpenLink; (open == nil || !open(link)) && urlPattern.MatchString(link) {
+				v.services.OpenURL(link)
+			}
+		}
+		return took
 	case ui.InputScroll:
 		return v.scroll(ev)
 	}
@@ -250,6 +266,10 @@ func (v *view) input(ev ui.InputEvent) bool {
 
 func (v *view) keyDown(ev ui.InputEvent) bool {
 	t := v.t
+	if on := t.opts.OnKey; on != nil && on(ev.Mods, ev.Key) {
+		v.pending = nil
+		return true
+	}
 	mac := runtime.GOOS == "darwin"
 	mods, key := ev.Mods, ev.Key
 	copyMods := ui.Ctrl | ui.Shift
@@ -438,6 +458,9 @@ func (v *view) copy() {
 }
 
 func (v *view) paste() {
+	if on := v.t.opts.OnPaste; on != nil && on() {
+		return
+	}
 	if text := v.services.ReadClipboard(); text != "" {
 		v.t.Paste(text)
 	}
@@ -476,6 +499,23 @@ func (v *view) pointerEvent(ev ui.InputEvent) bool {
 	if t.term == nil || v.cellW == 0 {
 		return false
 	}
+	col, row := v.cellAt(ev.X, ev.Y)
+	// Command over a link: a hand, and a click opens it, before a
+	// program that takes the mouse sees it.
+	if !v.selecting && !v.reporting {
+		link := ""
+		if ev.Mods&ui.Cmd != 0 && (ev.Kind != ui.InputPointerDown || ev.Button == 0) {
+			link = v.linkAt(col, row)
+		}
+		if hover := link != ""; hover != v.hoverLink {
+			v.hoverLink = hover
+			v.services.Invalidate()
+		}
+		if link != "" && ev.Kind == ui.InputPointerDown {
+			v.opening = link
+			return true
+		}
+	}
 	tracking := t.term.MouseTracking() && ev.Mods&ui.Shift == 0
 	if tracking && !v.selecting || v.reporting {
 		return v.report(ev)
@@ -487,27 +527,11 @@ func (v *view) pointerEvent(ev ui.InputEvent) bool {
 		}
 		v.gesture = g
 	}
-	col, row := v.cellAt(ev.X, ev.Y)
 	px, py := float64(ev.X*v.scale), float64(ev.Y*v.scale)
 	switch ev.Kind {
 	case ui.InputPointerDown:
 		if ev.Button != 0 {
 			return false // the context menu
-		}
-		if ev.Mods&ui.Cmd != 0 {
-			// A hyperlink (OSC 8), or a URL printed as text.
-			url := ""
-			if ref, ok := t.term.CellAt(col, row); ok {
-				url = t.term.Hyperlink(ref)
-			}
-			if url == "" {
-				text, cols := t.term.RowText(row)
-				url = urlAt(text, cols, col)
-			}
-			if url != "" {
-				v.services.OpenURL(url)
-				return true
-			}
 		}
 		ref, ok := t.term.CellAt(col, row)
 		if !ok {
@@ -547,6 +571,25 @@ func (v *view) pointerEvent(ev ui.InputEvent) bool {
 		return true
 	}
 	return false
+}
+
+// linkAt is the link at the cell: a hyperlink (OSC 8), a URL printed as
+// text, or with Options.OpenLink a path, or ""; t.mu is held.
+func (v *view) linkAt(col, row int) string {
+	t := v.t
+	if ref, ok := t.term.CellAt(col, row); ok {
+		if url := t.term.Hyperlink(ref); url != "" {
+			return url
+		}
+	}
+	text, cols := t.term.RowText(row)
+	if url := urlAt(text, cols, col); url != "" {
+		return url
+	}
+	if t.opts.OpenLink != nil {
+		return pathAt(text, cols, col)
+	}
+	return ""
 }
 
 // geometry is the grid in pixels, for selection gestures.
