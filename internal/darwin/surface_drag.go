@@ -226,6 +226,7 @@ func (s *surface) StartDataDrag(r platform.DragRequest) {
 		} else {
 			width, height = 32, 32
 		}
+		scale := max(r.Scale, 1)
 		x, y := r.X, r.Y
 		if x < 0 || y < 0 {
 			p := msgPointFromView(s.view, sel("convertPoint:fromView:"), msgPoint(s.w.lastMouseDown, sel("locationInWindow")), 0)
@@ -234,7 +235,8 @@ func (s *surface) StartDataDrag(r platform.DragRequest) {
 		var dragging []id
 		for n, pb := range src.pasteboardItems() {
 			di := autorelease(send(send(class("NSDraggingItem"), "alloc"), "initWithPasteboardWriter:", uintptr(pb)))
-			frame := NSRect{Origin: NSPoint{x - float64(r.HotX) + float64(n*3), y - float64(r.HotY) + float64(n*3)}, Size: NSSize{float64(width), float64(height)}}
+			// The frame is in points: a denser preview draws scaled into it.
+			frame := NSRect{Origin: NSPoint{x - float64(r.HotX)/scale + float64(n*3), y - float64(r.HotY)/scale + float64(n*3)}, Size: NSSize{float64(width) / scale, float64(height) / scale}}
 			msgDraggingFrame(di, sel("setDraggingFrame:contents:"), frame, img)
 			dragging = append(dragging, di)
 		}
