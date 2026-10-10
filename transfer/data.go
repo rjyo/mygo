@@ -44,6 +44,7 @@ type value struct {
 	bytes    []byte
 	err      error
 	write    func(path string) error
+	folder   bool
 }
 
 // Representation is one format of an item, made with Bytes or Lazy.
@@ -84,13 +85,33 @@ func Lazy(format Format, provider func() ([]byte, error)) Representation {
 // items another format as well or check runtime.GOOS. A destination in the
 // same process reads the name.
 func Promise(name string, write func(path string) error) Representation {
+	return promise(name, write, false)
+}
+
+// FolderPromise is Promise for a folder: write creates a directory at path
+// and what goes in it.
+func FolderPromise(name string, write func(path string) error) Representation {
+	return promise(name, write, true)
+}
+
+func promise(name string, write func(path string) error, folder bool) Representation {
 	if name == "" || strings.ContainsAny(name, "/\\\x00") || name == "." || name == ".." {
 		panic("transfer: invalid promised file name")
 	}
 	if write == nil {
 		panic("transfer: nil promise writer")
 	}
-	return Representation{format: Promised, value: &value{bytes: []byte(name), write: write}}
+	return Representation{format: Promised, value: &value{bytes: []byte(name), write: write, folder: folder}}
+}
+
+// PromisesFolder reports whether the item's promise is a folder.
+func (i Item) PromisesFolder() bool {
+	for _, r := range i.reps {
+		if r.format == Promised {
+			return r.value.folder
+		}
+	}
+	return false
 }
 
 // Promise returns the item's file promise: the file's name and its writer.
@@ -205,7 +226,7 @@ func (d Data) Snapshot() Data {
 	items := make([]Item, len(d.items))
 	for n, i := range d.items {
 		for _, r := range i.reps {
-			v := &value{provider: r.value.provider, write: r.value.write}
+			v := &value{provider: r.value.provider, write: r.value.write, folder: r.value.folder}
 			if v.provider == nil {
 				v.bytes = bytes.Clone(r.value.bytes)
 			}
