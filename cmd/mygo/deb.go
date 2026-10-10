@@ -21,6 +21,9 @@ import (
 
 // Linux configures Linux packaging.
 type Linux struct {
+	// Icon replaces icon for the desktop entry, the Debian package and
+	// the PKGBUILD.
+	Icon string `json:"icon"`
 	// Maintainer of the Debian package and of the PKGBUILD, "Name
 	// <email>" (default: the author in package.json, else the app's
 	// name).
@@ -248,16 +251,17 @@ func (i linuxIcon) dir() string {
 // linuxIcons returns the icon of the app at 256 and 512 pixels, the sizes
 // of the hicolor theme packages install it in, or none without an icon.
 func linuxIcons(c *Config) ([]linuxIcon, error) {
-	if c.Icon == "" {
+	icon := c.iconFor("linux")
+	if icon == "" {
 		return nil, nil
 	}
-	src, err := os.ReadFile(c.path(c.Icon))
+	src, err := os.ReadFile(c.path(icon))
 	if err != nil {
 		return nil, err
 	}
 	img, err := png.Decode(bytes.NewReader(src))
 	if err != nil {
-		return nil, fmt.Errorf("icon %s: %w", c.Icon, err)
+		return nil, fmt.Errorf("icon %s: %w", icon, err)
 	}
 	var icons []linuxIcon
 	for _, px := range []int{256, 512} {

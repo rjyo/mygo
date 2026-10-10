@@ -270,6 +270,8 @@ export interface WindowsConfig {
    * keep the name. Changing it moves new installs only.
    */
   installDirName?: string;
+  /** A square PNG that replaces `icon` for the executable and the installer. */
+  icon?: string;
   /** A code signing certificate (.pfx); its password comes from `MYGO_WINDOWS_CERTIFICATE_PASSWORD`. */
   certificate?: string;
   /** Instead of `certificate`, a command that signs a file, with `%1` for its path. */
@@ -287,6 +289,8 @@ export interface WindowsConfig {
 
 /** Linux packaging. */
 export interface LinuxConfig {
+  /** A square PNG that replaces `icon` for the desktop entry, the Debian package and the PKGBUILD. */
+  icon?: string;
   /** `Name <email>`, the maintainer of the Debian package and of the PKGBUILD (default: `author` in package.json, else the app's name). */
   maintainer?: string;
   /** A short description, for the desktop entry and the package. */

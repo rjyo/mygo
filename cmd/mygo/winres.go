@@ -44,8 +44,8 @@ func winresSyso(c *Config, goarch string) ([]byte, error) {
 		rtVersion:  {1: versionInfo(c, langs)},
 		rtManifest: {1: []byte(windowsManifest(c))},
 	}
-	if c.Icon != "" {
-		src, err := os.ReadFile(c.path(c.Icon))
+	if icon := c.iconFor("windows"); icon != "" {
+		src, err := os.ReadFile(c.path(icon))
 		if err != nil {
 			return nil, err
 		}
