@@ -32,6 +32,7 @@ type macDataSource struct {
 	s            *surface
 	obj, session id
 	providers    []id
+	promises     []*macPromise
 	err          error
 	// escaped is set when the drag was given up (Escape, or
 	// CancelDataDrag), not let go over no target.
@@ -71,18 +72,7 @@ func registerDataDragClasses() {
 			if p == nil {
 				return
 			}
-			name := goString(typ)
-			var b []byte
-			var err error
-			if name == macType(platform.DragSessionFormat) {
-				b = []byte(p.src.r.Session)
-			} else {
-				f := macFormat(name)
-				b, err = p.item.Read(f)
-				if f == transfer.FileList || name == "public.url" {
-					b = []byte(strings.TrimSpace(strings.Split(string(b), "\n")[0]))
-				}
-			}
+			b, err := p.src.itemData(p.item, goString(typ))
 			if err != nil {
 				p.src.err = err
 				return
@@ -90,6 +80,35 @@ func registerDataDragClasses() {
 			send(item, "setData:forType:", uintptr(nsData(b)), uintptr(typ))
 		}),
 	})
+	registerFilePromiseClass()
+}
+
+// itemData is an item's bytes for the pasteboard type name.
+func (src *macDataSource) itemData(item transfer.Item, name string) ([]byte, error) {
+	if name == macType(platform.DragSessionFormat) {
+		return []byte(src.r.Session), nil
+	}
+	f := macFormat(name)
+	b, err := item.Read(f)
+	if f == transfer.FileList || name == "public.url" {
+		b = []byte(strings.TrimSpace(strings.Split(string(b), "\n")[0]))
+	}
+	return b, err
+}
+
+// itemTypes are the pasteboard types of an item's formats, and the session.
+func itemTypes(item transfer.Item) []string {
+	var types []string
+	for _, f := range item.Formats() {
+		if f == transfer.Promised {
+			continue
+		}
+		types = append(types, macType(f))
+		if f == transfer.URIList {
+			types = append(types, "public.url")
+		}
+	}
+	return append(types, macType(platform.DragSessionFormat))
 }
 
 func macType(f transfer.Format) string {
@@ -233,18 +252,18 @@ func (s *surface) StartDataDrag(r platform.DragRequest) {
 func (src *macDataSource) pasteboardItems() []id {
 	var items []id
 	for _, item := range src.r.Data.Items() {
+		if name, write, ok := item.Promise(); ok {
+			items = append(items, src.filePromise(item, name, write))
+			continue
+		}
 		pb := autorelease(send(send(class("NSPasteboardItem"), "alloc"), "init"))
 		provider := send(send(class("MyGoDragProvider"), "alloc"), "init")
 		macDragProviders[provider] = &macDataProvider{src, item}
 		src.providers = append(src.providers, provider)
 		var types []id
-		for _, f := range item.Formats() {
-			types = append(types, nsString(macType(f)))
-			if f == transfer.URIList {
-				types = append(types, nsString("public.url"))
-			}
+		for _, t := range itemTypes(item) {
+			types = append(types, nsString(t))
 		}
-		types = append(types, nsString(macType(platform.DragSessionFormat)))
 		send(pb, "setDataProvider:forTypes:", uintptr(provider), uintptr(nsArray(types...)))
 		items = append(items, pb)
 	}
@@ -259,6 +278,9 @@ func (src *macDataSource) finish(operation uint) {
 	for _, p := range src.providers {
 		delete(macDragProviders, p)
 		release(p)
+	}
+	for _, p := range src.promises {
+		p.ended(goOperations(operation) == transfer.None || src.err != nil)
 	}
 	release(src.session)
 	// The callback still uses self. Autorelease after AppKit returns.
