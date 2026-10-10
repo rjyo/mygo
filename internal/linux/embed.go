@@ -145,8 +145,10 @@ type webView struct {
 	offWin ptr     // GtkOffscreenWindow of an offscreen web view
 	h      platform.WebViewHandler
 	secret string
-	rect   platform.RectF
-	shown  bool
+	// transparent keeps the web view's background clear (Transparent).
+	transparent bool
+	rect        platform.RectF
+	shown       bool
 	// width and height are an offscreen web view's size; snapshots run
 	// one at a time, as they may resize and zoom it.
 	width, height float64
@@ -207,9 +209,8 @@ func (b *Backend) NewWebView(parent platform.Window, o *platform.WebViewOptions,
 	}
 	v.web = gObjectRefSink(webkitWebViewNewWithUserContentManager(v.ucm))
 	webkitSettingsSetEnableDeveloperExtras(webkitWebViewGetSettings(v.web), o.DevTools)
-	if o.Transparent {
-		webkitWebViewSetBackgroundColor(v.web, &gdkRGBA{})
-	}
+	v.transparent = o.Transparent
+	v.SetBackground(o.Background)
 	connect(v.web, "decide-policy", cbEmbedPolicy, data)
 	connect(v.web, "load-changed", cbEmbedLoadChanged, data)
 	connect(v.web, "web-process-terminated", cbEmbedCrashed, data)
@@ -364,6 +365,20 @@ func (v *webView) Focused() bool {
 	}
 	f := gtkWindowGetFocus(v.w.win)
 	return f != 0 && (f == v.web || gtkWidgetIsAncestor(f, v.web))
+}
+
+// SetBackground shows c where the page paints nothing, opaque, unless the
+// web view is transparent; a 0 alpha is WebKit's white.
+func (v *webView) SetBackground(c platform.Color) {
+	switch {
+	case v.web == 0:
+	case v.transparent:
+		webkitWebViewSetBackgroundColor(v.web, &gdkRGBA{})
+	case c.A == 0:
+		webkitWebViewSetBackgroundColor(v.web, &gdkRGBA{1, 1, 1, 1})
+	default:
+		webkitWebViewSetBackgroundColor(v.web, &gdkRGBA{float64(c.R) / 255, float64(c.G) / 255, float64(c.B) / 255, 1})
+	}
 }
 
 // Snapshot renders what the web view shows. An offscreen one first grows
