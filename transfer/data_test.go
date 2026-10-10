@@ -159,3 +159,38 @@ func TestProviderPanicIsCachedAndNegotiationIsLazy(t *testing.T) {
 		t.Fatal("panic lost the alternative")
 	}
 }
+
+func TestPromise(t *testing.T) {
+	var wrote string
+	d := New(NewItem(Promise("report.pdf", func(path string) error { wrote = path; return nil }), Bytes(Text, []byte("report.pdf"))))
+	if got := d.Formats(); !slices.Equal(got, []Format{Promised, Text}) {
+		t.Fatalf("formats %v", got)
+	}
+	s := d.Snapshot()
+	name, write, ok := s.Items()[0].Promise()
+	if !ok || name != "report.pdf" {
+		t.Fatalf("promise %q %v", name, ok)
+	}
+	if err := write("/tmp/x/report.pdf"); err != nil || wrote != "/tmp/x/report.pdf" {
+		t.Fatalf("wrote %q: %v", wrote, err)
+	}
+	if b, _ := s.Read(Promised); string(b) != "report.pdf" {
+		t.Fatalf("read %q", b)
+	}
+	if s.Items()[0].PromisesFolder() || !New(NewItem(FolderPromise("src", func(string) error { return nil }))).Snapshot().Items()[0].PromisesFolder() {
+		t.Fatal("folder flag")
+	}
+	if _, _, ok := TextData("x").Items()[0].Promise(); ok {
+		t.Fatal("text item has a promise")
+	}
+	for _, bad := range []string{"", ".", "..", "a/b", `a\b`} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("Promise(%q) did not panic", bad)
+				}
+			}()
+			Promise(bad, func(string) error { return nil })
+		}()
+	}
+}
