@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"sync"
 	"unsafe"
@@ -59,7 +60,7 @@ var (
 	cairoScale                      func(cr ptr, x, y float64)
 	cairoGetSource                  func(cr ptr) ptr
 	cairoPatternSetFilter           func(p ptr, filter int32)
-	cairoSurfaceGetDeviceScale      func(s ptr, x, y *float64)
+	cairoImageSurfaceGetWidth       func(s ptr) int32
 
 	cbEmbedMessage, cbEmbedPolicy, cbEmbedCreate, cbEmbedLoadChanged, cbEmbedCrashed ptr
 )
@@ -84,7 +85,7 @@ func loadEmbed() {
 		mustBind(c, &cairoScale, "cairo_scale")
 		mustBind(c, &cairoGetSource, "cairo_get_source")
 		mustBind(c, &cairoPatternSetFilter, "cairo_pattern_set_filter")
-		mustBind(c, &cairoSurfaceGetDeviceScale, "cairo_surface_get_device_scale")
+		mustBind(c, &cairoImageSurfaceGetWidth, "cairo_image_surface_get_width")
 	})
 }
 
@@ -397,24 +398,34 @@ func (v *webView) Snapshot(r platform.RectF, pixelWidth float64, done func([]byt
 			finish(nil, errors.New("mygo: the web view is closed"))
 			return
 		}
-		scale := float64(max(gtkWidgetGetScaleFactor(v.web), 1))
-		zoom := min(max(pixelWidth/(r.W*scale), 1), 8)
-		width, height := max(v.width, r.X+r.W), max(v.height, r.Y+r.H)
-		if zoom == 1 && width == v.width && height == v.height {
-			v.snapshot(r, 1, pixelWidth, finish)
-			return
-		}
-		webkitWebViewSetZoomLevel(v.web, zoom)
-		v.resize(width*zoom, height*zoom)
-		// Snapshot once the page has the new size and zoom: its viewport
-		// in CSS pixels is then width by height.
-		v.call(fmt.Sprintf(`for (let i = 0; i < 120 && (Math.abs(innerWidth - %g) >= 1 || Math.abs(innerHeight - %g) >= 1); i++)
-	await new Promise(r => requestAnimationFrame(r))`, math.Ceil(width), math.Ceil(height)), func(_ string, err error) {
+		// The page's device pixel ratio, at zoom 1, is WebKit's device
+		// scale, which on Wayland is the monitor's, not GTK's 1 of an
+		// offscreen window.
+		v.call("return devicePixelRatio", func(ratio string, err error) {
 			if err != nil {
 				finish(nil, err)
 				return
 			}
-			v.snapshot(r, zoom, pixelWidth, finish)
+			scale, _ := strconv.ParseFloat(ratio, 64)
+			scale = max(scale, 1)
+			zoom := min(max(pixelWidth/(r.W*scale), 1), 8)
+			width, height := max(v.width, r.X+r.W), max(v.height, r.Y+r.H)
+			if zoom == 1 && width == v.width && height == v.height {
+				v.snapshot(r, 1, pixelWidth, finish)
+				return
+			}
+			webkitWebViewSetZoomLevel(v.web, zoom)
+			v.resize(width*zoom, height*zoom)
+			// Snapshot once the page has the new size and zoom: its
+			// viewport in CSS pixels is then width by height.
+			v.call(fmt.Sprintf(`for (let i = 0; i < 120 && (Math.abs(innerWidth - %g) >= 1 || Math.abs(innerHeight - %g) >= 1); i++)
+	await new Promise(r => requestAnimationFrame(r))`, math.Ceil(width), math.Ceil(height)), func(_ string, err error) {
+				if err != nil {
+					finish(nil, err)
+					return
+				}
+				v.snapshot(r, zoom, pixelWidth, finish)
+			})
 		})
 	})
 	if len(v.snapshots) == 1 {
@@ -446,14 +457,22 @@ func (v *webView) snapshot(r platform.RectF, zoom, pixelWidth float64, done func
 		out := cairoImageSurfaceCreate(formatARGB32, width, height)
 		defer cairoSurfaceDestroy(out)
 		cr := cairoCreate(out)
-		// The snapshot's units are the web view's (GTK's logical pixels),
-		// whatever its device scale.
+		// The snapshot has the web view's size times WebKit's device scale,
+		// which needn't be GTK's, nor be set on it: an offscreen window on
+		// Wayland has GTK's scale of 1 and WebKit's of the monitor. Its
+		// width over the web view's tells it.
+		var a gdkRectangle
+		gtkWidgetGetAllocation(v.web, &a)
+		scale := 1.0
+		if a.Width > 1 { // laid out
+			scale = float64(cairoImageSurfaceGetWidth(surface)) / float64(a.Width)
+		}
+		cairoSurfaceSetDeviceScale(surface, scale, scale)
+		// In the web view's units (GTK's logical pixels).
 		cairoScale(cr, float64(width)/(r.W*zoom), float64(height)/(r.H*zoom))
 		cairoSetSourceSurface(cr, surface, -r.X*zoom, -r.Y*zoom)
-		var sx, sy float64
-		cairoSurfaceGetDeviceScale(surface, &sx, &sy)
 		filter := int32(filterGood)
-		if float64(width) < r.W*zoom*sx {
+		if float64(width) < r.W*zoom*scale {
 			filter = filterBest // shrinking: average the pixels
 		}
 		cairoPatternSetFilter(cairoGetSource(cr), filter)
