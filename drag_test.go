@@ -1,6 +1,7 @@
 package mygo
 
 import (
+	"bytes"
 	"errors"
 	"image"
 	"image/color"
@@ -206,5 +207,20 @@ func TestDataDragPreservesRawNativeFilePaths(t *testing.T) {
 	})
 	if listener == nil || !slices.Equal(listener.Paths, paths) {
 		t.Fatalf("listener %+v", listener)
+	}
+}
+
+func TestDownscalePreview(t *testing.T) {
+	// A 4×2 preview at 2× becomes 2×1, each pixel the mean of its square.
+	pix := []byte{
+		0, 0, 0, 0, 200, 200, 200, 200, 100, 0, 0, 100, 100, 0, 0, 100,
+		0, 0, 0, 0, 200, 200, 200, 200, 100, 0, 0, 100, 100, 0, 0, 100,
+	}
+	out, w, h, hot := downscalePreview(pix, 4, 2, image.Pt(3, 1), 2)
+	if w != 2 || h != 1 || hot != image.Pt(1, 0) {
+		t.Fatalf("size %dx%d hot %v", w, h, hot)
+	}
+	if want := []byte{100, 100, 100, 100, 100, 0, 0, 100}; !bytes.Equal(out, want) {
+		t.Fatalf("pixels %v", out)
 	}
 }
