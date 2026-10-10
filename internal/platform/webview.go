@@ -11,8 +11,9 @@ package platform
 type WebViewFrame uint8
 
 const (
-	// FrameUnknown: the backend can't tell (WebKitGTK for some subframe
-	// navigations).
+	// FrameUnknown: the backend can't tell. WebKitGTK doesn't say which
+	// frame a navigation is for: iframes' navigations, redirects and
+	// scripted navigations of a document of no origin are unknown there.
 	FrameUnknown WebViewFrame = iota
 	// FrameMain is the top document, the one LoadURL or LoadHTML loads.
 	FrameMain
@@ -27,7 +28,8 @@ type WebViewNavigation struct {
 	URL   string
 	Frame WebViewFrame
 	// UserInitiated: a link click or a form submission, as opposed to a
-	// script or a redirect.
+	// script or a redirect. WebKitGTK counts any navigation during a user
+	// gesture, Eval's included.
 	UserInitiated bool
 }
 

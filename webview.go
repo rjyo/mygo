@@ -20,6 +20,11 @@ import (
 // MyGo draws covers it: hide it while a menu or dialog drawn in the window
 // overlaps it. Methods are safe from any goroutine; callbacks run on the
 // main thread.
+//
+// Platform differences: on Windows, Transparent clears the page's
+// background but the window doesn't show through, and corners are clipped
+// without antialiasing; on Linux, corners aren't rounded and LoadFile
+// can't limit what a page reads to readAccess.
 type WebView struct {
 	native platform.WebView
 	h      *webViewHandler
@@ -82,7 +87,10 @@ const (
 type WebViewFrame uint8
 
 const (
-	// FrameUnknown: the platform can't tell.
+	// FrameUnknown: the platform can't tell. On Linux, WebKitGTK doesn't
+	// say which frame a navigation is for: iframes' navigations,
+	// redirects and scripted navigations of a document of no origin are
+	// unknown. A navigation is never reported as FrameMain wrongly.
 	FrameUnknown = WebViewFrame(platform.FrameUnknown)
 	// FrameMain is the top document.
 	FrameMain = WebViewFrame(platform.FrameMain)
@@ -109,7 +117,7 @@ type WebViewNavigation struct {
 	URL   string
 	Frame WebViewFrame
 	// UserInitiated: a link click or a form submission, not a script or a
-	// redirect.
+	// redirect. On Linux, any navigation during a user gesture counts.
 	UserInitiated bool
 }
 
