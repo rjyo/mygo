@@ -69,6 +69,10 @@ type Backend interface {
 	Wake()
 
 	NewWindow(opts *WindowOptions, h WindowHandler) (Window, error)
+	// NewWebView embeds a web view in parent, a window of native UI
+	// (WindowOptions.Surface), hidden until placed; with a nil parent it
+	// is offscreen, opts.Width by opts.Height, and only renders.
+	NewWebView(parent Window, opts *WebViewOptions, h WebViewHandler) (WebView, error)
 
 	SetApplicationMenu(m *Menu)
 	// PopupMenu shows a context menu. pos is relative to the window's

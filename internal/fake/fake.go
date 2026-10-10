@@ -30,6 +30,7 @@ type Backend struct {
 
 	mu               sync.Mutex
 	windows          []*Window
+	webviews         []*WebView
 	appMenu          *platform.Menu
 	updates          []*platform.MenuItem
 	hotkeys          map[int]string

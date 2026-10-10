@@ -25,6 +25,9 @@ type Backend struct {
 	windows   map[int]*window
 	byWebView map[ptr]*window
 	nextID    int
+	// webViews are the embedded web views (embed.go), by id.
+	webViews    map[int]*webView
+	nextWebView int
 
 	appMenu    *platform.Menu
 	schemes    map[string]bool
@@ -206,6 +209,7 @@ func initCallbacks() {
 		initWindowCallbacks()
 		initSurfaceCallbacks()
 		initDownloadCallbacks()
+		initEmbedCallbacks()
 		initMenuCallbacks()
 		initSystemCallbacks()
 		initClipboardCallbacks()
