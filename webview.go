@@ -156,7 +156,7 @@ type webViewResult struct {
 func (r webViewResult) get() (*WebView, error) { return r.v, r.err }
 
 func newWebView(parent platform.Window, opts WebViewOptions) webViewResult {
-	bg, err := parseColor(opts.BackgroundColor)
+	bg, err := webViewColor(opts.BackgroundColor)
 	if err != nil {
 		return webViewResult{err: err}
 	}
@@ -178,6 +178,14 @@ func newWebView(parent platform.Window, opts WebViewOptions) webViewResult {
 		return webViewResult{err: err}
 	}
 	return webViewResult{v: &WebView{native: n, h: h}}
+}
+
+// webViewColor parses a CSS color; "" is none.
+func webViewColor(css string) (platform.Color, error) {
+	if css == "" {
+		return platform.Color{}, nil
+	}
+	return parseColor(css)
 }
 
 // do runs fn on the main thread unless the web view is closed.
@@ -244,7 +252,7 @@ func (v *WebView) Focused() bool {
 // SetBackgroundColor changes WebViewOptions.BackgroundColor (a theme
 // switch).
 func (v *WebView) SetBackgroundColor(css string) error {
-	c, err := parseColor(css)
+	c, err := webViewColor(css)
 	if err != nil {
 		return err
 	}
