@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"runtime"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -146,7 +147,11 @@ func TestEmbeddedWebView(t *testing.T) {
 	if got := callResult(t, v, "return 6 * 7"); got != "42" {
 		t.Errorf("Call returned %q", got)
 	}
-	if n, ok := ev.nav(base + "/child"); !ok || n.Frame != mygo.FrameChild {
+	// WebKitGTK tells no navigation which frame it is for: Linux knows the
+	// top document's from the API and from what the document announces,
+	// and reports the others as FrameUnknown.
+	unknownOnLinux := func(f mygo.WebViewFrame) bool { return runtime.GOOS == "linux" && f == mygo.FrameUnknown }
+	if n, ok := ev.nav(base + "/child"); !ok || n.Frame != mygo.FrameChild && !unknownOnLinux(n.Frame) {
 		t.Errorf("the child frame's navigation is %+v (seen %v)", n, ok)
 	}
 	if n, ok := ev.nav(base + "/nested"); !ok || n.Frame != mygo.FrameNested && n.Frame != mygo.FrameUnknown {
@@ -155,11 +160,22 @@ func TestEmbeddedWebView(t *testing.T) {
 
 	v.Eval(`location.href = "https://blocked.example/"`)
 	eventually(t, "the blocked navigation", func() bool { _, ok := ev.nav("https://blocked.example/"); return ok })
-	if n, _ := ev.nav("https://blocked.example/"); n.Frame != mygo.FrameMain {
+	// A script setting location in a document of no origin goes
+	// unannounced on Linux (the Navigation API is silent there); a link it
+	// follows does not.
+	if n, _ := ev.nav("https://blocked.example/"); n.Frame != mygo.FrameMain && !unknownOnLinux(n.Frame) {
 		t.Errorf("the top document's navigation is in frame %v", n.Frame)
 	}
 	if got := callResult(t, v, "return document.body.firstChild.textContent"); got != `"main"` {
 		t.Errorf("a cancelled navigation left the page at %s", got)
+	}
+	if runtime.GOOS == "linux" {
+		v.Eval(`var a = document.createElement("a"); a.href = "https://blocked.example/"; document.body.append(a); a.click()`)
+		eventually(t, "the blocked link", func() bool {
+			ev.mu.Lock()
+			defer ev.mu.Unlock()
+			return len(ev.navs) > 0 && ev.navs[len(ev.navs)-1].Frame == mygo.FrameMain && ev.navs[len(ev.navs)-1].URL == "https://blocked.example/"
+		})
 	}
 
 	v.Eval(`window.open("https://example.com/new")`)
