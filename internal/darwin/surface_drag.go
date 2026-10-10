@@ -216,6 +216,11 @@ func (s *surface) StartDataDrag(r platform.DragRequest) {
 			width, height = 32, 32
 		}
 		scale := max(r.Scale, 1)
+		if len(r.Preview) > 0 {
+			// The image's size is in points: without it a denser preview
+			// draws at its pixel size, cropped to the frame.
+			msgSetSize(img, sel("setSize:"), NSSize{float64(width) / scale, float64(height) / scale})
+		}
 		x, y := r.X, r.Y
 		if x < 0 || y < 0 {
 			p := msgPointFromView(s.view, sel("convertPoint:fromView:"), msgPoint(s.w.lastMouseDown, sel("locationInWindow")), 0)
