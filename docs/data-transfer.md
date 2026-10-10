@@ -36,7 +36,8 @@ promise. `transfer.Promise(name, write)` makes an item that the destination
 (Finder, for example) asks to have written once the drop lands. `write`
 runs once, on its own goroutine, with the path in the folder the destination
 picked, and can take as long as a download does. Add other representations to
-the same item for destinations that don't take promises. Promises go to
+the same item for destinations that don't take promises. `FolderPromise`
+promises a folder, which `write` creates at the path. Promises go to
 other applications on macOS only (`NSFilePromiseProvider`). Elsewhere, and
 for targets in the same process, the item offers just the file's name.
 
