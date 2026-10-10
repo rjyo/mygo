@@ -5,6 +5,7 @@ import (
 	"image/png"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -709,5 +710,101 @@ func TestCloseKillsWhatIgnoresHangups(t *testing.T) {
 	case <-term.Done():
 	case <-time.After(5 * time.Second):
 		t.Fatal("Done was not closed: the program outlived Close")
+	}
+}
+
+// TestCommandClickLinks: Command+click hands URLs and printed paths to
+// Options.OpenLink, and URLs it leaves to the system.
+func TestCommandClickLinks(t *testing.T) {
+	loadLib(t)
+	var opened []string
+	term, err := New(Options{Conn: newPipe(), OpenLink: func(link string) bool {
+		opened = append(opened, link)
+		return link != "https://x.org"
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	term.Feed([]byte("see src/app.go:12 or https://x.org\r\nplain words"))
+	tt := ui.NewTester(func(c *ui.Context) { View(c, term).Fill().AutoFocus() }, 400, 200)
+	tt.Frame()
+	for _, col := range []int{6, 24} {
+		x, y := cellCenter(term, col, 0)
+		tt.ClickAtWith(ui.Cmd, x, y)
+	}
+	x, y := cellCenter(term, 2, 1)
+	tt.ClickAtWith(ui.Cmd, x, y)
+	if want := []string{"src/app.go:12", "https://x.org"}; !slices.Equal(opened, want) {
+		t.Errorf("opened %q, want %q", opened, want)
+	}
+	if u := tt.OpenedURLs(); !slices.Equal(u, []string{"https://x.org"}) {
+		t.Errorf("system opened %q", u)
+	}
+}
+
+// TestOnPasteTakesAPaste: Options.OnPaste sees Command+V before the
+// clipboard's text is read, and a true result pastes nothing.
+func TestOnPasteTakesAPaste(t *testing.T) {
+	loadLib(t)
+	conn := newPipe()
+	calls, take := 0, true
+	term, err := New(Options{Conn: conn, OnPaste: func() bool { calls++; return take }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	tt := ui.NewTester(func(c *ui.Context) { View(c, term).Fill().AutoFocus() }, 400, 200)
+	tt.SetClipboard("hello")
+	tt.Frame()
+	paste := ui.Super
+	if runtime.GOOS != "darwin" {
+		paste = ui.Ctrl | ui.Shift
+	}
+	tt.Key(paste, ui.KeyV)
+	tt.Frame()
+	if calls != 1 {
+		t.Fatalf("OnPaste ran %d times, want 1", calls)
+	}
+	if got := conn.take(1); len(got) != 0 {
+		t.Errorf("a taken paste sent %q", got)
+	}
+	take = false
+	tt.Key(paste, ui.KeyV)
+	tt.Frame()
+	if got := conn.take(5); !strings.Contains(string(got), "hello") || calls != 2 {
+		t.Errorf("a paste OnPaste leaves sent %q (calls %d)", got, calls)
+	}
+}
+
+// TestOnKeyTakesAKey: Options.OnKey sees a key press before the terminal
+// encodes it, in order with the keys after it; a true result sends nothing.
+func TestOnKeyTakesAKey(t *testing.T) {
+	loadLib(t)
+	conn := newPipe()
+	var seen []ui.Key
+	term, err := New(Options{Conn: conn, OnKey: func(mods ui.Modifiers, key ui.Key) bool {
+		seen = append(seen, key)
+		if mods == ui.Ctrl && key == ui.KeyV {
+			term := conn
+			term.Write([]byte("<taken>"))
+			return true
+		}
+		return false
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	tt := ui.NewTester(func(c *ui.Context) { View(c, term).Fill().AutoFocus() }, 400, 200)
+	tt.Frame()
+	tt.Key(ui.Ctrl, ui.KeyV)
+	tt.Key(0, ui.KeyTab)
+	tt.Frame()
+	if got := conn.take(8); got != "<taken>\t" {
+		t.Errorf("sent %q, want the taken key's mark, then Tab", got)
+	}
+	if !slices.Equal(seen, []ui.Key{ui.KeyV, ui.KeyTab}) {
+		t.Errorf("OnKey saw %v", seen)
 	}
 }
