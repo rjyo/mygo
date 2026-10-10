@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -244,5 +245,37 @@ func TestOffscreenWebView(t *testing.T) {
 	blue := color.RGBAModel.Convert(img.At(b.Min.X+50, b.Min.Y+150)).(color.RGBA)
 	if red.R < 200 || red.B > 60 || blue.B < 200 || blue.R > 60 {
 		t.Errorf("the snapshot shows %v over %v, want red over blue", red, blue)
+	}
+}
+
+// TestWebViewLargeHTML loads a document larger than WebView2 takes as a
+// string (2 MB), as a page with inlined fonts is.
+func TestWebViewLargeHTML(t *testing.T) {
+	var ev webViewEvents
+	opts := ev.options()
+	opts.Width, opts.Height = 200, 100
+	opts.Scripts = []mygo.WebViewScript{
+		{Source: `window.injected = (window.injected || 0) + 1`},
+		{Source: `mygoWebView.postMessage("end:" + document.getElementById("pad").textContent.length)`, AtDocumentEnd: true, MainFrameOnly: true},
+	}
+	v, err := mygo.NewOffscreenWebView(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(v.Close)
+	const n = 3 << 20
+	v.LoadHTML(`<!doctype html><html><head><meta charset="utf-8"></head><body><div id="pad" hidden>` + strings.Repeat("x", n) +
+		`</div><p>héllo</p><script>mygoWebView.postMessage("main")</script></body></html>`)
+	eventually(t, "the document's message", func() bool { return ev.has("main:main") })
+	eventually(t, "the script at the document's end", func() bool { return ev.has(fmt.Sprintf("main:end:%d", n)) })
+	for body, want := range map[string]string{
+		"return window.injected":                         "1",
+		"return location.href":                           `"about:blank"`,
+		`return document.querySelector("p").textContent`: `"héllo"`,
+		"return document.compatMode":                     `"CSS1Compat"`,
+	} {
+		if got := callResult(t, v, body); got != want {
+			t.Errorf("%s: %s, want %s", body, got, want)
+		}
 	}
 }
