@@ -95,7 +95,8 @@ func FolderPromise(name string, write func(path string) error) Representation {
 }
 
 func promise(name string, write func(path string) error, folder bool) Representation {
-	if name == "" || strings.ContainsAny(name, "/\\\x00") || name == "." || name == ".." {
+	// A base name: no separator (a macOS or Linux name may hold a backslash).
+	if name == "" || strings.ContainsAny(name, "/\x00") || strings.ContainsRune(name, filepath.Separator) || name == "." || name == ".." {
 		panic("transfer: invalid promised file name")
 	}
 	if write == nil {

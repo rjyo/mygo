@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/ebitengine/purego/objc"
 	"github.com/egoist/mygo/transfer"
@@ -26,7 +27,11 @@ type macPromise struct {
 	// writing until the destination's completion handler ran; over once
 	// the drag session ended. The provider lives until both are done.
 	writing, over bool
+	endedAt       time.Time
 }
+
+// promiseGrace is how long an ended drag's provider waits for a request.
+const promiseGrace = 5 * time.Minute
 
 var macPromises = map[id]*macPromise{}
 
@@ -101,9 +106,10 @@ func registerFilePromiseClass() {
 // filePromise makes the pasteboard writer for an item's promise.
 func (src *macDataSource) filePromise(item transfer.Item, name string, write func(string) error) id {
 	// A drop no destination asked to write (one in this process) left its
-	// provider; a new drag means nobody will.
+	// provider. One accepted elsewhere may ask after the session ended, so
+	// only those left for minutes go.
 	for _, p := range macPromises {
-		if p.over && !p.writing && p.src != src {
+		if p.over && !p.writing && time.Since(p.endedAt) > promiseGrace {
 			p.drop()
 		}
 	}
@@ -133,7 +139,7 @@ func (p *macPromise) run(path string) (err error) {
 // dropped one keeps the provider for the destination's request, which
 // may come after the session ends.
 func (p *macPromise) ended(canceled bool) {
-	p.over = true
+	p.over, p.endedAt = true, time.Now()
 	if canceled {
 		p.release()
 	}
