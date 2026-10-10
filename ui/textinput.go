@@ -53,7 +53,7 @@ func textInputBase(c *context, value *string, multiline bool) *node {
 		ed.setText(*value)
 		ed.compose = ""
 	}
-	ed.readOnly, ed.password, ed.lines = false, false, [2]int{}
+	ed.readOnly, ed.password, ed.lines, ed.onPaste = false, false, [2]int{}, nil
 	ed.ranges = ed.ranges[:0]
 	e.onValueInput(stringInput)
 
@@ -78,6 +78,19 @@ func (e *node) ReadOnly(on bool) *node {
 		if on {
 			ed.compose = ""
 		}
+	}
+	return e
+}
+
+// OnPaste has fn see a paste into a text input, by Cmd+V, Ctrl+V or a
+// Paste menu item, before it is inserted: text is the clipboard's text,
+// empty when it holds none, as with an image. fn reports whether it took
+// the paste; a paste taken inserts nothing and deletes the selection, as
+// when the app attaches a large block instead of inserting it. Like
+// ReadOnly, it holds for the input that comes until the next frame.
+func (e *node) OnPaste(fn func(text string) bool) *node {
+	if ed := e.st.editor; ed != nil && e.flags&flagEditable != 0 {
+		ed.onPaste = fn
 	}
 	return e
 }

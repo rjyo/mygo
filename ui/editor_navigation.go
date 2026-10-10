@@ -340,7 +340,13 @@ func (ed *editor) command(c *context, name string) {
 			ed.insert("")
 		}
 	case "paste":
-		if s := h.readClipboard(); s != "" {
+		s := h.readClipboard()
+		if ed.onPaste != nil && ed.onPaste(s) {
+			// Taken: the paste still replaces the selection, with nothing.
+			if a != b {
+				ed.insert("")
+			}
+		} else if s != "" {
 			ed.insert(s)
 		}
 	case "selectAll":
