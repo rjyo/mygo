@@ -12,10 +12,11 @@ import (
 )
 
 // pngToICNS renders the sizes macOS expects into an .icns file with PNG
-// payloads. It leaves out icp4 and icp5, the 16 and 32 pixel entries:
-// IconServices reads their payloads as the old ARGB format even when they
-// hold a PNG, and Finder, Spotlight and Get Info draw the small icon as
-// noise. macOS scales those sizes down from ic11 and ic12 instead.
+// payloads, largest first and none under 256 pixels: macOS scales them
+// down crisply itself, while apps that take a small entry (1Password's SSH
+// prompt) would blow a 128 pixel or smaller one up blurry on Retina. Leaving
+// out icp4 and icp5 also matters: IconServices reads their payloads as the
+// old ARGB format even when they hold a PNG, and draws them as noise.
 func pngToICNS(src []byte) ([]byte, error) {
 	img, err := png.Decode(bytes.NewReader(src))
 	if err != nil {
@@ -25,8 +26,7 @@ func pngToICNS(src []byte) ([]byte, error) {
 		kind string
 		size int
 	}{
-		{"ic11", 32}, {"ic12", 64}, {"ic07", 128}, {"ic13", 256}, {"ic08", 256},
-		{"ic14", 512}, {"ic09", 512}, {"ic10", 1024},
+		{"ic10", 1024}, {"ic14", 512}, {"ic09", 512}, {"ic13", 256}, {"ic08", 256},
 	}
 	var body bytes.Buffer
 	for _, e := range entries {
