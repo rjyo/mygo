@@ -41,9 +41,11 @@ func Negotiate(source, destination, suggested Operation) Operation {
 type DragOptions struct {
 	Operations Operation
 	// Preview is copied at drag start. Hotspot is in image pixels; the
-	// preview is displayed in DIPs (one pixel per DIP).
+	// preview is displayed at Scale pixels per DIP (0 means 1), so a
+	// preview drawn at the display's scale stays sharp.
 	Preview image.Image
 	Hotspot image.Point
+	Scale   float32
 	// Done runs on the main thread exactly once, including cancellation,
 	// startup failure and source-window destruction. Delete or remove the
 	// original only after a successful Move; MyGo never deletes files.
