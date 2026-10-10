@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -183,7 +184,10 @@ func TestPromise(t *testing.T) {
 	if _, _, ok := TextData("x").Items()[0].Promise(); ok {
 		t.Fatal("text item has a promise")
 	}
-	for _, bad := range []string{"", ".", "..", "a/b", `a\b`} {
+	if runtime.GOOS != "windows" {
+		Promise(`a\b.txt`, func(string) error { return nil })
+	}
+	for _, bad := range []string{"", ".", "..", "a/b"} {
 		func() {
 			defer func() {
 				if recover() == nil {
