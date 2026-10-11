@@ -123,6 +123,10 @@ func (v *WebView) Focus() {
 	})
 }
 
+// SetBackgroundColor fills the web view where its page paints nothing, as
+// WebViewOptions.BackgroundColor does: a theme switch changes it.
+func (v *WebView) SetBackgroundColor(color string) error { return v.w.SetBackgroundColor(color) }
+
 // CapturePage returns a PNG screenshot of the web view's page.
 func (v *WebView) CapturePage() ([]byte, error) { return v.w.CapturePage() }
 
