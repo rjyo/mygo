@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/internal/fake"
+	"github.com/egoist/mygo/internal/platform"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -148,6 +149,13 @@ func TestWebViewPage(t *testing.T) {
 	}
 	if got := v.Page().URL(); got != "https://example.com/" {
 		t.Errorf("URL %q", got)
+	}
+	// A theme switch fills the web view anew.
+	if err := v.SetBackgroundColor("#102030"); err != nil {
+		t.Fatal(err)
+	}
+	if got := onMainValue(func() platform.Color { return fv.Background }); got != (platform.Color{R: 0x10, G: 0x20, B: 0x30, A: 0xff}) {
+		t.Errorf("background %+v", got)
 	}
 }
 
