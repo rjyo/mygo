@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -64,4 +65,31 @@ func TestOutputRepaints(t *testing.T) {
 	tt.Frame()
 	term.Feed([]byte("h"))
 	want("output shown again", 1, 4)
+}
+
+// The cursor blinks by painting the view again, not by building the
+// window's.
+func TestBlinkRepaints(t *testing.T) {
+	loadLib(t)
+	term, err := New(Options{Conn: newPipe()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	tt := ui.NewTester(func(c *ui.Context) { View(c, term).Fill().AutoFocus() }, 400, 200)
+	built, repainted := make(chan struct{}, 8), make(chan struct{}, 8)
+	draw := func() { built <- struct{}{} }
+	repaint := func() { repainted <- struct{}{} }
+	term.Feed([]byte("\x1b[1 q")) // a blinking block
+	tt.Frame()
+	term.draw.Store(&draw)
+	term.repaint.Store(&repaint)
+	tt.Frame()
+	select {
+	case <-repainted:
+	case <-built:
+		t.Fatal("the blink built the window")
+	case <-time.After(2 * blinkPeriod):
+		t.Fatal("the cursor did not blink")
+	}
 }
