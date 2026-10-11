@@ -29,20 +29,22 @@ type Painter struct {
 	under  []opaqueBox
 	holes  []Rect
 	// segs, unless nil, records the elements asking to be painted again
-	// (paintSeg), and req tells that the element painting its own content
-	// asked.
-	segs *[]paintSeg
-	req  bool
+	// (paintSeg), req tells that the element painting its own content
+	// asked, and live that it noted Live.
+	segs      *[]paintSeg
+	req, live bool
 }
 
 // paintSeg is an element a frame painted that asked to be painted again
 // (Painter.AnimationFrame, After), with the ops of the scene it and what
 // it holds painted, [start, end), and the painter as it began: a frame
 // that only repaints paints these again and keeps the rest of the last
-// frame's ops (engine.repaintSegs).
+// frame's ops (engine.repaintSegs). live tells that it asked only as it
+// noted Live, which frames painting again for others leave as it is.
 type paintSeg struct {
 	e          *node
 	start, end int
+	live       bool
 	opacity    float32
 	clip       Rect
 	opaque     bool
@@ -105,8 +107,10 @@ func (rt *engine) paint(root *node, w, h, scale float32) {
 // repaintSegs paints again the elements of the last frame that asked for
 // it (paintSeg), over the rest of its ops, into the spare scene, which
 // becomes the frame's: what moves costs only its own painting, not the
-// window's. The text system began the frame with BeginRepaint(textMark).
-func (rt *engine) repaintSegs(scale float32) {
+// window's: those that noted Live only when live tells that their drawings
+// changed (Services.Repaint). The text system began the frame with
+// BeginRepaint(textMark).
+func (rt *engine) repaintSegs(scale float32, live bool) {
 	prev, next := &rt.scene, &rt.spare
 	next.Reset(prev.Width, prev.Height, prev.Clear)
 	next.Scale, next.Text, next.MaskAtlas, next.ColorAtlas = prev.Scale, prev.Text, prev.MaskAtlas, prev.ColorAtlas
@@ -120,6 +124,14 @@ func (rt *engine) repaintSegs(scale float32) {
 	at := 0
 	for i := range rt.segs {
 		sg := &rt.segs[i]
+		if sg.live && !live {
+			// Unchanged: its ops go on as they are, and it asks again.
+			s := *sg
+			s.start = len(next.Ops) + sg.start - at
+			s.end = s.start + sg.end - sg.start
+			rt.nextSegs = append(rt.nextSegs, s)
+			continue
+		}
 		next.Ops = append(next.Ops, prev.Ops[at:sg.start]...)
 		p.opacity, p.clip, p.opaque = sg.opacity, sg.clip, sg.opaque
 		p.under = append(rt.under[:0], sg.under...)
@@ -163,7 +175,7 @@ func (p *Painter) After(d time.Duration) {
 // changing, as a terminal its grid as output comes: Services.Repaint then
 // paints it again over the rest of the last frame, without building the
 // view. Call it in every frame it paints; it asks for no frame itself.
-func (p *Painter) Live() { p.req = true }
+func (p *Painter) Live() { p.live = true }
 
 // snap converts a rectangle to device pixels, rounding its edges to whole
 // pixels so that edges stay crisp.
@@ -193,19 +205,22 @@ func (p *Painter) element(e *node) {
 		return
 	}
 	start, under, holes := len(p.s.Ops), len(p.under), len(p.holes)
-	opacity, clip, opaque, saved := p.opacity, p.clip, p.opaque, p.req
-	p.req = false
+	opacity, clip, opaque, saved, savedLive := p.opacity, p.clip, p.opaque, p.req, p.live
+	p.req, p.live = false, false
 	p.paintElement(e)
-	if p.req {
-		// Painted again whole, with the elements within that asked too.
+	if p.req || p.live {
+		// Painted again whole, with the elements within that asked too,
+		// whenever any of them would be.
+		live := !p.req
 		segs := *p.segs
 		for len(segs) > 0 && segs[len(segs)-1].start >= start {
+			live = live && segs[len(segs)-1].live
 			segs = segs[:len(segs)-1]
 		}
-		*p.segs = append(segs, paintSeg{e: e, start: start, end: len(p.s.Ops), opacity: opacity, clip: clip, opaque: opaque,
+		*p.segs = append(segs, paintSeg{e: e, start: start, end: len(p.s.Ops), live: live, opacity: opacity, clip: clip, opaque: opaque,
 			under: slices.Clone(p.under[:under]), holes: slices.Clone(p.holes[:holes])})
 	}
-	p.req = saved
+	p.req, p.live = saved, savedLive
 }
 
 func (p *Painter) paintElement(e *node) {
