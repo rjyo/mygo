@@ -77,7 +77,7 @@ type renderer struct {
 // Render draws s into dst, which must be s.Width×s.Height.
 func Render(dst *Image, s *scene.Scene) {
 	var r Renderer
-	r.d.draw(dst, s, image.Rect(0, 0, dst.W, dst.H), r.opBounds(s, nil))
+	r.d.draw(dst, s, image.Rect(0, 0, dst.W, dst.H), r.diff.opBounds(s, nil))
 }
 
 // A large area is drawn on several cores at once, in bands of bandRows
@@ -105,7 +105,7 @@ const (
 // reading its backdrop reads pixels other bands draw: the operations up to
 // each effect in the area are drawn first, then its backdrop is read
 // (d.bd), then the effect and the operations up to the next. The area
-// holds the backdrops of the effects in it (Renderer.diff).
+// holds the backdrops of the effects in it (Damage.diff).
 func (d *drawer) draw(dst *Image, s *scene.Scene, area image.Rectangle, bounds []image.Rectangle) {
 	area = area.Intersect(image.Rect(0, 0, dst.W, dst.H))
 	// px draws operation from, an effect over the backdrop b.
