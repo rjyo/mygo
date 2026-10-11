@@ -3,6 +3,7 @@ package ui
 import (
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 	"weak"
 
@@ -507,6 +508,14 @@ type engine struct {
 	// skips none.
 	inkStale   bool
 	repaintDue time.Time
+	// asked tells that the frame asked for since the last one builds the
+	// view anew (buildNext), and repaintPosted that Services.Repaint posted
+	// a repaint no frame took yet.
+	asked         bool
+	repaintPosted atomic.Bool
+	// liveDue tells that the next frame painting again paints the
+	// drawings that noted Painter.Live, as Services.Repaint asked.
+	liveDue bool
 	// late is set when lists built elements while laying out.
 	late bool
 	// revealIDs are the elements to scroll into view once the frame is
@@ -948,7 +957,9 @@ func (rt *engine) frameTime() time.Time {
 // (SurfaceShown) rather than draw frames nobody sees, as browsers pause
 // the animation frames of windows out of sight.
 func (rt *engine) next() {
-	rt.redraw, rt.repaintDue, rt.held = false, time.Time{}, false
+	rt.redraw, rt.repaintDue, rt.held, rt.asked = false, time.Time{}, false, false
+	rt.repaintPosted.Store(false)
+	rt.liveDue = false
 	moving := rt.animating || rt.repainting || !rt.repaintAt.IsZero()
 	switch {
 	case moving && rt.host.occluded():
@@ -1106,7 +1117,7 @@ func (rt *engine) repaintFrame(w, h, scale float32) {
 	rt.repaintRate, rt.repaintFull, rt.untracked = 0, false, false
 	root := rt.c.root
 	rt.repose()
-	if whole || !rt.repaintParts() {
+	if whole || !rt.repaintParts(rt.liveDue) {
 		rt.paint(root, w, h, scale)
 	}
 	for try := 0; try < 2 && rt.text.Full(); try++ {
@@ -1336,7 +1347,7 @@ func (rt *engine) askBuild() {
 
 // buildNext has the frame asked for next build the view anew, as when an
 // event may have changed what it shows.
-func (rt *engine) buildNext() { rt.redraw, rt.lookDue = false, false }
+func (rt *engine) buildNext() { rt.redraw, rt.lookDue, rt.asked = false, false, true }
 
 // askLook asks for a frame painting the last frame's elements again,
 // whole, for elements whose look follows their hover as they paint
@@ -1354,6 +1365,27 @@ func (rt *engine) askLook() {
 func (rt *engine) changed() {
 	rt.repaintDue = time.Time{}
 	rt.askBuild()
+}
+
+// repaint asks for a frame painting the last frame's elements again, for
+// those whose drawings changed (Services.Repaint, Painter.Live): one built
+// anew when something asked for that since the last frame, or the view
+// moves; none while nothing of the window shows, until some of it does.
+func (rt *engine) repaint() {
+	rt.repaintPosted.Store(false)
+	switch {
+	case rt.closed:
+	case rt.asked || rt.animating || rt.inFrame || rt.c.root == nil:
+		rt.changed()
+	case rt.redraw && rt.repaintDue.IsZero():
+		// A frame painting again comes as soon as the display can show it.
+		rt.liveDue = true
+	case rt.host.occluded():
+		rt.held = true
+	default:
+		rt.redraw, rt.repaintDue, rt.liveDue = true, time.Time{}, true
+		rt.host.requestFrame()
+	}
 }
 
 // scheduleAt asks for a frame at t (After).
