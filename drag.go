@@ -5,6 +5,7 @@ import (
 	"errors"
 	"image"
 	"image/draw"
+	"runtime"
 	"slices"
 
 	"github.com/egoist/mygo/internal/platform"
@@ -73,9 +74,17 @@ func (w *Window) startDataDragPrepared(data transfer.Data, local any, options Dr
 	}
 	src := &dataSource{w: w, token: rand.Text(), data: data.Snapshot(), local: local, done: options.Done, operations: operations}
 	activeDataDrag = src
+	hot := options.Hotspot
+	scale := float64(options.Scale)
+	if scale <= 1 || pix == nil {
+		scale = 1
+	} else if runtime.GOOS != "darwin" {
+		pix, width, height, hot = downscalePreview(pix, width, height, hot, scale)
+		scale = 1
+	}
 	req := platform.DragRequest{Data: src.data, Session: src.token, Operations: operations,
-		X: x, Y: y, Preview: pix, Width: width, Height: height,
-		HotX: options.Hotspot.X, HotY: options.Hotspot.Y, Done: src.finish}
+		X: x, Y: y, Preview: pix, Width: width, Height: height, Scale: scale,
+		HotX: hot.X, HotY: hot.Y, Done: src.finish}
 	// OLE tracks in a nested event loop. Enter it after the input callback
 	// returns, so UI input and frames are never suspended halfway through.
 	postMain(func() {
@@ -106,6 +115,33 @@ func dragImage(img image.Image) ([]byte, int, int) {
 		rgba.Pix[i], rgba.Pix[i+2] = rgba.Pix[i+2], rgba.Pix[i]
 	}
 	return rgba.Pix, w, h
+}
+
+// downscalePreview averages a preview of scale pixels per DIP down to one,
+// for backends that place a preview one pixel per DIP.
+func downscalePreview(pix []byte, width, height int, hot image.Point, scale float64) ([]byte, int, int, image.Point) {
+	w, h := max(int(float64(width)/scale+0.5), 1), max(int(float64(height)/scale+0.5), 1)
+	out := make([]byte, w*h*4)
+	for y := 0; y < h; y++ {
+		y0, y1 := y*height/h, max((y+1)*height/h, y*height/h+1)
+		for x := 0; x < w; x++ {
+			x0, x1 := x*width/w, max((x+1)*width/w, x*width/w+1)
+			var sum [4]int
+			for sy := y0; sy < y1; sy++ {
+				for sx := x0; sx < x1; sx++ {
+					i := (sy*width + sx) * 4
+					for c := range 4 {
+						sum[c] += int(pix[i+c])
+					}
+				}
+			}
+			n := (y1 - y0) * (x1 - x0)
+			for c := range 4 {
+				out[(y*w+x)*4+c] = byte(sum[c] / n)
+			}
+		}
+	}
+	return out, w, h, image.Pt(int(float64(hot.X)/scale), int(float64(hot.Y)/scale))
 }
 
 func (s *dataSource) finish(result transfer.Result) {
