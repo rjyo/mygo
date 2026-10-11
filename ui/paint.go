@@ -33,7 +33,32 @@ type Painter struct {
 	// cull skips the elements whose ink is clipped out (paintable): in
 	// the frame's painting, where the elements are where commit put them.
 	cull bool
+	// segs, unless nil, records the elements asking to be painted again
+	// (paintSeg), and req tells that the element painting its own content
+	// asked.
+	segs *[]paintSeg
+	req  bool
 }
+
+// paintSeg is an element a frame painted that asked to be painted again
+// (Painter.AnimationFrame, After), with the ops of the scene it and what
+// it holds painted, [start, end), and the painter as it began: a frame
+// that only repaints paints these again and keeps the rest of the last
+// frame's ops (engine.repaintSegs).
+type paintSeg struct {
+	e          *node
+	start, end int
+	opacity    float32
+	clip       Rect
+	opaque     bool
+	under      []opaqueBox
+	holes      []Rect
+}
+
+// maxRepaints is how many frames in a row paint only what asked to be
+// painted again before one paints whole, which lets go of the glyphs and
+// effects of the ops those replaced.
+const maxRepaints = 240
 
 // opaqueBox is the box of an element painting an opaque background, and
 // how many holes were painted before it, which it covers.
@@ -49,6 +74,7 @@ const continuousCorners = runtime.GOOS == "darwin"
 
 func (rt *engine) paint(root *node, w, h, scale float32) {
 	rt.paints++
+	rt.keptFrom, rt.wholePaint = rt.wholePaint, rt.paints
 	s := &rt.scene
 	// The root paints the theme's background: frames start transparent, so
 	// that a transparent root shows what is behind the content, such as a
@@ -65,16 +91,71 @@ func (rt *engine) paint(root *node, w, h, scale float32) {
 		// Under all the window paints, as what it drags.
 		under = append(under, opaqueBox{r: Rect{0, 0, w, h}})
 	}
-	rt.painter = Painter{rt: rt, s: s, scale: scale, opacity: 1, clip: Rect{0, 0, w, h}, opaque: opaque, under: under, holes: rt.holes[:0]}
+	rt.nextSegs = rt.nextSegs[:0]
+	rt.painter = Painter{rt: rt, s: s, scale: scale, opacity: 1, clip: Rect{0, 0, w, h}, opaque: opaque, under: under, holes: rt.holes[:0], segs: &rt.nextSegs}
 	p := &rt.painter
 	p.cull = !rt.inkStale && !rt.noCull
 	p.element(root)
 	p.cull = false
+	p.segs = nil
+	n := len(s.Ops)
 	if rt.insp.open {
 		rt.insp.paintHighlight(rt, p, h)
 	}
 	rt.paintDrag(p, w, h)
 	rt.under, rt.holes = p.under[:0], p.holes[:0] // kept for the next frame's
+	rt.segs, rt.nextSegs = rt.nextSegs, rt.segs
+	// What the inspector or a drag paints over the view goes with each
+	// frame: one painting only some of the view again would keep the last.
+	rt.retained, rt.repaints = len(s.Ops) == n, 0
+	rt.textMark = rt.text.MarkFrame()
+}
+
+// repaintSegs paints again the elements of the last frame that asked for
+// it (paintSeg), over the rest of its ops, into the spare scene, which
+// becomes the frame's: what moves costs only its own painting, not the
+// window's. The text system began the frame with BeginRepaint(textMark).
+func (rt *engine) repaintSegs(scale float32) {
+	prev, next := &rt.scene, &rt.spare
+	next.Reset(prev.Width, prev.Height, prev.Clear)
+	next.Scale, next.Text, next.MaskAtlas, next.ColorAtlas = prev.Scale, prev.Text, prev.MaskAtlas, prev.ColorAtlas
+	// The ops kept point at these where they are.
+	next.Glyphs = append(next.Glyphs, prev.Glyphs...)
+	next.Effects = append(next.Effects, prev.Effects...)
+	next.Wide = append(next.Wide, prev.Wide...)
+	rt.nextSegs = rt.nextSegs[:0]
+	rt.painter = Painter{rt: rt, s: next, scale: scale, segs: &rt.nextSegs}
+	p := &rt.painter
+	at := 0
+	for i := range rt.segs {
+		sg := &rt.segs[i]
+		next.Ops = append(next.Ops, prev.Ops[at:sg.start]...)
+		p.opacity, p.clip, p.opaque = sg.opacity, sg.clip, sg.opaque
+		p.under = append(rt.under[:0], sg.under...)
+		p.holes = append(rt.holes[:0], sg.holes...)
+		p.element(sg.e)
+		at = sg.end
+	}
+	next.Ops = append(next.Ops, prev.Ops[at:]...)
+	rt.under, rt.holes = p.under[:0], p.holes[:0]
+	rt.scene, rt.spare = rt.spare, rt.scene
+	rt.segs, rt.nextSegs = rt.nextSegs, rt.segs
+	rt.repaints++
+}
+
+// beginRepaintSegs counts a frame painting only what asked to be painted
+// again (repaintSegs) as a painting: what it keeps shows as the last
+// painted whole left it (shownBefore).
+func (rt *engine) beginRepaintSegs() {
+	rt.paints++
+	rt.keptFrom = rt.wholePaint
+}
+
+// shownBefore reports whether an element that painting frame painted
+// showed in the frame before this one: painted then, or painted whole
+// last and kept by the frames since, which painted only what moves.
+func (rt *engine) shownBefore(frame uint64) bool {
+	return frame+1 >= rt.paints || frame >= rt.keptFrom
 }
 
 // Now returns the time of the frame being painted, which drawings that
@@ -100,7 +181,7 @@ func (p *Painter) Accelerated() bool {
 // frame paints the elements of this one again without building the view.
 // Call it in every frame while the drawing moves; an element out of view
 // is not painted, so it asks for none.
-func (p *Painter) AnimationFrame() { p.rt.repainting = true }
+func (p *Painter) AnimationFrame() { p.rt.repainting, p.req = true, true }
 
 // After asks for the element to be painted again after d, for a drawing
 // that changes then, as a spinner's next step: unless something else
@@ -108,6 +189,7 @@ func (p *Painter) AnimationFrame() { p.rt.repainting = true }
 // without building the view. An element out of view is not painted, so
 // it asks for none.
 func (p *Painter) After(d time.Duration) {
+	p.req = true
 	at := p.rt.c.now.Add(d)
 	if p.rt.repaintAt.IsZero() || at.Before(p.rt.repaintAt) {
 		p.rt.repaintAt = at
@@ -185,7 +267,30 @@ func (p *Painter) paintable(e *node) bool {
 	return false
 }
 
+// element paints e and what it holds, noting it (paintSeg) when it asks to
+// be painted again.
 func (p *Painter) element(e *node) {
+	if p.segs == nil {
+		p.paintElement(e)
+		return
+	}
+	start, under, holes := len(p.s.Ops), len(p.under), len(p.holes)
+	opacity, clip, opaque, saved := p.opacity, p.clip, p.opaque, p.req
+	p.req = false
+	p.paintElement(e)
+	if p.req {
+		// Painted again whole, with the elements within that asked too.
+		segs := *p.segs
+		for len(segs) > 0 && segs[len(segs)-1].start >= start {
+			segs = segs[:len(segs)-1]
+		}
+		*p.segs = append(segs, paintSeg{e: e, start: start, end: len(p.s.Ops), opacity: opacity, clip: clip, opaque: opaque,
+			under: slices.Clone(p.under[:under]), holes: slices.Clone(p.holes[:holes])})
+	}
+	p.req = saved
+}
+
+func (p *Painter) paintElement(e *node) {
 	savedTransform, savedInline := p.transform, p.inline
 	p.transform, p.inline = e.world, nil
 	defer func() { p.transform, p.inline = savedTransform, savedInline }()
