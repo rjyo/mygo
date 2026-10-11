@@ -426,7 +426,7 @@ func (a *area) paint(e *node, p *Painter, ox, oy float32) {
 			op.Rect.W = max(round(p.scale), 1)
 		}
 		if phase < 30*time.Second {
-			e.c.After(blink - phase%blink)
+			p.After(blink - phase%blink)
 		}
 	}
 }
