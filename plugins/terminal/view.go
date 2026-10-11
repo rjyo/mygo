@@ -132,8 +132,9 @@ func (t *Terminal) viewOf(c *ui.Context) *view {
 	v := t.v
 	if v.services != c.Services() {
 		v.services = c.Services()
-		draw := v.services.Invalidate
+		draw, repaint := v.services.Invalidate, v.services.Repaint
 		t.draw.Store(&draw)
+		t.repaint.Store(&repaint)
 	}
 	return v
 }
@@ -187,6 +188,9 @@ type view struct {
 	focused    bool
 	blinkStart time.Time
 	caretCell  [2]int // the cursor's cell, for input methods
+	// blinks tells that the cursor blinked as the frame built, which arms
+	// the blink's frames.
+	blinks bool
 	// selecting tells that the primary button selects; reporting that a
 	// press went to the program, which gets the release too.
 	selecting, reporting bool
@@ -325,6 +329,8 @@ func (v *view) build(c *ui.Context, e ui.Element) {
 		// The rest of the scrollback, in the frames to come.
 		c.After(time.Millisecond)
 	}
+	t.compose.Store(v.preedit != "")
+	v.blinks = v.cursor.Blinking && v.cursor.Visible
 	for _, s := range copied {
 		c.WriteClipboard(s)
 		v.copied(s, CopyProgram)

@@ -13,7 +13,7 @@ import (
 func (rt *engine) event(ev platform.SurfaceEvent) (taken bool) {
 	if ev.Kind != platform.SurfaceFrame {
 		// Whatever the event changes, the next frame builds anew.
-		rt.redraw = false
+		rt.redraw, rt.asked = false, true
 	}
 	switch ev.Kind {
 	case platform.SurfaceFrame, platform.SurfaceResize, platform.SurfaceShown:
