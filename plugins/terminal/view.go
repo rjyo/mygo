@@ -699,6 +699,14 @@ func (v *view) scroll(ev ui.InputEvent) bool {
 	if rows == 0 {
 		return true
 	}
+	if on := t.opts.OnScroll; on != nil {
+		t.mu.Lock()
+		tracking := t.term != nil && t.term.MouseTracking() && ev.Mods&ui.Shift == 0
+		t.mu.Unlock()
+		if !tracking && on(rows) {
+			return true
+		}
+	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.term == nil {
