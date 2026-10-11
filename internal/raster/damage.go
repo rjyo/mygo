@@ -146,22 +146,6 @@ func (d *Damage) Whole(s *scene.Scene) []image.Rectangle {
 	return d.damage
 }
 
-// Add adds rects, the damage of frames before, to the damage Diff
-// returned for s, and returns it, apart and holding whole the backdrops
-// it meets as Diff's, or whole when s is better drawn whole: for a
-// renderer drawing into one of several buffers, which holds a frame some
-// frames old.
-func (d *Damage) Add(s *scene.Scene, rects []image.Rectangle) (damage []image.Rectangle, whole bool) {
-	for _, r := range rects {
-		d.damage = addRect(d.damage, r)
-	}
-	d.addBackdrops(s)
-	if area(d.damage)*2 >= s.Width*s.Height {
-		return d.Whole(s), true
-	}
-	return d.damage, false
-}
-
 // Next returns where each operation of the scene last compared (Diff)
 // draws, within its clips.
 func (d *Damage) Next() []image.Rectangle { return d.next }

@@ -198,11 +198,12 @@ func (r *Renderer) renderInto(s *scene.Scene, target id) (pix []byte, whole bool
 	return pix, whole, err
 }
 
-// A frame redraws its drawable only where the scene changed since the
-// frame that drawable holds, the drawables taking turns, and shows
-// exactly what drawing it whole does: here fills and a stripe under
-// panes of glass, whose backdrops redraw with them, change from frame to
-// frame.
+// A frame redraws the canvas only where the scene changed since the last,
+// and its drawable shows exactly what drawing it whole does, whatever the
+// drawable held: here fills and a stripe under panes of glass, whose
+// backdrops redraw with them, change from frame to frame, and the
+// drawables come back holding junk, as Core Animation's may when it
+// frees or purges one.
 func TestRedrawsOnlyTheDamage(t *testing.T) {
 	r, err := newRenderer()
 	if err != nil {
@@ -240,11 +241,21 @@ func TestRedrawsOnlyTheDamage(t *testing.T) {
 			op := &s.Ops[fills[frame%len(fills)]]
 			op.Color = colors[frame%len(colors)]
 		}
-		got, whole, err := r.renderInto(&s, targets[frame%len(targets)])
+		target := targets[frame%len(targets)]
+		if frame == 5 {
+			junk := make([]byte, s.Width*s.Height*4)
+			for i := range junk {
+				junk[i] = byte(i * 7)
+			}
+			pool(func() {
+				msgReplaceRegion(target, sel("replaceRegion:mipmapLevel:withBytes:bytesPerRow:"), mtlRegion{W: uint(s.Width), H: uint(s.Height), D: 1}, 0, unsafe.Pointer(&junk[0]), uint(s.Width*4))
+			})
+		}
+		got, whole, err := r.renderInto(&s, target)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if whole != (frame < len(targets)) {
+		if whole != (frame == 0) {
 			t.Fatalf("frame %d: drawn whole %v", frame, whole)
 		}
 		want, err := r.renderOffscreen(&s)

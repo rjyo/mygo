@@ -361,23 +361,17 @@ type Renderer struct {
 
 	b gpu.Builder
 
-	// A frame redraws its drawable only where the scene changed since the
-	// frame the drawable holds (diff): a spinner or a caret redraws only
-	// itself, not the window. The layer's drawables take turns, so
-	// drawn has the serial of the frame each holds, and damage the
-	// rectangles where each frame since changed from the one before, the
-	// latest first (nil when everything may have).
-	diff   raster.Damage
-	serial uint64
-	drawn  map[id]uint64
-	damage [][]image.Rectangle
-	// lastWhole tells that the last frame drew its drawable whole.
+	// A frame redraws canvas, which holds the last, only where the scene
+	// changed since (diff), then copies it to its drawable: a spinner or a
+	// caret redraws only itself, not the window. The drawables can't
+	// hold the frames instead: Core Animation may free or purge one
+	// between frames, and a frame drawn over what it held then flickers.
+	diff         raster.Damage
+	canvas       texture
+	canvasFormat uint
+	// lastWhole tells that the last frame drew the canvas whole.
 	lastWhole bool
 }
-
-// maxAge is how many frames old a drawable may be to redraw only the
-// damage since: the layer has three.
-const maxAge = 4
 
 // New creates a renderer drawing into a CAMetalLayer that it adds to
 // layer, the layer of a view, and sizes as it.
@@ -537,9 +531,9 @@ func (r *Renderer) SetWide(on bool) bool {
 // setLayerWide has the layer's drawables hold the colors outside the sRGB
 // gamut, or not: the system makes others, which hold no frame drawn in
 // memory.
-func (r *Renderer) setLayerWide(on bool) (changed bool) {
+func (r *Renderer) setLayerWide(on bool) {
 	if r.layerWide == on || r.layer == 0 {
-		return false
+		return
 	}
 	format, space := uintptr(pixelFormatBGRA8Unorm), srgb
 	if on {
@@ -552,7 +546,6 @@ func (r *Renderer) setLayerWide(on bool) (changed bool) {
 	send(r.layer, "setColorspace:", space)
 	send(tx, "commit")
 	r.layerWide = on
-	return true
 }
 
 // newPipeline returns a pipeline drawing instances with the vertex
@@ -1065,15 +1058,11 @@ func (r *Renderer) render(s *scene.Scene) error {
 	if r.wide {
 		r.cur = &r.formats[1]
 	}
-	if r.setLayerWide(r.wide) || r.fit(s.Width, s.Height, scale) {
-		// Drawables made anew hold no frame.
-		r.forgetDrawn()
-	}
+	r.setLayerWide(r.wide)
+	r.fit(s.Width, s.Height, scale)
 	drawable := send(r.layer, "nextDrawable")
 	if drawable == 0 {
-		// None came within a second: skip the frame. The next compares
-		// with the last frame drawn, so its damage holds this one's.
-		return nil
+		return nil // none came within a second: skip the frame
 	}
 	cb, err := r.frameInto(s, send(drawable, "texture"))
 	if err != nil {
@@ -1099,12 +1088,11 @@ func (r *Renderer) render(s *scene.Scene) error {
 
 // fit sizes the layer and its drawables for frames of w×h pixels at
 // scale, and as its view.
-func (r *Renderer) fit(w, h int, scale float64) (resized bool) {
+func (r *Renderer) fit(w, h int, scale float64) {
 	bounds := msgRect(r.superlayer, sel("bounds"))
 	if w == r.w && h == r.h && scale == r.scale && bounds == r.bounds && !r.trimmed {
-		return false
+		return
 	}
-	resized = w != r.w || h != r.h || r.trimmed
 	// Without animating the change, as layers do by default.
 	tx := class("CATransaction")
 	send(tx, "begin")
@@ -1114,72 +1102,67 @@ func (r *Renderer) fit(w, h int, scale float64) (resized bool) {
 	msgSetSize(r.layer, sel("setDrawableSize:"), cgSize{float64(w), float64(h)})
 	send(tx, "commit")
 	r.w, r.h, r.scale, r.bounds, r.trimmed = w, h, scale, bounds, false
-	return resized
 }
 
-// frameInto encodes drawing s into target, a drawable's texture, where s
-// differs from the frame target holds, and returns the command buffer,
-// not yet committed.
+// frameInto encodes drawing s into the canvas, where s differs from the
+// last frame, and copying the canvas to target, a drawable's texture, and
+// returns the command buffer, not yet committed.
 func (r *Renderer) frameInto(s *scene.Scene, target id) (id, error) {
+	if int(send(target, "width")) != s.Width || int(send(target, "height")) != s.Height {
+		// Not the size of the frame, which the canvas is: draw it whole
+		// there instead.
+		r.diff.Invalidate()
+		r.lastWhole = true
+		return r.encode(s, target, nil)
+	}
+	if !r.fitCanvas(s.Width, s.Height) {
+		return 0, errors.New("metal: cannot create a canvas")
+	}
 	damage, whole := r.diff.Diff(s)
-	// What changed since the last frame, which the frames after redraw
-	// in the drawables holding it or older: nil when everything may have.
-	var changed []image.Rectangle
-	if !whole {
-		changed = append(make([]image.Rectangle, 0, len(damage)), damage...)
-	}
-	if n, ok := r.drawn[target]; ok && !whole && r.serial-n <= uint64(len(r.damage)) {
-		// target holds frame n: what each frame after it redrew too.
-		for _, d := range r.damage[:r.serial-n] {
-			if d == nil {
-				whole = true
-				break
-			}
-			if damage, whole = r.diff.Add(s, d); whole {
-				break
-			}
-		}
-	} else {
-		whole = true
-	}
 	if whole {
 		damage = nil
 	}
 	r.lastWhole = whole
-	cb, err := r.encode(s, target, damage)
+	cb, err := r.encode(s, r.canvas.tex, damage)
 	if err != nil {
 		r.diff.Invalidate()
-		r.forgetDrawn()
 		return 0, err
 	}
 	r.diff.Remember(s)
-	r.serial++
-	if r.drawn == nil {
-		r.drawn = map[id]uint64{}
-	}
-	r.drawn[target] = r.serial
-	r.damage = append(r.damage, nil)
-	copy(r.damage[1:], r.damage)
-	r.damage[0] = changed
-	if len(r.damage) > maxAge {
-		r.damage = r.damage[:maxAge]
-	}
+	blit := send(cb, "blitCommandEncoder")
+	send(blit, "copyFromTexture:toTexture:", r.canvas.tex, target)
+	send(blit, "endEncoding")
 	return cb, nil
 }
 
-// forgetDrawn forgets what the drawables hold: the next frames draw
-// whole.
-func (r *Renderer) forgetDrawn() {
-	clear(r.drawn)
-	r.damage = r.damage[:0]
+// fitCanvas makes the canvas w×h pixels of the format drawn, unless it
+// is: one made anew holds no frame, so the next draws whole.
+func (r *Renderer) fitCanvas(w, h int) bool {
+	if r.canvas.tex != 0 && r.canvas.w == w && r.canvas.h == h && r.canvasFormat == r.cur.format {
+		return true
+	}
+	release(&r.canvas.tex)
+	r.canvas = texture{}
 	r.diff.Invalidate()
+	desc := send(class("MTLTextureDescriptor"), "texture2DDescriptorWithPixelFormat:width:height:mipmapped:", uintptr(r.cur.format), uintptr(w), uintptr(h), 0)
+	if desc == 0 {
+		return false
+	}
+	send(desc, "setUsage:", usageRenderTarget|usageShaderRead)
+	send(desc, "setStorageMode:", storagePrivate)
+	if r.canvas.tex = send(r.device, "newTextureWithDescriptor:", desc); r.canvas.tex == 0 {
+		return false
+	}
+	r.canvas.w, r.canvas.h, r.canvasFormat = w, h, r.cur.format
+	return true
 }
 
 // releaseTextures frees what the GPU's frames use, once the window is
 // idle. The next frame makes them again, uploading the atlases whole.
 func (r *Renderer) releaseTextures() {
-	r.forgetDrawn()
 	r.diff.Release()
+	release(&r.canvas.tex)
+	r.canvas = texture{}
 	release(&r.mask.tex)
 	release(&r.color.tex)
 	for key, t := range r.images {
