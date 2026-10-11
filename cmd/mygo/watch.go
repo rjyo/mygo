@@ -50,8 +50,10 @@ func listBuildInputs(c *Config) (*buildInputs, error) {
 		files:     []string{filepath.Join(c.root, jsonConfig), filepath.Join(c.root, tsConfig)},
 		resources: c.path(resourcesDir),
 	}
-	if c.Icon != "" {
-		in.files = append(in.files, c.path(c.Icon))
+	for _, icon := range []string{c.Icon, c.Windows.Icon, c.Linux.Icon} {
+		if icon != "" {
+			in.files = append(in.files, c.path(icon))
+		}
 	}
 	if c.MacOS.Entitlements != "" {
 		in.files = append(in.files, c.path(c.MacOS.Entitlements))
