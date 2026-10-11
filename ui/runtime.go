@@ -340,6 +340,9 @@ type engine struct {
 	// a repaint no frame took yet.
 	asked         bool
 	repaintPosted atomic.Bool
+	// liveDue tells that the next frame painting again paints the
+	// drawings that noted Painter.Live, as Services.Repaint asked.
+	liveDue bool
 	// late is set when lists built elements while laying out.
 	late bool
 	// revealIDs are the elements to scroll into view once the frame is
@@ -689,6 +692,7 @@ func (rt *engine) frameTime() time.Time {
 func (rt *engine) next() {
 	rt.redraw, rt.repaintDue, rt.held, rt.asked = false, time.Time{}, false, false
 	rt.repaintPosted.Store(false)
+	rt.liveDue = false
 	moving := rt.animating || rt.repainting || !rt.repaintAt.IsZero()
 	switch {
 	case moving && rt.host.occluded():
@@ -771,7 +775,7 @@ func (rt *engine) repaintFrame(w, h, scale float32) {
 	moved := rt.repose()
 	if !moved && rt.retained && rt.repaints < maxRepaints && rt.text.BeginRepaint(rt.textMark) {
 		rt.beginRepaintSegs()
-		rt.repaintSegs(scale)
+		rt.repaintSegs(scale, rt.liveDue)
 	} else {
 		rt.text.BeginFrame()
 		rt.paint(root, w, h, scale)
@@ -918,10 +922,11 @@ func (rt *engine) repaint() {
 		rt.changed()
 	case rt.redraw && rt.repaintDue.IsZero():
 		// A frame painting again comes as soon as the display can show it.
+		rt.liveDue = true
 	case rt.host.occluded():
 		rt.held = true
 	default:
-		rt.redraw, rt.repaintDue = true, time.Time{}
+		rt.redraw, rt.repaintDue, rt.liveDue = true, time.Time{}, true
 		rt.host.requestFrame()
 	}
 }
