@@ -201,9 +201,21 @@ type engine struct {
 	// was built. repaintTimer asks for a frame at repaintDue, unless one
 	// came or was asked for since. held tells that what moves waits for
 	// the window to show.
-	animating    bool
-	repainting   bool
-	repaintAt    time.Time
+	animating  bool
+	repainting bool
+	repaintAt  time.Time
+	// segs are the elements the last frame painted that asked to be
+	// painted again (paintSeg), in the order painted, nextSegs those the
+	// frame painting notes, retained whether a frame may paint only those
+	// again over the rest of the last (repaintSegs), repaints how many
+	// did since one painted whole, and spare the scene they fill.
+	segs, nextSegs []paintSeg
+	retained       bool
+	repaints       int
+	spare          scene.Scene
+	// textMark is the text system's token for the masks of the last frame
+	// painted whole (text.System.MarkFrame).
+	textMark     uint64
 	redraw       bool
 	held         bool
 	painted      [3]float32
@@ -556,10 +568,14 @@ func (rt *engine) repaintFrame(w, h, scale float32) {
 	rt.stats.begin(rt)
 	start := time.Now()
 	rt.c.now = rt.now()
-	rt.text.BeginFrame()
 	rt.repainting, rt.repaintAt = false, time.Time{}
 	root := rt.c.root
-	rt.paint(root, w, h, scale)
+	if rt.retained && rt.repaints < maxRepaints && rt.text.BeginRepaint(rt.textMark) {
+		rt.repaintSegs(scale)
+	} else {
+		rt.text.BeginFrame()
+		rt.paint(root, w, h, scale)
+	}
 	for try := 0; try < 2 && rt.text.Full(); try++ {
 		rt.text.MakeRoom()
 		rt.paint(root, w, h, scale)
