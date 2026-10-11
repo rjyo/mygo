@@ -213,6 +213,8 @@ type Window struct {
 	// Main thread only.
 	trusted        bool
 	trustedOrigins []string
+	// frameNavs is PageOptions.FrameNavigations.
+	frameNavs bool
 	// html is the document LoadHTML loaded, while it is the page's or
 	// about to be. Main thread only.
 	html *htmlDocument
@@ -355,7 +357,7 @@ func newWindow(opts WindowOptions, bg *background, native uintptr) *Window {
 	id := windows.nextID
 	windows.Unlock()
 
-	w := &Window{id: id, parent: opts.Parent, trustedOrigins: opts.Page.TrustedOrigins, secret: rand.Text(), stateKey: opts.StateKey, background: bg, content: opts.Content}
+	w := &Window{id: id, parent: opts.Parent, trustedOrigins: opts.Page.TrustedOrigins, frameNavs: opts.Page.FrameNavigations, secret: rand.Text(), stateKey: opts.StateKey, background: bg, content: opts.Content}
 	w.pg = &Page{w}
 	w.hiddenTitleBar = !opts.Frameless && (opts.TitleBarStyle == TitleBarHidden || opts.TitleBarStyle == TitleBarHiddenInset)
 	w.resetPage()
@@ -462,6 +464,9 @@ func (w *Window) platformOptions(o *WindowOptions) *platform.WindowOptions {
 	})}}
 	if po.PreloadScript != "" {
 		p.UserScripts = append(p.UserScripts, platform.UserScript{Source: po.PreloadScript})
+	}
+	for _, s := range po.Scripts {
+		p.UserScripts = append(p.UserScripts, platform.UserScript{Source: s.Source, AtDocumentEnd: s.AtDocumentEnd, AllFrames: s.AllFrames})
 	}
 	return p
 }
@@ -1452,7 +1457,8 @@ func (p *Page) OnPageTitleUpdated(fn func(e *TitleEvent)) (off func()) {
 
 // OnWillNavigate is called before the page navigates to another URL, for
 // example after a link click. Preventing the event cancels the navigation.
-// It is not called for LoadURL and friends.
+// It is not called for LoadURL and friends, nor for iframes unless the
+// page has PageOptions.FrameNavigations.
 func (p *Page) OnWillNavigate(fn func(e *NavigateEvent)) (off func()) {
 	return p.w.onWillNavigate.add(fn, false)
 }
@@ -1613,10 +1619,10 @@ func (h *windowHandler) WillNavigate(nav platform.Navigation) bool {
 		})
 		return false
 	}
-	if !nav.IsMainFrame || nav.Unasked {
+	if !nav.IsMainFrame && !h.w.frameNavs || nav.Unasked {
 		return true
 	}
-	e := &NavigateEvent{URL: nav.URL, UserInitiated: nav.UserInitiated}
+	e := &NavigateEvent{URL: nav.URL, UserInitiated: nav.UserInitiated, InFrame: !nav.IsMainFrame}
 	fire1(&h.w.onWillNavigate, e)
 	return !e.prevented
 }
