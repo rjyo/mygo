@@ -115,3 +115,50 @@ func TestRepaintPostsOnce(t *testing.T) {
 		t.Fatal("the frame left the repaint posted")
 	}
 }
+
+// Frames painting a spinner again leave a drawing that noted Live as it
+// is, until Services.Repaint asks for it, and show what painting them
+// whole does.
+func TestLiveWaitsForRepaint(t *testing.T) {
+	at, draws, spins := 0, 0, 0
+	live := liveView(&at, &draws)
+	tt := newRepaintTester(func(c *context) {
+		live(c)
+		coreBox(c).Size(20, 20).Draw(func(p *Painter, r Rect) {
+			spins++
+			p.AnimationFrame()
+			p.Fill(Rect{r.X + float32(p.Now().UnixMilli()/16%10), r.Y, 4, 4}, RGB(40, 90, 200), 0)
+		})
+	})
+	tt.SetSize(200, 100)
+	tt.frame(16 * time.Millisecond)
+	same := func(when string) {
+		t.Helper()
+		got := bytes.Clone(tt.Image().Pix)
+		tt.rt.retained = false
+		tt.frame(0)
+		if !bytes.Equal(got, tt.Image().Pix) {
+			t.Fatalf("%s: the frame painting again differs from the frame painted whole", when)
+		}
+	}
+	for round := range 3 {
+		n, s := draws, spins
+		for range 3 {
+			if built, _ := tt.frame(16 * time.Millisecond); built {
+				t.Fatalf("round %d: a spinner frame built the view", round)
+			}
+		}
+		if draws != n || spins != s+3 {
+			t.Fatalf("round %d: spinner frames drew the live drawing %d times, the spinner %d", round, draws-n, spins-s)
+		}
+		same("spinner frames")
+		at = round + 1
+		n = draws
+		tt.rt.repaint()
+		tt.frame(16 * time.Millisecond)
+		if draws != n+1 {
+			t.Fatalf("round %d: a repaint drew the live drawing %d times", round, draws-n)
+		}
+		same("a repaint")
+	}
+}
