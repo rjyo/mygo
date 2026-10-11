@@ -24,6 +24,19 @@ func paintedGlyphs(tt *Tester) (all, faded int) {
 	return all, faded
 }
 
+// firstGlyph returns the first glyph the last frame's ops paint: a frame
+// painting only what moves keeps the last frame's glyphs before its own.
+func firstGlyph(t *testing.T, tt *Tester) scene.Glyph {
+	t.Helper()
+	for _, op := range tt.h.last.Ops {
+		if op.Kind == scene.OpGlyphs && op.End > op.Start {
+			return tt.h.last.Glyphs[op.Start]
+		}
+	}
+	t.Fatal("no glyphs painted")
+	return scene.Glyph{}
+}
+
 func clips(tt *Tester) int {
 	n := 0
 	for _, op := range tt.h.last.Ops {
@@ -131,12 +144,12 @@ func TestContentTransitionOnlyPaints(t *testing.T) {
 	if built, more := tt.frame(0); !built || !more {
 		t.Fatalf("the change: built %v, more %v", built, more)
 	}
-	before := tt.h.last.Glyphs[0].Color.A
+	before := firstGlyph(t, tt.Tester).Color.A
 	built, more := tt.frame(50 * time.Millisecond)
 	if built || !more {
 		t.Fatalf("rolling: built %v, more %v", built, more)
 	}
-	if after := tt.h.last.Glyphs[0].Color.A; after == before {
+	if after := firstGlyph(t, tt.Tester).Color.A; after == before {
 		t.Error("repainted, the text did not move on")
 	}
 	if _, more := tt.frame(100 * time.Millisecond); more {
