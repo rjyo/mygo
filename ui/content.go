@@ -61,7 +61,7 @@ func (p *Painter) contentStep(e *node, x, y float32, color Color) (*contentRec, 
 	rt := p.rt
 	st := e.st
 	r := st.crec
-	if r == nil || r.frame+1 < rt.paints {
+	if r == nil || !rt.shownBefore(r.frame) {
 		// Not painted in the frame before: it shows at once.
 		r = &contentRec{}
 		st.crec = r
