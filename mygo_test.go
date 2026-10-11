@@ -162,7 +162,7 @@ func TestWindowOptions(t *testing.T) {
 	_, fw := testWindow(t, WindowOptions{
 		Title: "Custom", Width: 300, Height: 200, X: 10, Y: 20,
 		Hidden: true, DisableResize: true, BackgroundColor: "#11223380",
-		Page: PageOptions{DevTools: DevToolsDisabled, PreloadScript: "window.x = 1"}, Parent: parent, URL: "https://example.com/",
+		Page: PageOptions{DevTools: DevToolsDisabled, PreloadScript: "window.x = 1", Scripts: []Script{{Source: "window.y = 2", AtDocumentEnd: true, AllFrames: true}}}, Parent: parent, URL: "https://example.com/",
 	})
 	o := fw.Opts
 	if o.Title != "Custom" || o.Width != 300 || o.Center || o.Resizable || o.DevTools {
@@ -171,7 +171,7 @@ func TestWindowOptions(t *testing.T) {
 	if c := o.BackgroundColor; c == nil || *c != (platform.Color{R: 0x11, G: 0x22, B: 0x33, A: 0x80}) {
 		t.Errorf("background color: %v", c)
 	}
-	if len(o.UserScripts) != 2 || o.UserScripts[1].Source != "window.x = 1" {
+	if len(o.UserScripts) != 3 || o.UserScripts[1].Source != "window.x = 1" || o.UserScripts[2] != (platform.UserScript{Source: "window.y = 2", AtDocumentEnd: true, AllFrames: true}) {
 		t.Errorf("preload script: %v", o.UserScripts)
 	}
 	if o.Parent == nil {
@@ -339,6 +339,36 @@ func TestWillNavigate(t *testing.T) {
 	check(platform.Navigation{URL: "https://blocked.example", IsMainFrame: true}, false)
 	check(platform.Navigation{URL: "https://blocked.example", IsMainFrame: false}, true)
 	check(platform.Navigation{URL: "https://blocked.example", IsMainFrame: true, Unasked: true}, true)
+}
+
+// TestFrameNavigations checks that a page with FrameNavigations is asked
+// about its iframes' navigations, told apart by InFrame.
+func TestFrameNavigations(t *testing.T) {
+	w, fw := testWindow(t, WindowOptions{Page: PageOptions{FrameNavigations: true}})
+	var got []NavigateEvent
+	w.Page().OnWillNavigate(func(e *NavigateEvent) {
+		got = append(got, NavigateEvent{URL: e.URL, UserInitiated: e.UserInitiated, InFrame: e.InFrame})
+		if strings.Contains(e.URL, "blocked") {
+			e.PreventDefault()
+		}
+	})
+	check := func(nav platform.Navigation, want bool) {
+		t.Helper()
+		if went := onMainValue(func() bool { return fw.H.WillNavigate(nav) }); went != want {
+			t.Errorf("WillNavigate(%+v) = %v, want %v", nav, went, want)
+		}
+	}
+	check(platform.Navigation{URL: "https://ok.example", IsMainFrame: true}, true)
+	check(platform.Navigation{URL: "https://blocked.example", UserInitiated: true}, false)
+	check(platform.Navigation{URL: "https://frame.example"}, true)
+	want := []NavigateEvent{
+		{URL: "https://ok.example"},
+		{URL: "https://blocked.example", UserInitiated: true, InFrame: true},
+		{URL: "https://frame.example", InFrame: true},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("events %+v, want %+v", got, want)
+	}
 }
 
 // TestReloadLoadsHTMLAgain checks that a reload of a document LoadHTML

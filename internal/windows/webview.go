@@ -245,6 +245,7 @@ func (w *window) setUp(controller uintptr) {
 		withHandler(fn, func(h uintptr) uintptr { return comCall(w.webview, index, h, tok) })
 	}
 	add(wvAddNavigationStarting, w.navigationStarting)
+	add(wvAddFrameNavigationStarting, w.frameNavigationStarting)
 	add(wvAddContentLoading, func(_, _ uintptr) { w.h.NavigationCommitted(w.URL()) })
 	add(wvAddNavigationCompleted, w.navigationCompleted)
 	add(wvAddDocumentTitleChanged, func(_, _ uintptr) {
@@ -367,6 +368,18 @@ func (w *window) navigationStarting(_, args uintptr) {
 	}
 	w.loading = true
 	w.h.NavigationStarted(uri)
+}
+
+// frameNavigationStarting asks about the navigation of an iframe, which
+// starts no load of the page's own.
+func (w *window) frameNavigationStarting(_, args uintptr) {
+	var p uintptr
+	comCall(args, navStartingGetURI, uintptr(unsafe.Pointer(&p)))
+	var user int32
+	comCall(args, navStartingGetIsUserInitiated, uintptr(unsafe.Pointer(&user)))
+	if !w.h.WillNavigate(platform.Navigation{URL: w.appURL(takeWstr(p)), UserInitiated: user != 0}) {
+		comCall(args, navStartingPutCancel, 1)
+	}
 }
 
 // COREWEBVIEW2_NAVIGATION_KIND
