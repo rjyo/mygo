@@ -178,6 +178,12 @@ func (p *Painter) After(d time.Duration) {
 	}
 }
 
+// Live notes that the element draws what changes without the view
+// changing, as a terminal its grid as output comes: Services.Repaint then
+// paints it again over the rest of the last frame, without building the
+// view. Call it in every frame it paints; it asks for no frame itself.
+func (p *Painter) Live() { p.req = true }
+
 // snap converts a rectangle to device pixels, rounding its edges to whole
 // pixels so that edges stay crisp.
 func (p *Painter) snap(r Rect) scene.Rect {
