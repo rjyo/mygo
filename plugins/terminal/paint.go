@@ -169,6 +169,11 @@ func (v *view) paint(p *ui.Painter, r ui.Rect) {
 		rs.EndUpdate()
 	}
 	colors := rs.Colors()
+	if c := rs.Cursor(); v.focused && c.Blinking && c.Visible {
+		// The cursor blinks, every 600 ms, while the terminal has the
+		// focus: the view paints again, as for output, not the window's.
+		v.blinkIn(blinkPeriod - time.Since(v.blinkStart)%blinkPeriod)
+	}
 	cols, rows := rs.Size()
 	// No row of the last frame is taken when the colors or the number
 	// of rows changed: every row is made again.
@@ -178,10 +183,6 @@ func (v *view) paint(p *ui.Painter, r ui.Rect) {
 	}
 	all := prev == nil || rs.Dirty() == vt.Full
 	v.colors, v.contrast, v.cursor = colors, contrast, rs.Cursor()
-	if blinks := v.cursor.Blinking && v.cursor.Visible; blinks != v.blinks && v.focused {
-		// The blink's frames are armed as the view builds.
-		v.services.Invalidate()
-	}
 	v.updateRows(rs, prev, all, cols, rows)
 	rs.Clean()
 	v.draw(p, r)
@@ -319,6 +320,21 @@ func bit(b bool) byte {
 		return 1
 	}
 	return 0
+}
+
+// blinkIn asks for the view to be painted again after d, as the cursor
+// blinks.
+func (v *view) blinkIn(d time.Duration) {
+	if v.blink != nil {
+		v.blink.Reset(d)
+		return
+	}
+	t := v.t
+	v.blink = time.AfterFunc(d, func() {
+		if f := t.repaint.Load(); f != nil {
+			(*f)()
+		}
+	})
 }
 
 // resolved is a cell's style with its colors resolved.
