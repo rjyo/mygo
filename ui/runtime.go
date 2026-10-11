@@ -3,6 +3,7 @@ package ui
 import (
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 	"weak"
 
@@ -273,6 +274,11 @@ type engine struct {
 	gen          uint64
 	repaintTimer *time.Timer
 	repaintDue   time.Time
+	// asked tells that an event or the app asked for a frame built anew
+	// since the last frame, and repaintPosted that Services.Repaint posted
+	// a repaint no frame took yet.
+	asked         bool
+	repaintPosted atomic.Bool
 	// late is set when lists built elements while laying out.
 	late bool
 	// revealIDs are the elements to scroll into view once the frame is
@@ -423,7 +429,7 @@ func (rt *engine) defaultTheme() *Theme {
 // desktop's preferences.
 func (rt *engine) themeChanged() {
 	rt.darkKnown, rt.prefsKnown = false, false
-	rt.redraw, rt.repaintDue = false, time.Time{}
+	rt.redraw, rt.repaintDue, rt.asked = false, time.Time{}, true
 	rt.host.requestFrame()
 }
 
@@ -571,7 +577,8 @@ func (rt *engine) now() time.Time {
 // (SurfaceShown) rather than draw frames nobody sees, as browsers pause
 // the animation frames of windows out of sight.
 func (rt *engine) next() {
-	rt.redraw, rt.repaintDue, rt.held = false, time.Time{}, false
+	rt.redraw, rt.repaintDue, rt.held, rt.asked = false, time.Time{}, false, false
+	rt.repaintPosted.Store(false)
 	moving := rt.animating || rt.repainting || !rt.repaintAt.IsZero()
 	switch {
 	case moving && rt.host.occluded():
@@ -770,15 +777,35 @@ func (rt *engine) requestFrame() {
 	if rt.inFrame {
 		return
 	}
-	rt.redraw, rt.repaintDue = false, time.Time{}
+	rt.redraw, rt.repaintDue, rt.asked = false, time.Time{}, true
 	rt.host.requestFrame()
 }
 
 // changed asks the host for a frame built anew after the app changed what
 // the view shows, from outside the view (surface.Conn.Changed).
 func (rt *engine) changed() {
-	rt.redraw, rt.repaintDue = false, time.Time{}
+	rt.redraw, rt.repaintDue, rt.asked = false, time.Time{}, true
 	rt.host.requestFrame()
+}
+
+// repaint asks for a frame painting the last frame's elements again, for
+// those whose drawings changed (Services.Repaint, Painter.Live): one built
+// anew when something asked for that since the last frame, or the view
+// moves; none while nothing of the window shows, until some of it does.
+func (rt *engine) repaint() {
+	rt.repaintPosted.Store(false)
+	switch {
+	case rt.closed:
+	case rt.asked || rt.animating || rt.inFrame || rt.c.root == nil:
+		rt.changed()
+	case rt.redraw && rt.repaintDue.IsZero():
+		// A frame painting again comes as soon as the display can show it.
+	case rt.host.occluded():
+		rt.held = true
+	default:
+		rt.redraw, rt.repaintDue = true, time.Time{}
+		rt.host.requestFrame()
+	}
 }
 
 // scheduleAt asks for a frame at t (After).
