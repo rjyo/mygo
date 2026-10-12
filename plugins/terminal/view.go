@@ -48,8 +48,9 @@ func (t *Terminal) viewOf(c *ui.Context) *view {
 	v := t.v
 	if v.services != c.Services() {
 		v.services = c.Services()
-		draw := v.services.Invalidate
+		draw, repaint := v.services.Invalidate, v.services.Repaint
 		t.draw.Store(&draw)
+		t.repaint.Store(&repaint)
 	}
 	return v
 }
@@ -92,6 +93,8 @@ type view struct {
 	focused    bool
 	blinkStart time.Time
 	caretCell  [2]int // the cursor's cell, for input methods
+	// blink paints the view again as the cursor blinks.
+	blink *time.Timer
 	// selecting tells that the primary button selects; reporting that a
 	// press went to the program, which gets the release too.
 	selecting, reporting bool
@@ -158,6 +161,7 @@ func (v *view) build(c *ui.Context, e ui.Element) {
 	copied := t.clipOut
 	t.clipOut = nil
 	t.mu.Unlock()
+	t.compose.Store(v.preedit != "")
 	for _, s := range copied {
 		c.WriteClipboard(s)
 	}
@@ -169,11 +173,6 @@ func (v *view) build(c *ui.Context, e ui.Element) {
 			v.preedit, v.pending = "", nil
 		}
 	}
-	// The cursor blinks, every 600 ms, while the terminal has the focus.
-	if v.focused && v.cursor.Blinking && v.cursor.Visible {
-		since := c.Now().Sub(v.blinkStart)
-		c.After(blinkPeriod - since%blinkPeriod)
-	}
 	if v.ticking {
 		c.After(40 * time.Millisecond)
 	}
@@ -184,6 +183,9 @@ const blinkPeriod = 600 * time.Millisecond
 // release frees what the view made of the library, once the terminal is
 // closed.
 func (v *view) release() {
+	if v.blink != nil {
+		v.blink.Stop()
+	}
 	if v.keys != nil {
 		v.keys.Free()
 		v.keys = nil
