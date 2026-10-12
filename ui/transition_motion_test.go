@@ -226,3 +226,38 @@ func TestTransitionWithoutMotionFades(t *testing.T) {
 		t.Errorf("%d copies leaving", leaving)
 	}
 }
+
+// An element coming in moves with the layout at once where its Transition
+// does not animate: only the Enter's own motion plays.
+func TestTransitionEnterFollowsTheLayout(t *testing.T) {
+	shown, above := false, float32(20)
+	tt, now := clockTester(func(c *context) {
+		coreColumn(c).Size(300, 200).Children(func() {
+			coreBox(c).Size(20, above)
+			if shown {
+				keep("panel", coreBox(c).Key("panel")).Size(40, 20).Transition(ElementTransition{
+					Duration: 100 * time.Millisecond, Colors: true, Enter: &Motion{X: 8},
+				})
+			}
+		})
+	}, 300, 200)
+	shown = true
+	tt.Frame()
+	*now = now.Add(30 * time.Millisecond)
+	tt.Frame()
+	// The box above grows on the way in: the panel goes down at once.
+	above = 50
+	tt.Frame()
+	e := keyed(tt, "panel")
+	if e.y != 50 {
+		t.Errorf("on its way in, the panel is at y=%v, not at once under the box at 50", e.y)
+	}
+	if e.x <= 0 || e.x >= 8 {
+		t.Errorf("on its way in, the panel is at x=%v, not sliding in", e.x)
+	}
+	*now = now.Add(time.Second)
+	tt.Frame()
+	if e := keyed(tt, "panel"); e.x != 0 || e.y != 50 {
+		t.Errorf("in, the panel is at (%v, %v)", e.x, e.y)
+	}
+}

@@ -170,6 +170,15 @@ func (ch *channel) retarget(target float64, a Animation) {
 	}
 }
 
+// shift moves the value, and where it goes, by d, as what it is relative
+// to moves: it goes on as it went.
+func (ch *channel) shift(d float64) {
+	ch.value += d
+	ch.target += d
+	ch.from += d
+	ch.pendingTo += d
+}
+
 // advance moves the value to now, heading for a pending target when its
 // delay is over on the way.
 func (ch *channel) advance(now time.Time) {

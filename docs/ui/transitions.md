@@ -117,7 +117,9 @@ parent still is, a copy of it, as the last frame showed it, goes to its
 `Exit` under its siblings: it takes no room, so the siblings move into its
 place at once, smoothly if they have transitions, and it takes neither the
 pointer nor the focus. Built again before its exit ends, the element comes
-back from where its copy was.
+back from where its copy was. While it comes in, the layout moving it, as
+rows landing above it, moves it at once where its Transition does not
+animate (`Position`, `Size`): only its `Enter` plays.
 
 ## Shared elements
 
