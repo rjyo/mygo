@@ -58,3 +58,13 @@ func (r *renderer) spinner(op *scene.Op) {
 func hypot(x, y float32) float32 {
 	return float32(math.Hypot(float64(x), float64(y)))
 }
+
+// pulseFill is the fill a pulse (scene.OpPulse) shows at the frame's time.
+func pulseFill(op *scene.Op) scene.Op {
+	f := *op
+	f.Kind, f.Gradient = scene.OpFill, [4]float32{}
+	if period := op.Gradient[2]; period > 0 {
+		f.Opacity = opacityOf(op.Opacity) * scene.PulseOpacity(op.Gradient[0]/period, op.Gradient[1])
+	}
+	return f
+}
