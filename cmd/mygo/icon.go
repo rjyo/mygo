@@ -12,7 +12,9 @@ import (
 )
 
 // pngToICNS renders the sizes macOS expects into an .icns file with PNG
-// payloads.
+// payloads, largest first and none under 256 pixels: macOS scales them
+// down crisply itself, while apps that take a small entry (1Password's SSH
+// prompt) would blow a 128 pixel or smaller one up blurry on Retina.
 func pngToICNS(src []byte) ([]byte, error) {
 	img, err := png.Decode(bytes.NewReader(src))
 	if err != nil {
@@ -22,8 +24,7 @@ func pngToICNS(src []byte) ([]byte, error) {
 		kind string
 		size int
 	}{
-		{"icp4", 16}, {"icp5", 32}, {"ic11", 32}, {"ic12", 64}, {"ic07", 128},
-		{"ic13", 256}, {"ic08", 256}, {"ic14", 512}, {"ic09", 512}, {"ic10", 1024},
+		{"ic10", 1024}, {"ic14", 512}, {"ic09", 512}, {"ic13", 256}, {"ic08", 256},
 	}
 	var body bytes.Buffer
 	for _, e := range entries {
