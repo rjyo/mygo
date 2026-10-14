@@ -9,20 +9,27 @@ import (
 )
 
 // Renderer draws the successive scenes of a window into Image, redrawing
-// only where a scene differs from the one before: a blinking caret, a
-// ticking clock or a button under the pointer redraws only itself.
-//
-// It compares the operations of the two scenes from both ends, so a change
-// in the middle of the display list redraws the boxes of the operations
-// that changed, clipped as they draw. Glyphs whose pixels changed in an
-// atlas, and images whose pixels changed, count as changed.
+// only where a scene differs from the one before (Damage): a blinking
+// caret, a ticking clock or a button under the pointer redraws only itself.
 type Renderer struct {
 	// Image holds the last scene drawn, in mem.
 	Image Image
 	mem   *pixels
 
 	// d draws the bands of large damage.
-	d drawer
+	d    drawer
+	diff Damage
+}
+
+// Damage finds where each scene of a window differs from the one before,
+// for renderers that keep the last frame and redraw only that: Renderer,
+// and the GPU renderers.
+//
+// It compares the operations of the two scenes from both ends, so a change
+// in the middle of the display list damages the boxes of the operations
+// that changed, clipped as they draw. Glyphs whose pixels changed in an
+// atlas, and images whose pixels changed, count as changed.
+type Damage struct {
 	// valid tells that the last scene, of w×h pixels, is remembered to
 	// compare the next with.
 	valid   bool
@@ -31,8 +38,9 @@ type Renderer struct {
 	ops     []scene.Op
 	glyphs  []scene.Glyph
 	effects []scene.EffectOp
-	// bounds is where each operation of the last scene drew; versions has
-	// the versions of its images.
+	// bounds is where each operation of the last scene drew, next where
+	// those of the scene compared do; versions has the versions of its
+	// images.
 	bounds, next []image.Rectangle
 	versions     []uint64
 	mask, color  atlasMark
@@ -69,16 +77,17 @@ func (m *atlasMark) set(a *scene.Atlas) {
 // Render draws s, and returns the rectangles of Image it changed. s may
 // change once Render returns.
 func (r *Renderer) Render(s *scene.Scene) []image.Rectangle {
-	if r.whole(s) || r.Image.W != s.Width || r.Image.H != s.Height {
+	damage, whole := r.diff.Diff(s)
+	if whole || r.Image.W != s.Width || r.Image.H != s.Height {
 		// A new size, or Image was released (Release).
 		r.resize(s.Width, s.Height)
-		r.damage = append(r.damage[:0], image.Rect(0, 0, s.Width, s.Height))
+		damage = r.diff.Whole(s)
 	}
-	for _, d := range r.damage {
-		r.d.draw(&r.Image, s, d, r.next)
+	for _, d := range damage {
+		r.d.draw(&r.Image, s, d, r.diff.Next())
 	}
-	r.remember(s)
-	return r.damage
+	r.diff.Remember(s)
+	return damage
 }
 
 // pixels is the memory of a Renderer's image (allocPixels).
@@ -105,6 +114,12 @@ func (r *Renderer) Release() {
 	*r = Renderer{}
 }
 
+// Invalidate makes the next Render draw everything.
+func (r *Renderer) Invalidate() { r.diff.Invalidate() }
+
+// Release forgets the last scene, and the memory it kept.
+func (d *Damage) Release() { *d = Damage{} }
+
 func area(rects []image.Rectangle) int {
 	n := 0
 	for _, d := range rects {
@@ -113,19 +128,34 @@ func area(rects []image.Rectangle) int {
 	return n
 }
 
-// whole sets the damage of s against the last scene, and reports whether
-// s must be drawn whole: there is none, or s changes too much of it.
-func (r *Renderer) whole(s *scene.Scene) bool {
-	r.next = r.opBounds(s, r.next[:0])
-	return !r.valid || s.Width != r.w || s.Height != r.h || s.Clear != r.clear || !r.diff(s)
+// Diff returns the rectangles where s differs from the last scene
+// remembered (Remember), or whole when s must be drawn whole: there is
+// none, or s changes too much of it. The rectangles are apart from each
+// other, and each holds whole the backdrops of the effects it meets.
+func (d *Damage) Diff(s *scene.Scene) (rects []image.Rectangle, whole bool) {
+	d.next = d.opBounds(s, d.next[:0])
+	if !d.valid || s.Width != d.w || s.Height != d.h || s.Clear != d.clear || !d.diff(s) {
+		return d.Whole(s), true
+	}
+	return d.damage, false
 }
 
-// Invalidate makes the next Render draw everything.
-func (r *Renderer) Invalidate() { r.valid = false }
+// Whole returns the damage of drawing s whole, the rectangle of the frame.
+func (d *Damage) Whole(s *scene.Scene) []image.Rectangle {
+	d.damage = append(d.damage[:0], image.Rect(0, 0, s.Width, s.Height))
+	return d.damage
+}
+
+// Next returns where each operation of the scene last compared (Diff)
+// draws, within its clips.
+func (d *Damage) Next() []image.Rectangle { return d.next }
+
+// Invalidate makes the next Diff draw everything.
+func (d *Damage) Invalidate() { d.valid = false }
 
 // diff sets the damage between the last scene and s, and reports false
 // when s must be drawn whole.
-func (r *Renderer) diff(s *scene.Scene) bool {
+func (r *Damage) diff(s *scene.Scene) bool {
 	maskRects, ok := r.mask.changes(s.MaskAtlas)
 	if !ok {
 		return false
@@ -170,7 +200,7 @@ func (r *Renderer) diff(s *scene.Scene) bool {
 // drawing the operations before its effect within the area drawn, which
 // must hold all of it, and then no other area may draw the effect. So the
 // damage becomes rectangles apart from each other.
-func (r *Renderer) addBackdrops(s *scene.Scene) {
+func (r *Damage) addBackdrops(s *scene.Scene) {
 	if len(s.Effects) == 0 || len(r.damage) == 0 {
 		return
 	}
@@ -210,7 +240,7 @@ func (r *Renderer) addBackdrops(s *scene.Scene) {
 
 // same reports whether operation i of the last scene draws what operation
 // j of s does.
-func (r *Renderer) same(i int, s *scene.Scene, j int, maskRects, colorRects []image.Rectangle) bool {
+func (r *Damage) same(i int, s *scene.Scene, j int, maskRects, colorRects []image.Rectangle) bool {
 	a, b := r.ops[i], s.Ops[j]
 	// Glyphs and effects are compared by what Start and End point at.
 	sa, sb := a.Start, b.Start
@@ -286,7 +316,7 @@ func addRect(damage []image.Rectangle, b image.Rectangle) []image.Rectangle {
 
 // opBounds appends where each operation of s draws, within the clips
 // around it.
-func (r *Renderer) opBounds(s *scene.Scene, out []image.Rectangle) []image.Rectangle {
+func (r *Damage) opBounds(s *scene.Scene, out []image.Rectangle) []image.Rectangle {
 	clip := image.Rect(0, 0, s.Width, s.Height)
 	r.clips = r.clips[:0]
 	for i := range s.Ops {
@@ -328,8 +358,9 @@ func outset(rc scene.Rect, d float32) image.Rectangle {
 		int(math.Ceil(float64(rc.X+rc.W+d))), int(math.Ceil(float64(rc.Y+rc.H+d))))
 }
 
-// remember keeps what Render needs of s to compare the next scene with.
-func (r *Renderer) remember(s *scene.Scene) {
+// Remember keeps what Diff needs of s, drawn, to compare the next scene
+// with.
+func (r *Damage) Remember(s *scene.Scene) {
 	r.valid = true
 	r.w, r.h = s.Width, s.Height
 	r.clear = s.Clear
