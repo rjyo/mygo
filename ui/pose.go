@@ -130,13 +130,15 @@ func (rt *engine) showPose(e *node, r *poseRec) {
 // pose first, and then sets the transforms to the window again from the
 // outermost elements that moved, once for what is inside them: poses
 // nested in moving poses would otherwise set those inside again and again.
-func (rt *engine) repose() {
+// It reports whether a pose moved.
+func (rt *engine) repose() (moved bool) {
 	for _, e := range rt.posed {
 		e.reposed = false
 		d := e.st.dragRec
 		if r := e.st.pose; r != nil && (r.moving() || d.current(rt) && d.moving()) {
 			rt.showPose(e, r)
 			e.reposed = true
+			moved = true
 		}
 	}
 	for _, e := range rt.posed {
@@ -144,6 +146,7 @@ func (rt *engine) repose() {
 			e.updateWorld()
 		}
 	}
+	return moved
 }
 
 // insideReposed reports whether an element around e moved its pose in
