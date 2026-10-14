@@ -299,6 +299,16 @@ type System struct {
 	// recent the frame each of them was last drawn in.
 	transient map[uint64]GlyphImage
 	recent    map[uint64]uint64
+	// transientKeys are the keys of transient in the order drawn. mark
+	// and markKeys are where they reached once a frame was painted whole
+	// (MarkFrame), which the frames painting only some of it again go back
+	// to (BeginRepaint), marked whether that still holds, and markSeq the
+	// token of the last mark.
+	transientKeys []uint64
+	mark          scene.TransientMark
+	markKeys      int
+	marked        bool
+	markSeq       uint64
 	// MaskAtlas holds coverage masks, ColorAtlas color glyphs.
 	MaskAtlas, ColorAtlas *scene.Atlas
 	// full tells which atlases (mask, color) left out something the frame
