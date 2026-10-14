@@ -264,6 +264,8 @@ func (r *renderer) render(dst *Image, s *scene.Scene, area image.Rectangle, boun
 			} else {
 				r.hole(op)
 			}
+		case scene.OpSpinner:
+			r.spinner(op)
 		case scene.OpEffect:
 			if i == from && px != nil {
 				if fx := &s.Effects[op.Start]; fx.Masked() {
