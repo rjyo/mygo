@@ -112,6 +112,7 @@ func (rt *engine) paint(root *node, w, h, scale float32) {
 	// reused as the parts are painted again, as masks of the transient
 	// room are.
 	rt.transient = rt.text.TransientUses()-uses > rt.partTransient || rt.paths.spill.opened-opened > rt.paths.spill.inParts
+	rt.spinning = rt.animatesSpinners()
 }
 
 // atlasGenerations returns the generations of the atlases s draws glyphs
