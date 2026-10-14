@@ -128,7 +128,11 @@ type Builder struct {
 	// Wide draws the colors of scenes outside the sRGB gamut
 	// (Scene.Wide), for a target that keeps them, as Metal's float16
 	// drawables do; without it, their nearest sRGB colors.
-	Wide         bool
+	Wide bool
+	// Keep, unless nil, tells whether to draw operation i of a scene, for
+	// a renderer redrawing only where it changed: the others are left
+	// out, but for their clips.
+	Keep         func(i int) bool
 	stack        []clip
 	transformed  bool
 	clipShapes   []scene.ClipShape
@@ -204,6 +208,9 @@ func (b *Builder) Build(s *scene.Scene, image func(*scene.Image) uintptr) *scene
 		scissor: Scissor{0, 0, int32(s.Width), int32(s.Height)}})
 	for i := range s.Ops {
 		op := &s.Ops[i]
+		if b.Keep != nil && op.Kind != scene.OpPushClip && op.Kind != scene.OpPopClip && !b.Keep(i) {
+			continue
+		}
 		switch op.Kind {
 		case scene.OpPushClip:
 			top := b.stack[len(b.stack)-1]
