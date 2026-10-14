@@ -845,10 +845,14 @@ func (w *window) Center() {
 
 func (w *window) SetBackgroundColor(c platform.Color) {
 	w.bg = &c
-	if w.bgBrush != 0 {
-		procDeleteObject.Call(w.bgBrush)
+	// A web view in native UI has no window of its own to paint: only
+	// WebView2 fills it, and a brush would outlive it.
+	if w.host == nil {
+		if w.bgBrush != 0 {
+			procDeleteObject.Call(w.bgBrush)
+		}
+		w.bgBrush, _, _ = procCreateSolidBrush.Call(uintptr(c.R) | uintptr(c.G)<<8 | uintptr(c.B)<<16)
 	}
-	w.bgBrush, _, _ = procCreateSolidBrush.Call(uintptr(c.R) | uintptr(c.G)<<8 | uintptr(c.B)<<16)
 	w.withWebView(w.applyWebViewBackground)
 	if w.hwnd != 0 {
 		procInvalidateRect(w.hwnd)
