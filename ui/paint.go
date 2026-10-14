@@ -96,6 +96,7 @@ func (rt *engine) paint(root *node, w, h, scale float32) {
 	rt.partsBase = sceneData(s)
 	rt.atlases = atlasGenerations(s)
 	rt.transient = rt.text.TransientUses()-uses > rt.partTransient
+	rt.spinning = rt.animatesSpinners()
 }
 
 // atlasGenerations returns the generations of the atlases s draws glyphs

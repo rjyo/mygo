@@ -103,6 +103,15 @@ const (
 	// full Opacity, what the ops before it painted fades by Opacity
 	// instead, so what shows through blends over it.
 	OpHole
+	// OpSpinner is a spinner the system turns between frames: an arc of
+	// the circle in Rect, Border[0] pixels wide, in Color with Opacity,
+	// Gradient[1] degrees long, which starts Gradient[0] degrees clockwise
+	// from 3 o'clock at the frame's time and turns clockwise once every
+	// Gradient[2] seconds. The ui package makes it only for a renderer
+	// that animates layers (Metal's), painting the arc for the others;
+	// drawn in memory, as a capture, it shows still, as at the frame's
+	// time.
+	OpSpinner
 )
 
 // Op is one drawing operation. Which fields matter depends on Kind.
