@@ -266,6 +266,13 @@ func (r *renderer) render(dst *Image, s *scene.Scene, area image.Rectangle, boun
 			}
 		case scene.OpSpinner:
 			r.spinner(op)
+		case scene.OpPulse:
+			f := pulseFill(op)
+			if f.Transform.Set {
+				r.transformed(&f, nil, nil)
+			} else {
+				r.fill(&f)
+			}
 		case scene.OpEffect:
 			if i == from && px != nil {
 				if fx := &s.Effects[op.Start]; fx.Masked() {
