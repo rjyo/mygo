@@ -228,9 +228,9 @@ func (d *Differ) same(i int, s *Scene, j int, maskRects, colorRects []image.Rect
 	// at in each scene's own table.
 	wa, wb := a.Wide, b.Wide
 	a.Wide, b.Wide = 0, 0
-	// A spinner turning is the system's to show, not the frame's: only
-	// where and how it shows draws anew.
-	if a.Kind == OpSpinner && b.Kind == OpSpinner {
+	// A spinner turning or a pulse fading is the system's to show, not the
+	// frame's: only where and how it shows draws anew.
+	if a.Kind == b.Kind && (a.Kind == OpSpinner || a.Kind == OpPulse) {
 		a.Gradient[0], b.Gradient[0] = 0, 0
 	}
 	if a != b || !d.sameWide(wa, s, wb) {
@@ -353,7 +353,7 @@ func (d *Differ) opBounds(s *Scene, out []image.Rectangle) []image.Rectangle {
 		op := &s.Ops[i]
 		var b image.Rectangle
 		switch op.Kind {
-		case OpFill, OpImage, OpEffect, OpHole, OpSpinner:
+		case OpFill, OpImage, OpEffect, OpHole, OpSpinner, OpPulse:
 			b = outset(op.Transform.Bounds(op.Rect), reach(op.Transform))
 		case OpShadow:
 			if op.Inset {
