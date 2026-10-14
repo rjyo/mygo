@@ -103,6 +103,7 @@ func (rt *engine) paint(root *node, w, h, scale float32) {
 	// What the inspector or a drag paints over the view goes with each
 	// frame: one painting only some of the view again would keep the last.
 	rt.retained, rt.repaints = len(s.Ops) == n, 0
+	rt.spinning = rt.animatesSpinners()
 	rt.textMark = rt.text.MarkFrame()
 }
 
