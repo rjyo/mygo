@@ -223,6 +223,11 @@ func (r *Renderer) same(i int, s *scene.Scene, j int, maskRects, colorRects []im
 	// The CPU draws the sRGB colors, not those outside its gamut, which
 	// Wide points at in each scene's own table.
 	a.Wide, b.Wide = 0, 0
+	// A spinner turning is the system's to show, not the frame's: only
+	// where and how it shows draws anew.
+	if a.Kind == scene.OpSpinner && b.Kind == scene.OpSpinner {
+		a.Gradient[0], b.Gradient[0] = 0, 0
+	}
 	if a != b {
 		return false
 	}
@@ -294,7 +299,7 @@ func (r *Renderer) opBounds(s *scene.Scene, out []image.Rectangle) []image.Recta
 		op := &s.Ops[i]
 		var b image.Rectangle
 		switch op.Kind {
-		case scene.OpFill, scene.OpImage, scene.OpEffect, scene.OpHole:
+		case scene.OpFill, scene.OpImage, scene.OpEffect, scene.OpHole, scene.OpSpinner:
 			b = outset(op.Transform.Bounds(op.Rect), 1)
 		case scene.OpShadow:
 			if op.Inset {
