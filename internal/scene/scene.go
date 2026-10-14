@@ -108,7 +108,33 @@ const (
 	// drawn in memory, as a capture, it shows still, as at the frame's
 	// time.
 	OpSpinner
+	// OpPulse is a rounded rectangle the system fades between frames:
+	// Rect with Radii in Color, with Opacity, times PulseOpacity once every
+	// Gradient[2] seconds, Gradient[1] its least, Gradient[0] seconds into
+	// that at the frame's time. As with OpSpinner, the ui package makes it
+	// only for a renderer that animates layers, and drawn in memory it
+	// shows as at the frame's time.
+	OpPulse
 )
+
+// PulseOpacity is how opaque a pulse (OpPulse) shows at t, between 0 and
+// 1, of its period: fading to low at the middle and back, easing in and
+// out each way, as CSS's ease-in-out-cubic.
+func PulseOpacity(t, low float32) float32 {
+	t -= float32(int(t))
+	if t > 0.5 {
+		t = 1 - t
+	}
+	u := 2 * t
+	var e float32
+	if u < 0.5 {
+		e = 4 * u * u * u
+	} else {
+		v := 2 - 2*u
+		e = 1 - v*v*v/2
+	}
+	return 1 + (low-1)*e
+}
 
 // Op is one drawing operation. Which fields matter depends on Kind.
 type Op struct {
