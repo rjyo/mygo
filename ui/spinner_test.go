@@ -14,6 +14,7 @@ type spinGPU struct {
 	animates bool
 	kinds    []scene.Kind
 	spinner  scene.Op
+	onOp     func(scene.Op)
 }
 
 func (g *spinGPU) AnimatesSpinners() bool { return g.animates }
@@ -24,6 +25,9 @@ func (g *spinGPU) Render(s *scene.Scene) error {
 		g.kinds = append(g.kinds, op.Kind)
 		if op.Kind == scene.OpSpinner {
 			g.spinner = op
+		}
+		if g.onOp != nil {
+			g.onOp(op)
 		}
 	}
 	return g.testGPU.Render(s)
@@ -100,5 +104,38 @@ func TestSpinnerPaintedWholeWhenTheRendererStops(t *testing.T) {
 	frame()
 	if g.has(scene.OpSpinner) || !g.has(scene.OpGlyphs) {
 		t.Errorf("after the renderer stopped, the frame's ops are %v", g.kinds)
+	}
+}
+
+func TestPulseLeftToTheRenderer(t *testing.T) {
+	g := &spinGPU{animates: true}
+	var pulse scene.Op
+	h, frame := spinHost(t, g, func(c *context) {
+		coreBox(c).Size(8, 8).Draw(func(p *Painter, r Rect) {
+			p.Pulse(r, 4, RGB(0, 0, 255), 0.35, 1600*time.Millisecond, 2000*time.Millisecond)
+		})
+	})
+	g.onOp = func(op scene.Op) {
+		if op.Kind == scene.OpPulse {
+			pulse = op
+		}
+	}
+	frame()
+	frame()
+	if pulse.Kind != scene.OpPulse || pulse.Radii[0] != 4 || pulse.Gradient != [4]float32{0.4, 0.35, 1.6} {
+		t.Fatalf("the pulse is %+v, in %v", pulse, g.kinds)
+	}
+	if rt := h.rt; rt.animating || rt.repainting || !rt.repaintAt.IsZero() {
+		t.Error("a window fading only pulses asks for frames")
+	}
+	g.animates = false
+	h.rt.requestFrame()
+	frame()
+	// The test surface takes no posts: the frame it asks for stays asked.
+	if h.rt.repaintTimer != nil {
+		h.rt.repaintTimer.Stop()
+	}
+	if g.has(scene.OpPulse) || h.rt.repaintAt.IsZero() {
+		t.Errorf("drawing its own frames, the window painted %v, asking for the next at %v", g.kinds, h.rt.repaintAt)
 	}
 }

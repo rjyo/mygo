@@ -111,7 +111,45 @@ const (
 	// drawn in memory, as a capture, it shows still, as at the frame's
 	// time.
 	OpSpinner
+	// OpPulse is a rounded rectangle the system fades between frames:
+	// Rect with Radii in Color, with Opacity, times PulseOpacity once every
+	// Gradient[2] seconds, Gradient[1] its least, Gradient[0] seconds into
+	// that at the frame's time. As with OpSpinner, the ui package makes it
+	// only for a renderer that animates layers, and drawn in memory it
+	// shows as at the frame's time.
+	OpPulse
 )
+
+// PulseOpacity is how opaque a pulse (OpPulse) shows at t, between 0 and
+// 1, of its period: fading to low at the middle and back, each way along
+// CSS's ease-in-out, cubic-bezier(0.42, 0, 0.58, 1), Core Animation's
+// ease-in-ease-out.
+func PulseOpacity(t, low float32) float32 {
+	t -= float32(int(t))
+	if t > 0.5 {
+		t = 1 - t
+	}
+	return 1 + (low-1)*easeInOut(2*t)
+}
+
+// easeInOut is cubic-bezier(0.42, 0, 0.58, 1) at x: the curve's y where
+// its x is x, found by bisection.
+func easeInOut(x float32) float32 {
+	bez := func(u, p1, p2 float32) float32 {
+		v := 1 - u
+		return 3*v*v*u*p1 + 3*v*u*u*p2 + u*u*u
+	}
+	lo, hi := float32(0), float32(1)
+	for range 24 {
+		m := (lo + hi) / 2
+		if bez(m, 0.42, 0.58) < x {
+			lo = m
+		} else {
+			hi = m
+		}
+	}
+	return bez((lo+hi)/2, 0, 1)
+}
 
 // Op is one drawing operation. Which fields matter depends on Kind.
 type Op struct {
