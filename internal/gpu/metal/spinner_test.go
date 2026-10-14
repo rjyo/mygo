@@ -34,6 +34,7 @@ func TestSpinnersHideUnderWhatPaintsOver(t *testing.T) {
 		{"under a square", []scene.Op{spin, fill(scene.Rect{X: 16, Y: 16, W: 8, H: 8})}, 400 - 64},
 		{"under a shadow", []scene.Op{spin, {Kind: scene.OpShadow, Rect: box, Color: scene.Color{A: 255}, Blur: 8}}, 400},
 		{"under a pane", []scene.Op{spin, fill(scene.Rect{W: 100, H: 100})}, 0},
+		{"a pulse under a square", []scene.Op{{Kind: scene.OpPulse, Rect: box, Gradient: [4]float32{0, 0.4, 1.6}}, fill(scene.Rect{X: 16, Y: 16, W: 8, H: 8})}, 400 - 64},
 		{"clipped", []scene.Op{{Kind: scene.OpPushClip, Rect: scene.Rect{W: 20, H: 100}}, spin, {Kind: scene.OpPopClip}}, 200},
 	} {
 		var r Renderer
