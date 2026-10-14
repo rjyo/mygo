@@ -502,6 +502,10 @@ type engine struct {
 	paceRate      float32
 	pacedAt       time.Time
 	pacedNext     time.Time
+	// spinning tells that the last frame painted whole left its spinners
+	// to the renderer to turn (Painter.Spinner): one that no longer does
+	// paints them whole again, as arcs that ask for frames.
+	spinning bool
 	// inkStale tells that elements moved since commit found their ink
 	// (node.ink), as poses do in frames that only paint: painting then
 	// skips none.
