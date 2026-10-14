@@ -43,6 +43,7 @@ const (
 	wvAddContentLoading                   = 9
 	wvAddPermissionRequested              = 23
 	wvAddNavigationCompleted              = 15
+	wvAddFrameNavigationStarting          = 17
 	wvAddProcessFailed                    = 25
 	wvAddScriptToExecuteOnDocumentCreated = 27
 	wvExecuteScript                       = 29
