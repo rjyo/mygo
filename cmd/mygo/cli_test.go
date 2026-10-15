@@ -372,6 +372,36 @@ func TestPackageFlags(t *testing.T) {
 	}
 }
 
+// TestPlatformIcons: windows.icon and linux.icon replace icon on their
+// platforms only.
+func TestPlatformIcons(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"mac.png", "tile.png"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := &Config{root: dir, Icon: "mac.png"}
+	for _, goos := range []string{"darwin", "windows", "linux"} {
+		if got := c.iconFor(goos); got != "mac.png" {
+			t.Errorf("without platform icons, %s icon = %q", goos, got)
+		}
+	}
+	c.Windows.Icon, c.Linux.Icon = "tile.png", "tile.png"
+	for goos, want := range map[string]string{"darwin": "mac.png", "windows": "tile.png", "linux": "tile.png"} {
+		if got := c.iconFor(goos); got != want {
+			t.Errorf("%s icon = %q, want %q", goos, got, want)
+		}
+	}
+	stage := t.TempDir()
+	if _, err := writeLinuxDesktop(c, stage, "my-app"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(stage, "my-app.png")); string(got) != "tile.png" {
+		t.Errorf("desktop entry icon is %q, want linux.icon", got)
+	}
+}
+
 // TestWindowsSignCommand signs a file whose path the shell gets quoted.
 func TestProductionTags(t *testing.T) {
 	t.Setenv("GOFLAGS", "")
