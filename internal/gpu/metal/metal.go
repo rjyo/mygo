@@ -370,9 +370,15 @@ type Renderer struct {
 	wideErr         error
 	// layer is the CAMetalLayer in superlayer, the view's.
 	layer, superlayer id
-	w, h              int
-	bounds            cgRect
-	scale             float64
+	// spinners are the layers turning the frame's spinners over the
+	// layer, and spinClips the clips placeSpinners keeps.
+	spinners  []spinnerLayer
+	spinClips []scene.Rect
+	spinAt    []spinnerAt
+	spinShown []scene.Rect
+	w, h      int
+	bounds    cgRect
+	scale     float64
 
 	// synced tells that the layer presents with the Core Animation
 	// transaction, and holes that the last frame had holes (web views
@@ -1363,6 +1369,10 @@ func (r *Renderer) render(s *scene.Scene) error {
 		r.skippedAt = now
 		return nil
 	}
+	// Spinners moving show with the frame.
+	if r.placeSpinners(s, scale) {
+		sync = true
+	}
 	if sync != r.synced {
 		on := uintptr(0)
 		if sync {
@@ -1614,6 +1624,7 @@ func (r *Renderer) Release() {
 	r.stopPipelines()
 	pool(func() {
 		r.waitLast()
+		r.releaseSpinners()
 		if r.layer != 0 {
 			tx := class("CATransaction")
 			send(tx, "begin")
