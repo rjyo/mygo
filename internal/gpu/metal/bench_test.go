@@ -56,7 +56,7 @@ func benchRender(b *testing.B, s *scene.Scene) {
 	for b.Loop() {
 		pool(func() {
 			r.waitLast()
-			cb, e := r.encode(s, tex)
+			cb, e := r.encode(s, tex, nil)
 			if e != nil {
 				err = e
 				return

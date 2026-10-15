@@ -239,6 +239,10 @@ type Builder struct {
 	GeneralFill, NoClipSkip bool
 	// ClipSkip enables the clip-coverage flag understood by the Metal shader.
 	ClipSkip bool
+	// Keep, unless nil, tells whether to draw operation i of a scene, for
+	// a renderer redrawing only where it changed: the others are left
+	// out, but for their clips.
+	Keep func(i int) bool
 	// Culled is how many ops the last Build left out as covered.
 	Culled, OpaqueCores int
 	opaque              bool
@@ -352,7 +356,7 @@ func (b *Builder) Build(s *scene.Scene, image func(*scene.Image) uintptr) *scene
 	b.planCull(s)
 	for i := range s.Ops {
 		op := &s.Ops[i]
-		if b.culled[i] {
+		if b.culled[i] || b.Keep != nil && op.Kind != scene.OpPushClip && op.Kind != scene.OpPopClip && !b.Keep(i) {
 			continue
 		}
 		switch op.Kind {

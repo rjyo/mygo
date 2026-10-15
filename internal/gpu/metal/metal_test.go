@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -193,7 +194,7 @@ func TestWideColors(t *testing.T) {
 		}
 		defer release(&tex)
 		var cb id
-		if cb, err = r.encode(s, tex); err != nil {
+		if cb, err = r.encode(s, tex, nil); err != nil {
 			return
 		}
 		blit := send(cb, "blitCommandEncoder")
@@ -312,7 +313,7 @@ func renderRaw(t *testing.T, r *Renderer, s *scene.Scene, wide bool) (raw []byte
 		}
 		defer release(&tex)
 		var cb id
-		if cb, err = r.encode(s, tex); err != nil {
+		if cb, err = r.encode(s, tex, nil); err != nil {
 			return
 		}
 		blit := send(cb, "blitCommandEncoder")
@@ -918,7 +919,7 @@ func TestFramesInFlight(t *testing.T) {
 		for i := range targets {
 			step(i)
 			targets[i] = r2.newTexture(w, h, pixelFormatBGRA8Unorm, usageRenderTarget|usageShaderRead, nil, 0)
-			cb, err := r2.encode(s, targets[i])
+			cb, err := r2.encode(s, targets[i], nil)
 			if err != nil {
 				t.Error(err)
 				return
@@ -1038,4 +1039,111 @@ func TestReleaseStopsQueuedPipelineCompiles(t *testing.T) {
 	if failed != 0 {
 		t.Fatalf("%d pipeline builds failed", failed)
 	}
+}
+
+// renderInto draws s as frames do into target, one of the textures
+// standing for the layer's drawables, and returns its premultiplied BGRA
+// rows, and whether the frame was drawn whole.
+func (r *Renderer) renderInto(s *scene.Scene, target id) (pix []byte, whole bool, err error) {
+	pool(func() {
+		r.waitLast()
+		r.cur = &r.formats[0]
+		var cb id
+		if cb, err = r.frameInto(s, target); err != nil {
+			return
+		}
+		whole = r.lastWhole
+		blit := send(cb, "blitCommandEncoder")
+		send(blit, "synchronizeResource:", target)
+		send(blit, "endEncoding")
+		send(cb, "commit")
+		send(cb, "waitUntilCompleted")
+		pix = make([]byte, s.Width*s.Height*4)
+		msgGetBytes(target, sel("getBytes:bytesPerRow:fromRegion:mipmapLevel:"), unsafe.Pointer(&pix[0]), uint(s.Width*4),
+			mtlRegion{W: uint(s.Width), H: uint(s.Height), D: 1}, 0)
+	})
+	return pix, whole, err
+}
+
+// A frame redraws the canvas only where the scene changed since the last,
+// and its drawable shows exactly what drawing it whole does, whatever the
+// drawable held: here fills and a stripe under panes of glass, whose
+// backdrops redraw with them, change from frame to frame, and the
+// drawables come back holding junk, as Core Animation's may when it
+// frees or purges one.
+func TestRedrawsOnlyTheDamage(t *testing.T) {
+	r, err := newRenderer()
+	if err != nil {
+		t.Skip("no Metal:", err)
+	}
+	defer r.Release()
+	a := gputest.Scene()
+	var targets [3]id
+	pool(func() {
+		for i := range targets {
+			targets[i] = r.newTexture(a.Width, a.Height, pixelFormatBGRA8Unorm, usageRenderTarget|usageShaderRead, nil, 0)
+		}
+	})
+	defer pool(func() {
+		for i := range targets {
+			release(&targets[i])
+		}
+	})
+	// Each frame recolors one of these fills: small ones, and the second
+	// stripe, under the glass.
+	var fills []int
+	for i, op := range a.Ops {
+		if op.Kind == scene.OpFill && op.Rect.W <= 40 && (len(fills) < 3 || op.Rect.Y == 410 && op.Rect.X == 40) {
+			fills = append(fills, i)
+		}
+	}
+	if len(fills) != 4 {
+		t.Fatalf("found %d fills, want 4", len(fills))
+	}
+	colors := []scene.Color{{R: 30, G: 200, B: 90, A: 255}, {R: 200, G: 30, B: 90, A: 255}, {R: 90, G: 30, B: 200, A: 255}}
+	s := *a
+	s.Ops = slices.Clone(a.Ops)
+	for frame := range 10 {
+		if frame > 0 {
+			op := &s.Ops[fills[frame%len(fills)]]
+			op.Color = colors[frame%len(colors)]
+		}
+		target := targets[frame%len(targets)]
+		if frame == 5 {
+			junk := make([]byte, s.Width*s.Height*4)
+			for i := range junk {
+				junk[i] = byte(i * 7)
+			}
+			pool(func() {
+				msgReplaceRegion(target, sel("replaceRegion:mipmapLevel:withBytes:bytesPerRow:"), mtlRegion{W: uint(s.Width), H: uint(s.Height), D: 1}, 0, unsafe.Pointer(&junk[0]), uint(s.Width*4))
+			})
+		}
+		got, whole, err := r.renderInto(&s, target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if whole != (frame == 0) {
+			t.Fatalf("frame %d: drawn whole %v", frame, whole)
+		}
+		want, err := r.renderOffscreen(&s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				p := i / 4
+				t.Fatalf("frame %d: pixel (%d, %d) is %v, drawn whole %v", frame, p%s.Width, p/s.Width, got[p*4:p*4+4], want[p*4:p*4+4])
+			}
+		}
+	}
+	gputest.Compare(t, "metal-damage", mustRender(t, r, &s, targets[10%len(targets)]), s.Width*4, &s)
+}
+
+func mustRender(t *testing.T, r *Renderer, s *scene.Scene, target id) []byte {
+	t.Helper()
+	pix, _, err := r.renderInto(s, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pix
 }
