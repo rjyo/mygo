@@ -220,6 +220,8 @@ export interface NotarizeConfig {
 
 /** Windows packaging. */
 export interface WindowsConfig {
+  /** A square PNG that replaces `icon` for the executable and the installer. */
+  icon?: string;
   /** A code signing certificate (.pfx); its password comes from `MYGO_WINDOWS_CERTIFICATE_PASSWORD`. */
   certificate?: string;
   /** Instead of `certificate`, a command that signs a file, with `%1` for its path. */
@@ -230,6 +232,8 @@ export interface WindowsConfig {
 
 /** Linux packaging. */
 export interface LinuxConfig {
+  /** A square PNG that replaces `icon` for the desktop entry and the Debian package. */
+  icon?: string;
   /** `Name <email>`, the maintainer of the Debian package (default: `author` in package.json, else the app's name). */
   maintainer?: string;
   /** A short description, for the desktop entry and the package. */
