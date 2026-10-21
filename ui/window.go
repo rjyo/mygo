@@ -226,6 +226,19 @@ func (h *windowHost) occluded() bool {
 	return ok && s.Occluded()
 }
 
+// spinnerRenderer is a GPU renderer that has the system turn spinners
+// (scene.OpSpinner), as Metal's has Core Animation.
+type spinnerRenderer interface {
+	AnimatesSpinners() bool
+}
+
+// animatesSpinners reports whether the window's renderer turns spinners
+// itself: the GPU's, drawing on the GPU.
+func (h *windowHost) animatesSpinners() bool {
+	r, ok := h.gpu.(spinnerRenderer)
+	return ok && !h.degraded && r.AnimatesSpinners()
+}
+
 func (h *windowHost) size() (float32, float32, float32) {
 	w, ht, s := h.conn.Surface.Size()
 	if s <= 0 {
