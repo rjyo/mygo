@@ -43,6 +43,12 @@ type WebViewOptions struct {
 	// Transparent shows what the window's view paints under the web view
 	// through the transparent parts of its page.
 	Transparent bool
+	// ScrollThrough sends the wheel and trackpad scrolls over the web view
+	// to the native UI under it instead of its page: a page fitted to its
+	// content inside a scrolling view (an inline chart in a list) scrolls
+	// the view, as its other content does. The page gets no wheel events.
+	// macOS only for now.
+	ScrollThrough bool
 }
 
 // errNoContent is returned by NewWebView for windows showing a page.
@@ -82,6 +88,7 @@ func (w *Window) newWebView(opts WebViewOptions, bg *background) (*WebView, erro
 	pw.pg = &Page{pw}
 	pw.resetPage()
 	popts := pw.platformOptions(&WindowOptions{Page: opts.Page, Transparent: opts.Transparent})
+	popts.ScrollThrough = opts.ScrollThrough
 	popts.BackgroundColor = pw.backgroundColor()
 	if opts.Transparent {
 		pw.background = nil
