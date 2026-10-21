@@ -27,6 +27,7 @@ import (
 	"github.com/ebitengine/purego/objc"
 
 	"github.com/egoist/mygo/internal/gpu"
+	"github.com/egoist/mygo/internal/raster"
 	"github.com/egoist/mygo/internal/scene"
 )
 
@@ -70,6 +71,7 @@ const (
 	usageShaderRead   = 1
 	usageRenderTarget = 4
 	storageManaged    = 1
+	storagePrivate    = 2
 
 	loadActionDontCare     = 0
 	loadActionLoad         = 1
@@ -404,6 +406,17 @@ type Renderer struct {
 
 	// drawState is the frames'.
 	drawState
+
+	// A frame redraws canvas, which holds the last, only where the scene
+	// changed since (diff), then copies it to its drawable: a spinner or a
+	// caret redraws only itself, not the window. The drawables can't
+	// hold the frames instead: Core Animation may free or purge one
+	// between frames, and a frame drawn over what it held then flickers.
+	diff         raster.Damage
+	canvas       texture
+	canvasFormat uint
+	// lastWhole tells that the last frame drew the canvas whole.
+	lastWhole bool
 }
 
 // New creates a renderer drawing into a CAMetalLayer that it adds to
@@ -925,8 +938,9 @@ func (r *Renderer) track(cb id) {
 }
 
 // encode encodes drawing s into target, returning the autoreleased
-// command buffer, not yet committed.
-func (r *Renderer) encode(s *scene.Scene, target id) (id, error) {
+// command buffer, not yet committed: whole, when damage is nil, or only
+// within the rectangles of damage, over the last frame target holds.
+func (r *Renderer) encode(s *scene.Scene, target id, damage []image.Rectangle) (id, error) {
 	if err := r.initGPU(); err != nil {
 		return 0, err
 	}
@@ -965,7 +979,21 @@ func (r *Renderer) encode(s *scene.Scene, target id) (id, error) {
 		return 0, err
 	}
 	r.b.Wide = r.cur.format == pixelFormatRGBA16Float
-	if err := r.drawInto(cb, s, target, &r.drawState); err != nil {
+	if damage != nil {
+		// Only the operations drawing in the damage.
+		bounds := r.diff.Next()
+		r.b.Keep = func(i int) bool {
+			for _, d := range damage {
+				if bounds[i].Overlaps(d) {
+					return true
+				}
+			}
+			return false
+		}
+	}
+	err = r.drawInto(cb, s, target, &r.drawState, damage)
+	r.b.Keep = nil
+	if err != nil {
 		return 0, err
 	}
 	return cb, nil
@@ -1009,17 +1037,26 @@ func (r *Renderer) drawCanvas(cb id, c *scene.Image) error {
 	t.b.NoCull, t.b.NoShadowSplit, t.b.NoRingSplit = r.b.NoCull, r.b.NoShadowSplit, r.b.NoRingSplit
 	t.b.NoClasses, t.b.GeneralClasses = r.b.NoClasses, r.b.GeneralClasses
 	t.b.GeneralFill, t.b.NoClipSkip = r.b.GeneralFill, r.b.NoClipSkip
-	if err := r.drawInto(cb, cs, t.tex, &t.drawState); err != nil {
+	if err := r.drawInto(cb, cs, t.tex, &t.drawState, nil); err != nil {
 		return err
 	}
 	t.ver = c.Version()
 	return nil
 }
 
-// drawInto encodes drawing s into target with d, in the format r.cur is.
-func (r *Renderer) drawInto(cb id, s *scene.Scene, target id, d *drawState) error {
+// drawInto encodes drawing s into target with d, in the format r.cur is:
+// whole, when damage is nil, or only within the rectangles of damage, over
+// what target holds.
+func (r *Renderer) drawInto(cb id, s *scene.Scene, target id, d *drawState, damage []image.Rectangle) error {
 	d.b.ClipSkip = true
 	s = d.b.Build(s, r.imageTexture)
+	// After the scene's, each damaged rectangle's clearing: a hole, then
+	// the clear color.
+	clears := len(d.b.Instances)
+	for _, dr := range damage {
+		c := clearInstances(s, dr)
+		d.b.Instances = append(d.b.Instances, c[:]...)
+	}
 	instBuf := &d.instBufs[r.inUse]
 	instCap := &d.instCaps[r.inUse]
 	if n := len(d.b.Instances); n > *instCap {
@@ -1040,16 +1077,60 @@ func (r *Renderer) drawInto(cb id, s *scene.Scene, target id, d *drawState) erro
 	if err := r.fitBackdrop(&d.b); err != nil {
 		return err
 	}
-	enc, err := r.begin(cb, target, loadActionClear, s, &d.b)
-	if err != nil {
-		return err
+	if damage == nil {
+		enc, err := r.begin(cb, target, loadActionClear, s, &d.b)
+		if err != nil {
+			return err
+		}
+		if enc, err = r.draw(cb, enc, target, s, d, *instBuf, gpu.Scissor{Right: int32(s.Width), Bottom: int32(s.Height)}); err != nil {
+			return err
+		}
+		send(enc, "endEncoding")
+		return nil
 	}
+	for k, dr := range damage {
+		area := gpu.Scissor{Left: int32(dr.Min.X), Top: int32(dr.Min.Y), Right: int32(dr.Max.X), Bottom: int32(dr.Max.Y)}
+		area = clampScissor(area, s)
+		if area.Empty() {
+			continue
+		}
+		enc, err := r.begin(cb, target, loadActionLoad, s, &d.b)
+		if err != nil {
+			return err
+		}
+		sc := mtlScissorRect{uint(area.Left), uint(area.Top), uint(area.Right - area.Left), uint(area.Bottom - area.Top)}
+		msgSetScissor(enc, sel("setScissorRect:"), sc)
+		at := clears + 2*k
+		send(enc, "setRenderPipelineState:", r.cur.holePipe)
+		send(enc, "setVertexBuffer:offset:atIndex:", *instBuf, uintptr(at*gpu.InstanceSize), 0)
+		send(enc, "setFragmentBuffer:offset:atIndex:", *instBuf, uintptr(at*gpu.InstanceSize), 0)
+		send(enc, "drawPrimitives:vertexStart:vertexCount:instanceCount:", primitiveTriStrip, 0, 4, 1)
+		send(enc, "setRenderPipelineState:", r.cur.pipeline)
+		if s.Clear.A > 0 {
+			send(enc, "setVertexBuffer:offset:atIndex:", *instBuf, uintptr((at+1)*gpu.InstanceSize), 0)
+			send(enc, "setFragmentBuffer:offset:atIndex:", *instBuf, uintptr((at+1)*gpu.InstanceSize), 0)
+			send(enc, "drawPrimitives:vertexStart:vertexCount:instanceCount:", primitiveTriStrip, 0, 4, 1)
+		}
+		if enc, err = r.draw(cb, enc, target, s, d, *instBuf, area); err != nil {
+			return err
+		}
+		send(enc, "endEncoding")
+	}
+	return nil
+}
+
+// draw encodes the batches of d, its instances in instBuf, within area,
+// with enc, which draws into target with the instance pipeline, and
+// returns the encoder drawing on: an effect reading its backdrop ends one
+// and begins another.
+func (r *Renderer) draw(cb, enc, target id, s *scene.Scene, d *drawState, instBuf id, area gpu.Scissor) (id, error) {
+	var err error
 	bound, pipe := r.empty, r.cur.pipeline
 	for _, b := range d.b.Batches {
 		// Metal requires scissor rectangles within the target.
-		sc := b.Scissor
-		sc.Left, sc.Top = max(sc.Left, 0), max(sc.Top, 0)
-		sc.Right, sc.Bottom = min(sc.Right, int32(s.Width)), min(sc.Bottom, int32(s.Height))
+		sc := clampScissor(b.Scissor, s)
+		sc.Left, sc.Top = max(sc.Left, area.Left), max(sc.Top, area.Top)
+		sc.Right, sc.Bottom = min(sc.Right, area.Right), min(sc.Bottom, area.Bottom)
 		if b.Count == 0 || sc.Empty() {
 			continue
 		}
@@ -1071,7 +1152,7 @@ func (r *Renderer) drawInto(cb id, s *scene.Scene, target id, d *drawState) erro
 			send(enc, "endEncoding")
 			r.readBackdrop(cb, target, d.b.Backdrops[b.Backdrop-1])
 			if enc, err = r.begin(cb, target, loadActionLoad, s, &d.b); err != nil {
-				return err
+				return 0, err
 			}
 			send(enc, "setFragmentTexture:atIndex:", r.cur.backdrop[0].tex, 3)
 			bound, pipe = r.empty, r.cur.pipeline
@@ -1086,13 +1167,35 @@ func (r *Renderer) drawInto(cb id, s *scene.Scene, target id, d *drawState) erro
 		}
 		send(enc, "setFragmentTexture:atIndex:", or(id(b.ClipMask), r.empty), 4)
 		offset := uintptr(b.Start * gpu.InstanceSize)
-		send(enc, "setVertexBuffer:offset:atIndex:", *instBuf, offset, 0)
-		send(enc, "setFragmentBuffer:offset:atIndex:", *instBuf, offset, 0)
+		send(enc, "setVertexBuffer:offset:atIndex:", instBuf, offset, 0)
+		send(enc, "setFragmentBuffer:offset:atIndex:", instBuf, offset, 0)
 		msgSetScissor(enc, sel("setScissorRect:"), mtlScissorRect{uint(sc.Left), uint(sc.Top), uint(sc.Right - sc.Left), uint(sc.Bottom - sc.Top)})
 		send(enc, "drawPrimitives:vertexStart:vertexCount:instanceCount:", primitiveTriStrip, 0, 4, uintptr(b.Count))
 	}
-	send(enc, "endEncoding")
-	return nil
+	return enc, nil
+}
+
+// clampScissor returns sc within the frame of s.
+func clampScissor(sc gpu.Scissor, s *scene.Scene) gpu.Scissor {
+	sc.Left, sc.Top = max(sc.Left, 0), max(sc.Top, 0)
+	sc.Right, sc.Bottom = min(sc.Right, int32(s.Width)), min(sc.Bottom, int32(s.Height))
+	return sc
+}
+
+// clearInstances returns the instances clearing d to the clear color of
+// s: a hole, which leaves it transparent, and a fill of the color.
+func clearInstances(s *scene.Scene, d image.Rectangle) [2]gpu.Instance {
+	everything := [4]float32{-1e6, -1e6, 2e6, 2e6}
+	rc := [4]float32{float32(d.Min.X), float32(d.Min.Y), float32(d.Dx()), float32(d.Dy())}
+	c := s.Clear
+	// Untransformed: the identity's rows.
+	t0, t1 := [4]float32{1, 0, 0, 0}, [4]float32{0, 1, 0, 0}
+	return [2]gpu.Instance{
+		{Rect: rc, Color: [4]float32{0, 0, 0, 1}, Clip: everything, Params: [4]float32{0, 0, float32(scene.PaintSolid), 1},
+			Transform0: t0, Transform1: t1},
+		{Rect: rc, Color: [4]float32{float32(c.R) / 255, float32(c.G) / 255, float32(c.B) / 255, float32(c.A) / 255},
+			Clip: everything, Params: [4]float32{0, 0, float32(scene.PaintSolid), 1}, Transform0: t0, Transform1: t1},
+	}
 }
 
 // begin starts encoding the drawing of s into target, which it clears or
@@ -1273,8 +1376,7 @@ func (r *Renderer) render(s *scene.Scene) error {
 		return nil // none came within a second: skip the frame
 	}
 	r.waited = !sync && time.Since(now) > behindAfter
-	texture := send(drawable, "texture")
-	cb, err := r.encode(s, texture)
+	cb, err := r.frameInto(s, send(drawable, "texture"))
 	if err != nil {
 		return err
 	}
@@ -1328,9 +1430,65 @@ func (r *Renderer) fit(w, h int, scale float64) (changed bool) {
 	return true
 }
 
+// frameInto encodes drawing s into the canvas, where s differs from the
+// last frame, and copying the canvas to target, a drawable's texture, and
+// returns the command buffer, not yet committed.
+func (r *Renderer) frameInto(s *scene.Scene, target id) (id, error) {
+	if int(send(target, "width")) != s.Width || int(send(target, "height")) != s.Height {
+		// Not the size of the frame, which the canvas is: draw it whole
+		// there instead.
+		r.diff.Invalidate()
+		r.lastWhole = true
+		return r.encode(s, target, nil)
+	}
+	if !r.fitCanvas(s.Width, s.Height) {
+		return 0, errors.New("metal: cannot create a canvas")
+	}
+	damage, whole := r.diff.Diff(s)
+	if whole {
+		damage = nil
+	}
+	r.lastWhole = whole
+	cb, err := r.encode(s, r.canvas.tex, damage)
+	if err != nil {
+		r.diff.Invalidate()
+		return 0, err
+	}
+	r.diff.Remember(s)
+	blit := send(cb, "blitCommandEncoder")
+	send(blit, "copyFromTexture:toTexture:", r.canvas.tex, target)
+	send(blit, "endEncoding")
+	return cb, nil
+}
+
+// fitCanvas makes the canvas w×h pixels of the format drawn, unless it
+// is: one made anew holds no frame, so the next draws whole.
+func (r *Renderer) fitCanvas(w, h int) bool {
+	if r.canvas.tex != 0 && r.canvas.w == w && r.canvas.h == h && r.canvasFormat == r.cur.format {
+		return true
+	}
+	release(&r.canvas.tex)
+	r.canvas = texture{}
+	r.diff.Invalidate()
+	desc := send(class("MTLTextureDescriptor"), "texture2DDescriptorWithPixelFormat:width:height:mipmapped:", uintptr(r.cur.format), uintptr(w), uintptr(h), 0)
+	if desc == 0 {
+		return false
+	}
+	send(desc, "setUsage:", usageRenderTarget|usageShaderRead)
+	send(desc, "setStorageMode:", storagePrivate)
+	if r.canvas.tex = send(r.device, "newTextureWithDescriptor:", desc); r.canvas.tex == 0 {
+		return false
+	}
+	r.canvas.w, r.canvas.h, r.canvasFormat = w, h, r.cur.format
+	return true
+}
+
 // releaseTextures frees what the GPU's frames use, once the window is
 // idle. The next frame makes them again, uploading the atlases whole.
 func (r *Renderer) releaseTextures() {
+	r.diff.Release()
+	release(&r.canvas.tex)
+	r.canvas = texture{}
 	release(&r.mask.tex)
 	release(&r.color.tex)
 	for key, t := range r.images {
@@ -1425,7 +1583,7 @@ func (r *Renderer) renderOffscreen(s *scene.Scene) (pix []byte, err error) {
 		}
 		defer release(&tex)
 		var cb id
-		if cb, err = r.encode(s, tex); err != nil {
+		if cb, err = r.encode(s, tex, nil); err != nil {
 			return
 		}
 		blit := send(cb, "blitCommandEncoder")
