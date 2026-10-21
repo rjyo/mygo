@@ -89,6 +89,9 @@ type window struct {
 	webViews []*window
 	host     *window
 	clip     id
+	// scrollTo is the surface view a ScrollThrough web view sends its
+	// scrolls to; 0 for others.
+	scrollTo id
 	// pointerIn tells that the page of a web view has the pointer, where
 	// nothing the content painted covers it.
 	pointerIn bool
@@ -1422,6 +1425,15 @@ func registerWindowClasses() {
 				w = w.top()
 				release(w.lastMouseDown)
 				w.lastMouseDown = retain(ev)
+			}
+			sendSuper(self, "MyGoWebView", cmd, uintptr(ev))
+		}),
+		// A ScrollThrough web view's scrolls go to the surface under it,
+		// which scrolls its content where the pointer is.
+		method("scrollWheel:", func(self id, cmd objc.SEL, ev id) {
+			if w := theBackend.byWebView[self]; w != nil && w.scrollTo != 0 && w.host != nil && !w.host.closed {
+				send(w.scrollTo, "scrollWheel:", uintptr(ev))
+				return
 			}
 			sendSuper(self, "MyGoWebView", cmd, uintptr(ev))
 		}),
