@@ -91,6 +91,10 @@ const asciiPrintable = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUV
 // paint updates the rows that changed and draws the terminal.
 func (v *view) paint(p *ui.Painter, r ui.Rect) {
 	t := v.t
+	// Output painted from here on shows: what comes later asks for a
+	// frame, which paints the view again without building the window's.
+	t.shown.Store(true)
+	p.Live()
 	v.layout(r, p.Scale())
 	bg := v.theme.Background
 	t.mu.Lock()
@@ -125,6 +129,11 @@ func (v *view) paint(p *ui.Painter, r ui.Rect) {
 	colors := rs.Colors()
 	full := rs.Dirty() == vt.Full || colors != v.colors
 	v.colors, v.cursor = colors, rs.Cursor()
+	if v.focused && v.cursor.Blinking && v.cursor.Visible {
+		// The cursor blinks, every 600 ms, while the terminal has the
+		// focus: the view paints again, as for output, not the window's.
+		v.blinkIn(blinkPeriod - time.Since(v.blinkStart)%blinkPeriod)
+	}
 	cols, rows := rs.Size()
 	if len(v.lines) != rows {
 		v.lines = append(v.lines[:0], make([]rowCache, rows)...)
@@ -139,6 +148,21 @@ func (v *view) paint(p *ui.Painter, r ui.Rect) {
 	}
 	rs.Clean()
 	v.draw(p, r)
+}
+
+// blinkIn asks for the view to be painted again after d, as the cursor
+// blinks.
+func (v *view) blinkIn(d time.Duration) {
+	if v.blink != nil {
+		v.blink.Reset(d)
+		return
+	}
+	t := v.t
+	v.blink = time.AfterFunc(d, func() {
+		if f := t.repaint.Load(); f != nil {
+			(*f)()
+		}
+	})
 }
 
 // resolved is a cell's style with its colors resolved.
