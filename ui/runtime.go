@@ -316,7 +316,11 @@ type engine struct {
 	segs, nextSegs []paintSeg
 	retained       bool
 	repaints       int
-	spare          scene.Scene
+	// spinning tells that the last frame painted whole left its spinners
+	// to the renderer to turn (Painter.Spinner): one that no longer does
+	// paints them whole again, as arcs that ask for frames.
+	spinning bool
+	spare    scene.Scene
 	// textMark is the text system's token for the masks of the last frame
 	// painted whole (text.System.MarkFrame).
 	textMark uint64
@@ -756,7 +760,7 @@ func (rt *engine) repaintFrame(w, h, scale float32) {
 	// A pose moving moves the ops of what it holds: the frame paints
 	// whole then.
 	moved := rt.repose()
-	if !moved && rt.retained && rt.repaints < maxRepaints && rt.text.BeginRepaint(rt.textMark) {
+	if !moved && rt.retained && rt.repaints < maxRepaints && rt.spinning == rt.animatesSpinners() && rt.text.BeginRepaint(rt.textMark) {
 		rt.beginRepaintSegs()
 		rt.repaintSegs(scale, rt.liveDue)
 	} else {
