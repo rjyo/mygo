@@ -195,6 +195,11 @@ func load(path string) error {
 	registerFunc(&mouseEventSetPosition, fnMouseEventSetPosition)
 	registerFunc(&selectionFormatAlloc, fnSelectionFormatAlloc)
 	registerFunc(&formatterTerminalNew, fnFormatterTerminalNew)
+	// Snapshots are optional: a library without them loads, and Restore
+	// says it cannot.
+	for _, s := range snapshotSymbols {
+		*s.addr, _ = sym(h, s.name)
+	}
 	makeCallbacks()
 	decodePNG()
 	return nil

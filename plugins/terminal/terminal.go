@@ -1027,6 +1027,38 @@ func (t *Terminal) Send(data []byte) {
 // Feed shows data as if the program wrote it: text and escape sequences.
 func (t *Terminal) Feed(data []byte) { t.write(data) }
 
+// Restore replaces what the terminal holds with a libghostty-vt snapshot
+// (Ghostty's snapshot.h): its screens and their scrollback, the cursor and
+// the modes, as a server keeping the terminal (Rex) hands a client that
+// shows it. The terminal keeps its size, its settings and its program or
+// Conn. Output that follows the snapshot must come after Restore returns:
+// a Conn calls it from its Read, before returning that output.
+func (t *Terminal) Restore(snapshot []byte) error {
+	t.mu.Lock()
+	if t.term == nil {
+		t.mu.Unlock()
+		return errors.New("terminal: closed")
+	}
+	err := t.term.Restore(snapshot)
+	var title string
+	if err == nil {
+		t.term.Resize(t.size.cols, t.size.rows, t.size.cellW, t.size.cellH)
+		title = t.term.Title()
+		// A synchronized update the snapshot's terminal began ends with
+		// its own output, which follows.
+		t.rmu.Lock()
+		t.held = false
+		t.rmu.Unlock()
+	}
+	t.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	t.fire(events{title: true}, title)
+	t.redraw()
+	return nil
+}
+
 // ClearScreen clears the scrollback and the screen above the cursor's line,
 // which moves to the top, as ActionClearScreen does and Kitty's
 // clear_terminal to_cursor: the prompt the shell shows stays, and the

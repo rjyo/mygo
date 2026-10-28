@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"unsafe"
@@ -30,6 +31,10 @@ type Terminal struct {
 	// reply gathers what the library writes while it answers a clipboard
 	// read, which WritePTY then gets at once.
 	reply *[]byte
+	// kept are the settings made, by name in the order first made, which
+	// Restore makes again on the terminal a snapshot gives.
+	kept      map[string]func()
+	keptOrder []string
 }
 
 // ClipboardRead is a program's request to read the clipboard.
@@ -175,23 +180,38 @@ func NewTerminal(cols, rows int, effects Effects) (*Terminal, error) {
 	t.id = terminals.next
 	terminals.m[t.id] = t
 	terminals.Unlock()
-	t.setValue(optUserdata, t.id)
-	t.setValue(optWritePTY, cbWritePTY)
-	t.setValue(optBell, cbBell)
-	t.setValue(optTitleChanged, cbTitleChanged)
-	t.setValue(optPwdChanged, cbPwdChanged)
-	t.setValue(optRenderHold, cbRenderHold)
-	t.setValue(optClipboardWrite, cbClipboardWrite)
-	t.setValue(optClipboardRead, cbClipboardRead)
-	t.setValue(optSize, cbSize)
-	t.setValue(optColorScheme, cbColorScheme)
-	t.setValue(optDeviceAttributes, cbDeviceAttributes)
-	t.setValue(optDesktopNotification, cbDesktopNotification)
-	t.setValue(optProgressReport, cbProgressReport)
+	t.keep("callbacks", func() {
+		t.setValue(optUserdata, t.id)
+		t.setValue(optWritePTY, cbWritePTY)
+		t.setValue(optBell, cbBell)
+		t.setValue(optTitleChanged, cbTitleChanged)
+		t.setValue(optPwdChanged, cbPwdChanged)
+		t.setValue(optRenderHold, cbRenderHold)
+		t.setValue(optClipboardWrite, cbClipboardWrite)
+		t.setValue(optClipboardRead, cbClipboardRead)
+		t.setValue(optSize, cbSize)
+		t.setValue(optColorScheme, cbColorScheme)
+		t.setValue(optDeviceAttributes, cbDeviceAttributes)
+		t.setValue(optDesktopNotification, cbDesktopNotification)
+		t.setValue(optProgressReport, cbProgressReport)
+	})
 	// Images of the Kitty graphics protocol are refused until SetImageLimit
 	// takes them, so that programs fall back to something else.
 	t.SetImageLimit(0)
 	return t, nil
+}
+
+// keep makes a setting, and remembers it under name for Restore; a later
+// setting of the same name replaces it.
+func (t *Terminal) keep(name string, apply func()) {
+	if t.kept == nil {
+		t.kept = map[string]func(){}
+	}
+	if _, ok := t.kept[name]; !ok {
+		t.keptOrder = append(t.keptOrder, name)
+	}
+	t.kept[name] = apply
+	apply()
 }
 
 // set sets an option to a pointer to its value. The pointer is converted
@@ -266,21 +286,36 @@ func (t *Terminal) Reset() { call(fnTerminalReset, t.h) }
 // foreground, the background, the cursor's (nil for the text's) and the
 // palette of 256 colors (nil for Ghostty's).
 func (t *Terminal) SetColors(fg, bg RGB, cursor *RGB, palette *[256]RGB) {
-	t.set(optColorForeground, unsafe.Pointer(&fg))
-	t.set(optColorBackground, unsafe.Pointer(&bg))
-	t.set(optColorCursor, unsafe.Pointer(cursor))
-	t.set(optColorPalette, unsafe.Pointer(palette))
+	// Copies, for Restore to set again.
+	if cursor != nil {
+		c := *cursor
+		cursor = &c
+	}
+	if palette != nil {
+		p := *palette
+		palette = &p
+	}
+	t.keep("colors", func() {
+		t.set(optColorForeground, unsafe.Pointer(&fg))
+		t.set(optColorBackground, unsafe.Pointer(&bg))
+		t.set(optColorCursor, unsafe.Pointer(cursor))
+		t.set(optColorPalette, unsafe.Pointer(palette))
+	})
 }
 
 // SetScrollback limits the scrollback to about n bytes.
 func (t *Terminal) SetScrollback(n int) {
 	v := uintptr(max(n, 0))
-	t.set(optScrollbackMaxBytes, unsafe.Pointer(&v))
+	t.keep("scrollback", func() { t.set(optScrollbackMaxBytes, unsafe.Pointer(&v)) })
 }
 
 // SetTerminfoName sets the name of the terminfo entry the terminal reports
 // (XTGETTCAP TN).
 func (t *Terminal) SetTerminfoName(name string) {
+	t.keep("terminfo", func() { t.setTerminfoName(name) })
+}
+
+func (t *Terminal) setTerminfoName(name string) {
 	b := []byte(name)
 	s := cString{len: uintptr(len(b))}
 	// The string holds the address of b, which the call does not see.
@@ -305,8 +340,10 @@ const (
 
 // SetDefaultCursor sets the cursor that programs reset to (DECSCUSR 0).
 func (t *Terminal) SetDefaultCursor(s CursorStyle, blink bool) {
-	t.set(optDefaultCursorStyle, unsafe.Pointer(&s))
-	t.set(optDefaultCursorBlink, unsafe.Pointer(&blink))
+	t.keep("cursor", func() {
+		t.set(optDefaultCursorStyle, unsafe.Pointer(&s))
+		t.set(optDefaultCursorBlink, unsafe.Pointer(&blink))
+	})
 }
 
 func (t *Terminal) str(data int) string {
@@ -359,7 +396,7 @@ func (t *Terminal) SetMode(m Mode, v bool) {
 // SetModeDefault sets a mode, and the value a reset restores.
 func (t *Terminal) SetModeDefault(m Mode, v bool) {
 	c := modeConfig{mode: uint16(m), value: v}
-	t.set(optModeDefault, unsafe.Pointer(&c))
+	t.keep("mode default "+strconv.Itoa(int(m)), func() { t.set(optModeDefault, unsafe.Pointer(&c)) })
 }
 
 // MouseTracking reports whether a program asked for mouse events.
@@ -443,7 +480,7 @@ func (t *Terminal) CellAt(x, y int) (GridRef, bool) {
 // the scrollback, which a pseudo-terminal keeping its own screen, as
 // Windows' ConPTY, cannot follow.
 func (t *Terminal) SetResizePullBack(v bool) {
-	t.set(optResizePullBack, unsafe.Pointer(&v))
+	t.keep("resize pull back", func() { t.set(optResizePullBack, unsafe.Pointer(&v)) })
 }
 
 // RowText returns the text of row y of the viewport, and the column of
