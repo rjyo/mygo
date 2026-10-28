@@ -2758,3 +2758,36 @@ func TestDropFiles(t *testing.T) {
 		t.Errorf("dropping in bracketed paste pasted %q, want %q", got, want)
 	}
 }
+
+// TestRestore: a snapshot replaces the terminal's screens and scrollback,
+// at the terminal's own size, and tells the new title.
+func TestRestore(t *testing.T) {
+	loadLib(t)
+	snap, err := os.ReadFile("testdata/rex-alt-screen.snap")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var titles []string
+	term, err := New(Options{Conn: newPipe(), OnTitle: func(s string) { titles = append(titles, s) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	term.Feed([]byte("before"))
+	if err := term.Restore(snap); err != nil {
+		t.Fatal(err)
+	}
+	if text := term.Text(); !strings.Contains(text, "ALT5") || strings.Contains(text, "before") {
+		t.Errorf("text after the restore = %q", text)
+	}
+	term.Feed([]byte("\x1b[?1049l"))
+	if text := term.Text(); !strings.Contains(text, "MAIN1\n") {
+		t.Errorf("primary screen = %q", text)
+	}
+	if len(titles) != 1 {
+		t.Errorf("titles = %q", titles)
+	}
+	if err := term.Restore([]byte("GHOSTSNP")); err == nil {
+		t.Error("a truncated snapshot restored")
+	}
+}

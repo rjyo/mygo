@@ -613,3 +613,44 @@ func TestDeferredClipboardReadKitty(t *testing.T) {
 		t.Errorf("an empty listing: %q, want %q", got, wantEmpty)
 	}
 }
+
+// TestRestore: a snapshot Rex sent (an 80×10 terminal that printed
+// MAIN1–MAIN30, then switched to the alternate screen and printed
+// ALT1–ALT5) replaces the terminal's screens and scrollback, and the
+// terminal keeps its callbacks and colors.
+func TestRestore(t *testing.T) {
+	loadLib(t)
+	snap, err := os.ReadFile("../../testdata/rex-alt-screen.snap")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var replies []string
+	term, err := NewTerminal(20, 5, Effects{WritePTY: func(p []byte) { replies = append(replies, string(p)) }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Free()
+	fg := RGB{R: 1, G: 2, B: 3}
+	term.SetColors(fg, RGB{}, nil, nil)
+	term.Write([]byte("before"))
+	if err := term.Restore(snap); err != nil {
+		t.Fatal(err)
+	}
+	if cols, rows := term.Size(); cols != 80 || rows != 10 {
+		t.Errorf("size = %d×%d, want the snapshot's 80×10", cols, rows)
+	}
+	if text := term.Text(); !term.AltScreen() || !strings.Contains(text, "ALT5") || strings.Contains(text, "before") {
+		t.Errorf("alternate screen %v, text %q", term.AltScreen(), text)
+	}
+	if c := term.Colors(true); !c.HasForeground || c.Foreground != fg {
+		t.Errorf("default foreground = %+v", c)
+	}
+	term.Write([]byte("\x1b[?1049l"))
+	if text := term.Text(); !strings.Contains(text, "MAIN1\n") || !strings.Contains(text, "MAIN30") {
+		t.Errorf("primary screen and scrollback = %q", text)
+	}
+	term.Write([]byte("\x1b[6n"))
+	if len(replies) != 1 || !strings.HasSuffix(replies[0], "R") {
+		t.Errorf("replies after the restore = %q", replies)
+	}
+}

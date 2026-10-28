@@ -50,7 +50,7 @@ const (
 // SetImageLimit sets how many bytes the images of the Kitty graphics
 // protocol may take, zero refusing them (and deleting those there are).
 func (t *Terminal) SetImageLimit(bytes uint64) {
-	t.set(optKittyImageLimit, unsafe.Pointer(&bytes))
+	t.keep("image limit", func() { t.set(optKittyImageLimit, unsafe.Pointer(&bytes)) })
 }
 
 // Image is an image of the Kitty graphics protocol.
