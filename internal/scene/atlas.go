@@ -137,6 +137,33 @@ func (a *Atlas) ResetTransient() {
 	a.top = a.H
 }
 
+// TransientMark is where the transient rectangles reach (MarkTransient).
+type TransientMark struct {
+	shelves []shelf
+	top     int
+	gen     uint64
+	ok      bool
+}
+
+// MarkTransient returns where the transient rectangles reach now, for
+// RestoreTransient to free those reserved after, keeping the rest, into m's
+// memory.
+func (a *Atlas) MarkTransient(m TransientMark) TransientMark {
+	return TransientMark{shelves: append(m.shelves[:0], a.transient...), top: a.top, gen: a.gen, ok: true}
+}
+
+// RestoreTransient frees the transient rectangles reserved since m was
+// marked, and reports whether it could: not when the atlas was resized or
+// repacked since, which moved or freed them all.
+func (a *Atlas) RestoreTransient(m TransientMark) bool {
+	if !m.ok || m.gen != a.gen || m.top < a.bottom {
+		return false
+	}
+	a.transient = append(a.transient[:0], m.shelves...)
+	a.top = m.top
+	return true
+}
+
 // Put copies a w×h bitmap with rows of stride bytes to (x, y), and clears
 // the padding after it, which may hold an earlier bitmap's pixels.
 func (a *Atlas) Put(x, y, w, h int, src []byte, stride int) {

@@ -209,8 +209,9 @@ type engine struct {
 	// instantFrame is the frame that DisableAnimations shows at once.
 	instantFrame uint64
 	// paints counts the frames painted, those painting the last frame's
-	// elements again included.
-	paints uint64
+	// elements again included. keptFrom is the painting whose ops the
+	// frame before kept: the last that painted whole, before this one.
+	paints, keptFrom, wholePaint uint64
 	// posed are the elements of the last frame built with a pose
 	// (AnimatePose), parents first.
 	posed        []*node
@@ -311,11 +312,23 @@ type engine struct {
 	animating  bool
 	repainting bool
 	repaintAt  time.Time
-	redraw     bool
-	held       bool
-	input      bool
-	painted    [3]float32
-	gen        uint64
+	// segs are the elements the last frame painted that asked to be
+	// painted again (paintSeg), in the order painted, nextSegs those the
+	// frame painting notes, retained whether a frame may paint only those
+	// again over the rest of the last (repaintSegs), repaints how many
+	// did since one painted whole, and spare the scene they fill.
+	segs, nextSegs []paintSeg
+	retained       bool
+	repaints       int
+	spare          scene.Scene
+	// textMark is the text system's token for the masks of the last frame
+	// painted whole (text.System.MarkFrame).
+	textMark uint64
+	redraw   bool
+	held     bool
+	input    bool
+	painted  [3]float32
+	gen      uint64
 	// inkStale tells that elements moved since commit found their ink
 	// (node.ink), as poses do in frames that only paint: painting then
 	// skips none.
@@ -744,11 +757,18 @@ func (rt *engine) repaintFrame(w, h, scale float32) {
 	rt.stats.begin(rt)
 	start := time.Now()
 	rt.c.now = rt.frameTime()
-	rt.text.BeginFrame()
 	rt.repainting, rt.repaintAt = false, time.Time{}
 	root := rt.c.root
-	rt.repose()
-	rt.paint(root, w, h, scale)
+	// A pose moving moves the ops of what it holds: the frame paints
+	// whole then.
+	moved := rt.repose()
+	if !moved && rt.retained && rt.repaints < maxRepaints && rt.text.BeginRepaint(rt.textMark) {
+		rt.beginRepaintSegs()
+		rt.repaintSegs(scale)
+	} else {
+		rt.text.BeginFrame()
+		rt.paint(root, w, h, scale)
+	}
 	for try := 0; try < 2 && rt.text.Full(); try++ {
 		rt.text.MakeRoom()
 		rt.paint(root, w, h, scale)
