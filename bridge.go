@@ -43,6 +43,9 @@ func (w *Window) pageScripts() []platform.UserScript {
 	if w.preload != "" {
 		scripts = append(scripts, platform.UserScript{Source: w.preload})
 	}
+	for _, s := range w.scripts {
+		scripts = append(scripts, platform.UserScript{Source: s.Source, AtDocumentEnd: s.AtDocumentEnd, AllFrames: s.AllFrames})
+	}
 	return scripts
 }
 

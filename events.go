@@ -37,6 +37,9 @@ type NavigateEvent struct {
 	// UserInitiated is true when the navigation was triggered by a user
 	// gesture such as clicking a link.
 	UserInitiated bool
+	// InFrame is true for the navigation of an iframe, which only a page
+	// with PageOptions.FrameNavigations is asked about.
+	InFrame bool
 }
 
 // TitleEvent is passed to Page.OnPageTitleUpdated listeners. Preventing
