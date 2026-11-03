@@ -224,9 +224,9 @@ type ListState struct {
 	laidOut     bool
 	// wroteY is the offset the list set, to tell it from scrolling.
 	wroteY float64
-	// steadyY is the offset the last layout left an element not built
-	// that frame at: the one a tracked ScrollState carries into a new
-	// element.
+	// steadyY is the offset the last layout left an element at, unless
+	// it was built that frame and not sent to its end: the one a tracked
+	// ScrollState carries into a new element.
 	steadyY float32
 	req     listRequest
 	heights listHeights
@@ -1807,10 +1807,14 @@ func (s *ListState) remember(e *node, first, last int, atEnd bool, scroll float6
 	if s.read && (first != s.first || last != s.last || atEnd != s.atEnd) {
 		e.c.rt.animating = true
 	}
-	s.laidOut, s.wroteY, s.req, s.read = true, scroll, listRequest{}, false
-	if e.st.born != e.c.rt.frame {
+	// A layout of an element built this frame leaves a place only once it
+	// went to the end it was asked for: earlier passes saw the element
+	// before it took the tracked offset. Built anew again next frame, the
+	// list then carries that end along.
+	if e.st.born != e.c.rt.frame || s.req.end {
 		s.steadyY = float32(scroll)
 	}
+	s.laidOut, s.wroteY, s.req, s.read = true, scroll, listRequest{}, false
 	s.first, s.last, s.atEnd = first, last, atEnd
 	s.following = atEnd
 	s.anchor, s.anchorKey = max(0, first), nil
