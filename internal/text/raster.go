@@ -120,9 +120,47 @@ func (s *System) BeginFrame() {
 	defer s.mu.Unlock()
 	s.MaskAtlas.ResetTransient()
 	clear(s.transient)
+	s.transientKeys, s.marked = s.transientKeys[:0], false
 	s.full, s.want = [2]bool{}, [2]int{}
 	s.wantSize = [2]image.Point{}
 	s.rooms = 0
+}
+
+// MarkFrame notes that the frame painted whole draws the masks drawn so
+// far, which frames painting only some of it again keep (BeginRepaint),
+// and returns the token they pass. Windows share the system: a frame
+// another begins since (BeginFrame, MarkFrame) frees those masks or marks
+// its own, which makes the token stale.
+func (s *System) MarkFrame() uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.mark = s.MaskAtlas.MarkTransient(s.mark)
+	s.markKeys, s.marked = len(s.transientKeys), true
+	s.markSeq++
+	return s.markSeq
+}
+
+// BeginRepaint begins a frame that paints only some of the last frame
+// painted whole (MarkFrame) again and keeps the rest of it, as BeginFrame
+// does one painted whole: it keeps the masks that frame drew for itself
+// alone, which the rest still shows, and frees those drawn since. It
+// reports false when it cannot, as when the atlas made room or another
+// window painted a frame since (token is stale): the frame must then be
+// painted whole, after BeginFrame.
+func (s *System) BeginRepaint(token uint64) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.marked || token != s.markSeq || !s.MaskAtlas.RestoreTransient(s.mark) {
+		return false
+	}
+	for _, k := range s.transientKeys[s.markKeys:] {
+		delete(s.transient, k)
+	}
+	s.transientKeys = s.transientKeys[:s.markKeys]
+	s.full, s.want = [2]bool{}, [2]int{}
+	s.wantSize = [2]image.Point{}
+	s.rooms = 0
+	return true
 }
 
 // Full reports whether an atlas filled up during the frame being painted
@@ -163,6 +201,7 @@ func (s *System) makeRoom(color bool, want int, size image.Point, grow bool) {
 			need += (int(g.W) + 1) * (int(g.H) + 1)
 		}
 		clear(s.transient)
+		s.transientKeys, s.marked = s.transientKeys[:0], false
 		a.ResetTransient()
 		for k, e := range s.masks {
 			if e.used != s.frame {
@@ -389,6 +428,7 @@ func (s *System) Mask(key uint64, draw func() (w, h int, pix []byte)) GlyphImage
 		s.masks[key] = &atlasEntry{g, s.frame}
 	} else {
 		s.transient[key] = g
+		s.transientKeys = append(s.transientKeys, key)
 		s.recent[key] = s.frame
 	}
 	return g
