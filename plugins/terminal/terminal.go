@@ -529,6 +529,14 @@ type Terminal struct {
 	// find is the search, while one goes (Search).
 	find search
 
+	// repaint asks for a frame painting the view again; shown tells that
+	// a frame painted the view since output last asked for one, and
+	// compose that the view builds anew as output comes, for an input
+	// method composing at the cursor.
+	repaint atomic.Pointer[func()]
+	shown   atomic.Bool
+	compose atomic.Bool
+
 	// curTheme is the view's theme, for the program's questions; t.mu
 	// guards it. v is the view's state, on the main thread.
 	curTheme *Theme
@@ -787,6 +795,22 @@ func (t *Terminal) write(p []byte) {
 	}
 	t.mu.Unlock()
 	t.fire(ev, title)
+	t.output()
+}
+
+// output asks for a frame showing what the program wrote: one painting
+// the view again over the last frame (ui.Services.Repaint), which costs
+// only the terminal's painting, unless an input method composes at the
+// cursor. A view out of sight, which the last frame output asked for did
+// not paint, asks for none until a frame shows it again.
+func (t *Terminal) output() {
+	if !t.shown.Swap(false) {
+		return
+	}
+	if f := t.repaint.Load(); f != nil && !t.compose.Load() {
+		(*f)()
+		return
+	}
 	t.redraw()
 }
 
