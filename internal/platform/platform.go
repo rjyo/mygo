@@ -335,6 +335,9 @@ type WindowOptions struct {
 	HasShadow      bool
 	Frameless      bool
 	Transparent    bool
+	// ScrollThrough, for a web view, sends its scrolls to the surface it
+	// is under instead of its page (mygo.WebViewOptions.ScrollThrough).
+	ScrollThrough bool
 	// BackgroundColor is painted before the page renders; nil keeps the
 	// platform default.
 	BackgroundColor *Color

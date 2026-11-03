@@ -46,6 +46,9 @@ func (s *surface) NewWebView(o *platform.WindowOptions, h platform.WindowHandler
 		send(v.clip, "addSubview:", uintptr(v.web))
 		send(host.view, "addSubview:positioned:relativeTo:", uintptr(v.clip), nsWindowBelow, uintptr(s.view))
 	})
+	if o.ScrollThrough {
+		v.scrollTo = s.view
+	}
 	b.byDelegate[v.delegate] = v
 	b.byWebView[v.web] = v
 	host.webViews = append(host.webViews, v)
