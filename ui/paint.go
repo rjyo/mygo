@@ -38,9 +38,9 @@ type Painter struct {
 	// the frame's painting, where the elements are where commit put them.
 	cull bool
 	// drawing tells that a Draw or DrawOver callback paints into the
-	// window's scene, and asked that it asked to be painted again (see
-	// paintPart).
-	drawing, asked bool
+	// window's scene, asked that it asked to be painted again, and live
+	// that it noted Live (see paintPart).
+	drawing, asked, live bool
 }
 
 // opaqueBox is the box of an element painting an opaque background, and
@@ -159,6 +159,19 @@ func (p *Painter) After(d time.Duration) {
 		p.rt.repaintAt = at
 	}
 	p.asks()
+}
+
+// Live notes that the element draws what changes without the view
+// changing, as a terminal its grid as output comes: Services.Repaint then
+// paints it again over the rest of the last frame, without building the
+// view. Call it in every frame it paints; it asks for no frame itself.
+//
+// Only a Draw or DrawOver callback painting into the window can be painted
+// again alone: elsewhere, as in a canvas, Live does nothing.
+func (p *Painter) Live() {
+	if p.drawing {
+		p.live = true
+	}
 }
 
 // snap converts a rectangle to device pixels, rounding its edges to whole
