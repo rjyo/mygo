@@ -1681,3 +1681,41 @@ func TestListRowPressedWithoutChoosing(t *testing.T) {
 		t.Errorf("released: row %d reports the press", pressed)
 	}
 }
+
+// TestListFollowEndRebuilt: a list following its end that is built anew
+// (moved into another container) under a ScrollState keeps following,
+// though its rows now measure differently: the offset the ScrollState
+// carries over was the old end, not a place the app asked for.
+func TestListFollowEndRebuilt(t *testing.T) {
+	n := 200
+	s := ListState{FollowEnd: true}
+	var track ScrollState
+	moved := false
+	list := func(c *context, k float32) {
+		coreList(c, &s, n, func(i int) {
+			coreBox(c).Height(k * varied(i)).Children(func() { coreTextf(c, "Message %d", i) })
+		}).Grow(1).TrackScroll(&track)
+	}
+	tt := coreNewTester(func(c *context) {
+		if !moved {
+			list(c, 1)
+			return
+		}
+		// Moved into a row beside a new pane, narrower: the rows wrap,
+		// twice as tall.
+		coreRow(c).Grow(1).MinHeight(0).AlignItems(Stretch).Children(func() {
+			coreColumn(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() { list(c, 2) })
+			coreBox(c).Width(100).Shrink(0)
+		})
+	}, 300, 400)
+	tt.Frame()
+	if !s.AtEnd() {
+		t.Fatal("not at the end to start")
+	}
+	moved = true
+	tt.Frame()
+	tt.Frame()
+	if _, last := s.Visible(); last != n-1 || !s.AtEnd() {
+		t.Errorf("built anew: rows to %d of %d, at the end %v", last, n, s.AtEnd())
+	}
+}
