@@ -254,9 +254,10 @@ type Window struct {
 	// Only the bridge knows it, so messages posted from elsewhere (an
 	// iframe of another origin) are ignored.
 	secret string
-	// preload is PageOptions.PreloadScript, which the scripts of the pages
-	// loaded later keep (pageScripts).
+	// preload and scripts are PageOptions.PreloadScript and Scripts, which
+	// the scripts of the pages loaded later keep (pageScripts).
 	preload string
+	scripts []Script
 
 	// native is only accessed on the main thread; nil once destroyed.
 	native    platform.Window
@@ -283,6 +284,8 @@ type Window struct {
 	// Main thread only.
 	trusted        bool
 	trustedOrigins []string
+	// frameNavs is PageOptions.FrameNavigations.
+	frameNavs bool
 	// html is the document LoadHTML loaded, while it is the page's or
 	// about to be. Main thread only.
 	html *htmlDocument
@@ -431,7 +434,7 @@ func newWindow(opts WindowOptions, bg *background, native uintptr, flyout *flyou
 	id := windows.nextID
 	windows.Unlock()
 
-	w := &Window{id: id, parent: opts.Parent, trustedOrigins: opts.Page.TrustedOrigins, secret: randomText(), stateKey: opts.StateKey, background: bg, content: opts.Content, panel: opts.Panel && flyout == nil}
+	w := &Window{id: id, parent: opts.Parent, trustedOrigins: opts.Page.TrustedOrigins, frameNavs: opts.Page.FrameNavigations, secret: randomText(), stateKey: opts.StateKey, background: bg, content: opts.Content, panel: opts.Panel && flyout == nil}
 	w.pg = &Page{w}
 	w.hiddenTitleBar = !opts.Frameless && (opts.TitleBarStyle == TitleBarHidden || opts.TitleBarStyle == TitleBarHiddenInset)
 	w.resetPage()
@@ -556,7 +559,7 @@ func (w *Window) platformOptions(o *WindowOptions) *platform.WindowOptions {
 	if o.Parent != nil && o.Parent.native != nil {
 		p.Parent = o.Parent.native
 	}
-	w.preload = po.PreloadScript
+	w.preload, w.scripts = po.PreloadScript, po.Scripts
 	p.UserScripts = w.pageScripts()
 	// Kept to replace the preferences' and the locale's (sendPreferences,
 	// pagesLocaleChanged).
@@ -1562,7 +1565,8 @@ func (p *Page) OnPageTitleUpdated(fn func(e *TitleEvent)) (off func()) {
 
 // OnWillNavigate is called before the page navigates to another URL, for
 // example after a link click. Preventing the event cancels the navigation.
-// It is not called for LoadURL and friends.
+// It is not called for LoadURL and friends, nor for iframes unless the
+// page has PageOptions.FrameNavigations.
 func (p *Page) OnWillNavigate(fn func(e *NavigateEvent)) (off func()) {
 	return p.w.onWillNavigate.add(fn, false)
 }
@@ -1710,10 +1714,10 @@ func (h *windowHandler) WillNavigate(nav platform.Navigation) bool {
 		})
 		return false
 	}
-	if !nav.IsMainFrame || nav.Unasked {
+	if !nav.IsMainFrame && !h.w.frameNavs || nav.Unasked {
 		return true
 	}
-	e := &NavigateEvent{URL: nav.URL, UserInitiated: nav.UserInitiated}
+	e := &NavigateEvent{URL: nav.URL, UserInitiated: nav.UserInitiated, InFrame: !nav.IsMainFrame}
 	fire1(&h.w.onWillNavigate, e)
 	return !e.prevented
 }
