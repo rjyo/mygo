@@ -95,7 +95,10 @@ func sceneData(s *scene.Scene) int {
 func (rt *engine) repaintParts(live bool) bool {
 	s := &rt.scene
 	if rt.untracked || len(rt.drawn) == 0 || rt.insp.open || rt.drag != nil || rt.noParts ||
-		sceneData(s) > 2*rt.partsBase+partsGrowth || atlasGenerations(s) != rt.atlases || rt.transient {
+		sceneData(s) > 2*rt.partsBase+partsGrowth || atlasGenerations(s) != rt.atlases || rt.transient ||
+		// Spinners the renderer turned are painted whole as arcs once it
+		// no longer does, and the other way.
+		rt.spinning != rt.animatesSpinners() {
 		return false
 	}
 	rt.partPaints++
