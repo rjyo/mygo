@@ -157,14 +157,19 @@ func (v *view) paint(p *ui.Painter, r ui.Rect) {
 		full = true
 	}
 	rs.Rows()
+	changed := false
 	for y := 0; y < rows && rs.NextRow(); y++ {
 		line := &v.lines[y]
 		if full || !line.ok || rs.RowDirty() {
-			v.linkText = nil
 			v.buildRow(line, rs, cols)
+			changed = true
 		}
 	}
 	rs.Clean()
+	if changed && len(v.hover) > 0 {
+		// A frame finds the link under the pointer in what now shows.
+		v.services.Invalidate()
+	}
 	v.draw(p, r)
 }
 
