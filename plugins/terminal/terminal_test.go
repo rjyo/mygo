@@ -1766,8 +1766,101 @@ func TestCommandClickWrappedLinks(t *testing.T) {
 	}
 }
 
-// Links read the rows anew once one changes.
-func TestLinkFollowsOutput(t *testing.T) {
+// linkOf returns the link at the cell with the terminal in cols by rows
+// after feed, read the way a click reads it.
+func linkOf(t *testing.T, cols, rows int, feed string, col, row int) (string, []linkSpan) {
+	t.Helper()
+	term, err := New(Options{Conn: newPipe()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	term.term.Resize(cols, rows, 8, 16)
+	term.Feed([]byte(feed))
+	v := &view{t: term, cols: cols, rows: rows}
+	link, _, spans := v.linkAt(col, row)
+	return link, spans
+}
+
+// A wide character before a URL, on the row it wraps from, does not cut
+// the soft wrap short: the row is full by its cells, not its characters.
+// A URL itself ends at its first character that is not ASCII.
+func TestWrappedLinkWideCharacters(t *testing.T) {
+	loadLib(t)
+	for _, c := range []struct {
+		name, feed, want string
+		cols             int
+		col, row         int
+		spans            []linkSpan
+	}{
+		{"filling the row", "界 https://x.org/abcZ", "https://x.org/abcZ", 16, 5, 0, []linkSpan{{0, 3, 16}, {1, 0, 5}}},
+		{"filling the row, from its tail", "界 https://x.org/abcZ", "https://x.org/abcZ", 16, 15, 0, []linkSpan{{0, 3, 16}, {1, 0, 5}}},
+		{"filling the row, from the next", "界 https://x.org/abcZ", "https://x.org/abcZ", 16, 2, 1, []linkSpan{{0, 3, 16}, {1, 0, 5}}},
+		{"ending at a wide character", "https://x.org/ab界Z", "https://x.org/ab", 20, 2, 0, []linkSpan{{0, 0, 16}}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if link, spans := linkOf(t, c.cols, 3, c.feed, c.col, c.row); link != c.want || !slices.Equal(spans, c.spans) {
+				t.Errorf("got %q %v, want %q %v", link, spans, c.want, c.spans)
+			}
+		})
+	}
+}
+
+// Hyperlinks with the same URI that are not one wrapped link stay apart.
+func TestHyperlinkSpans(t *testing.T) {
+	loadLib(t)
+	link := func(s string) string { return "\x1b]8;;https://x.org/\x1b\\" + s + "\x1b]8;;\x1b\\" }
+	for _, c := range []struct {
+		name     string
+		cols     int
+		feed     string
+		col, row int
+		spans    []linkSpan
+	}{
+		{"on a row", 40, link("one") + " " + link("two"), 1, 0, []linkSpan{{0, 0, 3}}},
+		{"in panes", 40, link("one") + " │ " + link("two"), 1, 0, []linkSpan{{0, 0, 3}}},
+		{"on adjacent rows", 40, link("one") + "\r\n" + link("two"), 1, 0, []linkSpan{{0, 0, 3}}},
+		{"apart by a cell at the edge", 10, link("abcdefghi") + "X\r\n" + link("two"), 2, 0, []linkSpan{{0, 0, 9}}},
+		{"apart by a cell at the edge, from below", 10, link("abcdefghi") + "X\r\n" + link("two"), 1, 1, []linkSpan{{1, 0, 3}}},
+		{"at the edge with no wrap", 10, link("abcdefghij") + "\r\n" + link("two"), 2, 0, []linkSpan{{0, 0, 10}}},
+		{"at the edge with no wrap, from below", 10, link("abcdefghij") + "\r\n" + link("two"), 1, 1, []linkSpan{{1, 0, 3}}},
+		{"with a space at a soft wrap", 10, link("abcdefghi two"), 2, 0, []linkSpan{{0, 0, 10}, {1, 0, 3}}},
+		{"with a space at a soft wrap, from below", 10, link("abcdefghi two"), 1, 1, []linkSpan{{0, 0, 10}, {1, 0, 3}}},
+		{"apart by a space at a soft wrap", 10, link("abcdefghi") + " " + link("two"), 2, 0, []linkSpan{{0, 0, 9}}},
+		{"apart by a space at a soft wrap, from below", 10, link("abcdefghi") + " " + link("two"), 1, 1, []linkSpan{{1, 0, 3}}},
+		{
+			"in panes of other widths", 20,
+			"\x1b[?7l│" + link("abcdefgh") + " │\r\n│" + link("abcdefghijklmnop") + " │",
+			2, 0, []linkSpan{{0, 1, 9}},
+		},
+		{
+			"in panes of other widths, from below", 20,
+			"\x1b[?7l│" + link("abcdefgh") + " │\r\n│" + link("abcdefghijklmnop") + " │",
+			2, 1, []linkSpan{{1, 1, 17}},
+		},
+		{
+			"redrawn in a pane with a gutter", 11,
+			"\x1b[?7l│" + link("aaaaaaaa") + " │\r\n│" + link("bbbb") + "     │\r\n│         │",
+			2, 1, []linkSpan{{0, 1, 9}, {1, 1, 5}},
+		},
+		{
+			"redrawn in a pane up to its frame", 10,
+			"\x1b[?7l│" + link("aaaaaaaa") + "│\r\n│" + link("bbbb") + "    │\r\n│        │",
+			2, 0, []linkSpan{{0, 1, 9}, {1, 1, 5}},
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if got, spans := linkOf(t, c.cols, 3, c.feed, c.col, c.row); got != "https://x.org/" || !slices.Equal(spans, c.spans) {
+				t.Errorf("got %q %v, want %v", got, spans, c.spans)
+			}
+		})
+	}
+}
+
+// Output under a link shown hovered takes another frame, which finds what
+// is under the pointer now: a frame that only paints does not. Other output
+// takes none, so that frames do not follow frames.
+func TestOutputUnderHover(t *testing.T) {
 	loadLib(t)
 	term, err := New(Options{Conn: newPipe()})
 	if err != nil {
@@ -1775,16 +1868,68 @@ func TestLinkFollowsOutput(t *testing.T) {
 	}
 	defer term.Close()
 	term.Feed([]byte("https://x.org/a"))
-	tt := ui.NewTester(func(c *ui.Context) { View(c, term).Fill().AutoFocus() }, 400, 200)
+	builds := 0
+	tt := ui.NewTester(func(c *ui.Context) {
+		builds++
+		View(c, term).Fill().AutoFocus()
+	}, 400, 200)
 	tt.Frame()
-	x, y := cellCenter(term, 2, 0)
-	tt.ClickAtWith(ui.Cmd, x, y)
-	term.Feed([]byte("\x1b[2J\x1b[Hhttps://x.org/b"))
+	term.Feed([]byte("!"))
+	builds = 0
 	tt.Frame()
-	tt.ClickAtWith(ui.Cmd, x, y)
-	if u := tt.OpenedURLs(); !slices.Equal(u, []string{"https://x.org/a", "https://x.org/b"}) {
-		t.Errorf("opened %q, want the link the row shows each time", u)
+	if builds != 1 {
+		t.Errorf("%d frames for output with no link hovered, want 1", builds)
 	}
+	x, y := cellCenter(term, 2, 0)
+	tt.Move(x, y)
+	tt.HoldModifiers(ui.Cmd)
+	if len(term.v.hover) == 0 {
+		t.Fatal("no link hovered")
+	}
+	term.Feed([]byte("!"))
+	builds = 0
+	tt.Frame()
+	if builds != 2 {
+		t.Errorf("%d frames for output under a hovered link, want 2", builds)
+	}
+}
+
+// A click reads the cells as they are, painted yet or not.
+func TestLinkFollowsTheCells(t *testing.T) {
+	loadLib(t)
+	term, err := New(Options{Conn: newPipe()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	term.term.Resize(40, 3, 8, 16)
+	v := &view{t: term, cols: 40, rows: 3}
+	read := func(want string) {
+		t.Helper()
+		if link, _, _ := v.linkAt(2, 0); link != want {
+			t.Errorf("read %q, want %q", link, want)
+		}
+	}
+	term.Feed([]byte("https://x.org/a"))
+	read("https://x.org/a")
+	read("https://x.org/a")
+	term.Feed([]byte("\x1b[2J\x1b[Hhttps://x.org/b"))
+	read("https://x.org/b") // output, before any frame
+	term.Feed([]byte("\x1b[?1049h\x1b[Hhttps://x.org/c"))
+	read("https://x.org/c") // the alternate screen
+	term.Feed([]byte("\x1b[?1049l"))
+	read("https://x.org/b")
+	term.Feed([]byte("\r\n\r\n\r\nhttps://x.org/d\r\n"))
+	read("")
+	term.term.ScrollBy(-3)
+	read("https://x.org/b") // scrolled back
+	term.term.ScrollBy(3)
+	// A width that reflows the rows, in as many rows.
+	term.Feed([]byte("\x1b[2J\x1b[Hhttps://x.org/abcdefghijklmnopqrstuvwxyz"))
+	read("https://x.org/abcdefghijklmnopqrstuvwxyz")
+	term.term.Resize(20, 3, 8, 16)
+	v.cols = 20
+	read("https://x.org/abcdefghijklmnopqrstuvwxyz")
 }
 
 // The wrap flag of a row, which links follow.
