@@ -46,6 +46,7 @@ var (
 	fnGestureEventSet, fnGestureEvent, fnSelectAll uintptr
 
 	fnGridRefHyperlinkURI, fnGridRefGraphemes, fnGridRefCell, fnRowData, fnTypeJSON, fnFormatterFormatAlloc, fnFormatterFree uintptr
+	fnGridRefRow                                                                                                             uintptr
 
 	fnSearchNew, fnSearchFree, fnSearchSet, fnSearchGet, fnSearchFeed, fnSearchTick, fnPointFromGridRef uintptr
 
@@ -150,6 +151,7 @@ var symbols = []struct {
 	{"ghostty_grid_ref_hyperlink_uri", &fnGridRefHyperlinkURI},
 	{"ghostty_grid_ref_graphemes", &fnGridRefGraphemes},
 	{"ghostty_grid_ref_cell", &fnGridRefCell},
+	{"ghostty_grid_ref_row", &fnGridRefRow},
 	{"ghostty_row_get", &fnRowData},
 	{"ghostty_type_json", &fnTypeJSON},
 	{"ghostty_formatter_terminal_new", &fnFormatterTerminalNew},
