@@ -211,6 +211,9 @@ func (v *view) updateRows(rs *vt.RenderState, prev []rowCache, all bool, cols, r
 			take(line, y)
 			continue
 		}
+		// The row shows something else, or the same cells wrapped
+		// otherwise: links read the rows anew.
+		v.linkText = nil
 		cells := rs.RowCells()
 		v.key = v.rowKey(v.key[:0], rs, cells, cols)
 		h := maphash.Bytes(rowSeed, v.key)
@@ -759,8 +762,10 @@ func (v *view) draw(p *ui.Painter, r ui.Rect) {
 		p.Clip(ui.Rect{X: b, Y: r.Y, W: r.X + r.W - b, H: r.H}, 0, func() { text(ui.Color{}) })
 	}
 	v.drawImages(p, aboveText, ox, oy)
-	if h := v.hover; h.on() && h.row < len(v.lines) {
-		v.drawDeco(p, deco{h.x0, h.x1, vt.UnderlineSingle, v.linkColor(&v.lines[h.row], h)}, ox, oy+float32(h.row)*ch, cw, ch, base)
+	for _, h := range v.hover {
+		if h.row < len(v.lines) {
+			v.drawDeco(p, deco{h.x0, h.x1, vt.UnderlineSingle, v.linkColor(&v.lines[h.row], h)}, ox, oy+float32(h.row)*ch, cw, ch, base)
+		}
 	}
 	if cur.W > 0 && !block {
 		if v.focused || v.cursor.Style != vt.CursorBlock {
