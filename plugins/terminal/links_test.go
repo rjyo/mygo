@@ -79,19 +79,30 @@ func TestURLAtSpan(t *testing.T) {
 	}
 }
 
-// screen makes rows of text, a row ending in \ soft-wrapped.
+// screen makes rows of text, a row ending in \\ soft-wrapped, as wide as
+// the widest.
 func screen(lines ...string) ([]linkRow, int) {
-	rows, width := make([]linkRow, len(lines)), 0
+	width := 0
+	for _, l := range lines {
+		width = max(width, len([]rune(strings.TrimSuffix(l, `\`))))
+	}
+	return screenOf(width, lines...), width
+}
+
+// screenOf makes the rows width wide, every cell a rune as RowText has it.
+func screenOf(width int, lines ...string) []linkRow {
+	rows := make([]linkRow, len(lines))
 	for y, l := range lines {
 		l, wrap := strings.CutSuffix(l, `\`)
-		rows[y].text, rows[y].wrap = []rune(l), wrap
-		rows[y].cols = make([]int, len(rows[y].text))
+		text := []rune(l)
+		rows[y].wrap = wrap
+		rows[y].text = append(text, []rune(strings.Repeat(" ", width-len(text)))...)
+		rows[y].cols = make([]int, width)
 		for i := range rows[y].cols {
 			rows[y].cols[i] = i
 		}
-		width = max(width, len(rows[y].text))
 	}
-	return rows, width
+	return rows
 }
 
 func urlIn(t *testing.T, rows []linkRow, width, col, row int) (string, []linkSpan) {
@@ -222,6 +233,46 @@ func TestWrappedURLs(t *testing.T) {
 			col:   1, row: 1,
 		},
 		{
+			name:  "a pane's bottom border does not join",
+			lines: []string{"│https://x.org/a │", "└────────────────┘"},
+			col:   2,
+			want:  "https://x.org/a",
+			spans: []linkSpan{{0, 1, 16}},
+		},
+		{
+			name: "a pane's top border below a split does not join",
+			lines: []string{
+				"│https://x.org/a │",
+				"├────────────────┤",
+				"│files/b         │",
+			},
+			col:   2,
+			want:  "https://x.org/a",
+			spans: []linkSpan{{0, 1, 16}},
+		},
+		{
+			name: "a pane below a split with other frames does not join",
+			lines: []string{
+				"https://x.org/ab │ next",
+				"files/b  │ other pane  ",
+			},
+			col:   2,
+			want:  "https://x.org/ab",
+			spans: []linkSpan{{0, 0, 16}},
+		},
+		{
+			name:  "prose below a URL ending at the edge does not join",
+			lines: []string{"https://x.org/a", "hello there"},
+			want:  "https://x.org/a",
+			spans: []linkSpan{{0, 0, 15}},
+		},
+		{
+			name:  "prose below a URL ending at the gutter does not join",
+			lines: []string{"https://x.org/a ", "hello there"},
+			want:  "https://x.org/a",
+			spans: []linkSpan{{0, 0, 15}},
+		},
+		{
 			name:  "a frame is not on a link",
 			lines: []string{"│https://x.org/a │", "│                │"},
 			col:   0,
@@ -237,16 +288,17 @@ func TestWrappedURLs(t *testing.T) {
 	}
 }
 
-// Rows of a list of paths have the shape of a program's own wrap, so a path
-// joins only across the edge.
+// Rows of a list of paths have the shape of a wrap, so a path joins only
+// where the terminal wrapped it.
 func TestWrappedPaths(t *testing.T) {
-	rows, _ := screen("internal/logic/a.go ", "internal/logic/bb.go", "note")
-	b, _ := newLinkBlock(rows, 80, 2, 0)
-	if p, spans := b.find(pathAt, false, 2, 0); p != "internal/logic/a.go" || !slices.Equal(spans, []linkSpan{{0, 0, 19}}) {
-		t.Errorf("a list of paths read %q %v", p, spans)
+	for _, width := range []int{10, 11, 80} {
+		b, _ := newLinkBlock(screenOf(width, "src/aaa.go", "src/bbb.go", "note"), width, 2, 0)
+		if p, spans := b.find(pathAt, false, 2, 0); p != "src/aaa.go" || !slices.Equal(spans, []linkSpan{{0, 0, 10}}) {
+			t.Errorf("a list of paths in %d columns read %q %v", width, p, spans)
+		}
 	}
 	rows, width := screen(`src/plugins/term\`, "inal/view.go:12")
-	b, _ = newLinkBlock(rows, width, 2, 1)
+	b, _ := newLinkBlock(rows, width, 2, 1)
 	if p, spans := b.find(pathAt, false, 2, 1); p != "src/plugins/terminal/view.go:12" || !slices.Equal(spans, []linkSpan{{0, 0, 16}, {1, 0, 15}}) {
 		t.Errorf("a soft-wrapped path read %q %v", p, spans)
 	}

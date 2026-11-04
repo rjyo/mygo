@@ -212,9 +212,10 @@ type view struct {
 	hoverLink string
 	hoverPath bool
 	linkPress bool
-	// linkText is the rows links read, until a row changes: reading them
-	// takes milliseconds, and Command held over a link does it every frame.
-	linkText []linkRow
+	// linkText is the rows links read, as of linkState: reading them takes
+	// milliseconds, and Command held over a link does it every frame.
+	linkText  []linkRow
+	linkState linkState
 	// pointerAt is the pointer over the grid (pointerShape); tracking whether
 	// the program took the mouse as of the last frame, and modeShape the
 	// shape that taking or leaving it showed, while the program's shape
@@ -1267,7 +1268,7 @@ func (v *view) dragScrollbar(y float32) {
 func (v *view) linkAt(col, row int) (link string, path bool, at []linkSpan) {
 	t := v.t
 	if url := v.hyperlinkAt(col, row); url != "" {
-		return url, false, v.hyperlinkSpans(url, row)
+		return url, false, v.hyperlinkSpans(url, col, row)
 	}
 	b, ok := newLinkBlock(v.linkRows(), v.cols, col, row)
 	if !ok {
@@ -1284,53 +1285,68 @@ func (v *view) linkAt(col, row int) (link string, path bool, at []linkSpan) {
 	return "", false, nil
 }
 
+// linkState tells that the view's rows are as they were.
+type linkState struct {
+	changes uint64
+	bar     vt.Scrollbar
+}
+
 // linkRows is the view's rows as links read them; t.mu is held.
 func (v *view) linkRows() []linkRow {
-	if len(v.linkText) != v.rows {
-		v.linkText = make([]linkRow, v.rows)
+	term := v.t.term
+	state := linkState{term.Changes(), term.Scrollbar()}
+	if len(v.linkText) != v.rows || state != v.linkState {
+		v.linkText, v.linkState = make([]linkRow, v.rows), state
 		for y := range v.linkText {
 			r := &v.linkText[y]
-			r.text, r.cols = v.t.term.RowText(y)
-			r.wrap = v.t.term.RowWrapped(y)
+			r.text, r.cols = term.RowText(y)
+			r.wrap = term.RowWrapped(y)
 		}
 	}
 	return v.linkText
 }
 
-// hyperlinkSpans is the cells of the hyperlink on row, and on the rows
-// around it that it runs on to, which a wrapped one does; t.mu is held.
-func (v *view) hyperlinkSpans(url string, row int) []linkSpan {
-	spans := v.hyperlinkRow(url, row)
-	for y := row - 1; y >= 0; y-- {
-		s := v.hyperlinkRow(url, y)
-		if len(s) == 0 {
-			break
-		}
-		spans = append(s, spans...)
+// hyperlinkSpans is the cells of the hyperlink at the cell, in its pane,
+// and of the rows it goes on to (linkBlock.runsOn). The library gives a
+// hyperlink's URI and not its id, so links of one URI that meet at a wrap
+// read as one, which only changes what shows underlined; t.mu is held.
+func (v *view) hyperlinkSpans(url string, col, row int) []linkSpan {
+	b, ok := newLinkBlock(v.linkRows(), v.cols, col, row)
+	if !ok {
+		return []linkSpan{v.hyperlinkRun(url, col, row, 0, v.cols)}
 	}
-	for y := row + 1; y < v.rows; y++ {
-		s := v.hyperlinkRow(url, y)
-		if len(s) == 0 {
+	spans := []linkSpan{v.hyperlinkRun(url, col, row, b.x0, b.x1)}
+	for s := spans[0]; s.x0 == b.x0 && s.row > 0; s = spans[0] {
+		x := b.x1 - 1
+		if v.hyperlinkAt(x, s.row-1) != url {
+			x-- // the link may stop at a gutter, or a spacer
+		}
+		if x < b.x0 || v.hyperlinkAt(x, s.row-1) != url {
 			break
 		}
-		spans = append(spans, s...)
+		above := v.hyperlinkRun(url, x, s.row-1, b.x0, b.x1)
+		if !b.runsOn(above.row, above.x1) {
+			break
+		}
+		spans = slices.Insert(spans, 0, above)
+	}
+	for s := spans[len(spans)-1]; b.runsOn(s.row, s.x1) && v.hyperlinkAt(b.x0, s.row+1) == url; s = spans[len(spans)-1] {
+		spans = append(spans, v.hyperlinkRun(url, b.x0, s.row+1, b.x0, b.x1))
 	}
 	return spans
 }
 
-// hyperlinkRow is the runs of cells of row with the hyperlink; t.mu is held.
-func (v *view) hyperlinkRow(url string, row int) (spans []linkSpan) {
-	for x := 0; x < v.cols; x++ {
-		if v.hyperlinkAt(x, row) != url {
-			continue
-		}
-		if n := len(spans) - 1; n >= 0 && spans[n].x1 == x {
-			spans[n].x1 = x + 1
-		} else {
-			spans = append(spans, linkSpan{row, x, x + 1})
-		}
+// hyperlinkRun is the cells of the hyperlink around the cell of its row,
+// within columns x0 up to x1; t.mu is held.
+func (v *view) hyperlinkRun(url string, col, row, x0, x1 int) linkSpan {
+	from, to := col, col+1
+	for from > x0 && v.hyperlinkAt(from-1, row) == url {
+		from--
 	}
-	return spans
+	for to < x1 && v.hyperlinkAt(to, row) == url {
+		to++
+	}
+	return linkSpan{row, from, to}
 }
 
 // hyperlinkAt is the URL of the hyperlink (OSC 8) at the cell, or ""; t.mu
