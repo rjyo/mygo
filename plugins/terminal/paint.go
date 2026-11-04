@@ -211,6 +211,9 @@ func (v *view) updateRows(rs *vt.RenderState, prev []rowCache, all bool, cols, r
 			take(line, y)
 			continue
 		}
+		// The row shows something else, or the same cells wrapped
+		// otherwise: links read the rows anew.
+		v.linkText = nil
 		cells := rs.RowCells()
 		v.key = v.rowKey(v.key[:0], rs, cells, cols)
 		h := maphash.Bytes(rowSeed, v.key)
@@ -759,10 +762,9 @@ func (v *view) draw(p *ui.Painter, r ui.Rect) {
 		p.Clip(ui.Rect{X: b, Y: r.Y, W: r.X + r.W - b, H: r.H}, 0, func() { text(ui.Color{}) })
 	}
 	v.drawImages(p, aboveText, ox, oy)
-	if h := v.hover; h.on() {
-		for r := h.row; r <= h.last && r < len(v.lines); r++ {
-			a, b := h.cells(r, v.cols)
-			v.drawDeco(p, deco{a, b, vt.UnderlineSingle, v.linkColor(&v.lines[r], a, b)}, ox, oy+float32(r)*ch, cw, ch, base)
+	for _, h := range v.hover {
+		if h.row < len(v.lines) {
+			v.drawDeco(p, deco{h.x0, h.x1, vt.UnderlineSingle, v.linkColor(&v.lines[h.row], h)}, ox, oy+float32(h.row)*ch, cw, ch, base)
 		}
 	}
 	if cur.W > 0 && !block {
@@ -885,12 +887,12 @@ func (v *view) drawText(p *ui.Painter, line *rowCache, ox, ry, cw, ch, base floa
 	}
 }
 
-// linkColor is the color of the hovered link's underline in the line's
-// columns a up to b: its text's, or the foreground's.
-func (v *view) linkColor(line *rowCache, a, b int) ui.Color {
+// linkColor is the color of the hovered link's underline: its text's, or
+// the foreground's.
+func (v *view) linkColor(line *rowCache, h linkSpan) ui.Color {
 	for _, run := range line.runs {
 		for _, col := range run.cols {
-			if int(col) >= a && int(col) < b {
+			if int(col) >= h.x0 && int(col) < h.x1 {
 				return run.c
 			}
 		}
