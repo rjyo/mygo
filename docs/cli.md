@@ -121,6 +121,18 @@ stay apart from the installed app's. On macOS it is a real app bundle, in
 `.mygo/dev`; on Windows its executable carries the icon, manifest and
 version information that `mygo build` embeds.
 
+On macOS mygo dev signs the development app with an Apple Development
+identity from the user's keychains, as Xcode signs Debug builds: the one of
+the team of `macos.signingIdentity` when there are several. Xcode makes one
+for any Apple ID, free, under Settings > Accounts > Manage Certificates.
+Its signature stays the same from build to build, so macOS keeps what the
+user allowed the development app, such as Accessibility, Screen Recording
+or the camera, and "Always Allow" for the Keychain items it reads through
+[`mygo.Secrets`](native.md#secrets). Without one, mygo dev signs ad hoc and
+says so: ad hoc signatures change with every build, and macOS takes each
+one for another app. `-sign` uses another identity, which a provisioning
+profile needs, and `-sign -` signs ad hoc.
+
 | Flag | |
 |---|---|
 With `-web`, mygo dev develops an app of [native UI in browsers](ui/browsers.md)
@@ -133,7 +145,7 @@ compiles. `o` opens the page again.
 | Flag | |
 |---|---|
 | `-skip-dev-command` | does not run `devCommand`, e.g. when the dev server already runs |
-| `-sign` | the identity that signs the development app on macOS (default: `-`, ad hoc) |
+| `-sign` | the identity that signs the development app on macOS (default: an Apple Development identity, see below, else `-`, ad hoc) |
 | `-web` | develops the app in browsers |
 | `-port` | with `-web`, the port to serve the app at, or the next free one (default: 5174) |
 | `-open` | with `-web`, opens the app in the browser (default: true) |

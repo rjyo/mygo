@@ -31,6 +31,13 @@ identifier "<identifier>.dev", in .mygo/dev: a real bundle on macOS, and
 on Windows an executable with the icon, manifest and version information
 that mygo build embeds.
 
+On macOS it signs the development app with an Apple Development identity
+of the user's keychains, as Xcode signs Debug builds. Its signature stays
+the same from build to build, so macOS keeps what the user allowed the app,
+such as Accessibility, Screen Recording or reading its Keychain items; ad
+hoc signatures, which it falls back to without one, change with every
+build. -sign signs with another identity; -sign - signs ad hoc.
+
 Changes to the Go code, mygo.json or mygo.config.ts, the icon, the
 resources or the catalogs of messages rebuild the app, regenerate the
 TypeScript client and the accessors of the catalogs, and relaunch it. A build that fails to compile keeps the previous one running; the next
@@ -49,7 +56,7 @@ zh-Hant, or a pseudo locale: en-XA (accented and longer text) or ar-XB
 (right to left), which test layouts without translations. It does not
 keep it: the app's own setting is left as it is.`)
 	skipDevCommand := flags.Bool("skip-dev-command", false, "do not run devCommand")
-	sign := flags.String("sign", "-", "macOS signing identity for the development app")
+	sign := flags.String("sign", "", `macOS signing identity for the development app (default: an Apple Development identity, which keeps permissions and Keychain access across builds, else "-", ad hoc)`)
 	web := flags.Bool("web", false, "develop the app in browsers")
 	port := flags.Int("port", 5174, "with -web, the port to serve the app at, or the next free one")
 	openPage := flags.Bool("open", true, "with -web, open the app in the browser")
@@ -74,7 +81,7 @@ keep it: the app's own setting is left as it is.`)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	s := &devSession{root: c.root, sign: *sign, name: devConfig(c).Name, env: []string{"MYGO_ENV=development"}}
+	s := &devSession{root: c.root, sign: devSign(c, *sign), name: devConfig(c).Name, env: []string{"MYGO_ENV=development"}}
 	if locale != "" {
 		// The app reads it as it starts, over the language it keeps.
 		s.env = append(s.env, "MYGO_LOCALE="+locale)
@@ -180,6 +187,28 @@ keep it: the app's own setting is left as it is.`)
 		s.env = append(s.env, "MYGO_FRONTEND_DIST="+c.path(c.FrontendDist))
 	}
 	return s.run(ctx, c)
+}
+
+// devSign returns the identity that signs the development app: sign, when
+// given, else on macOS a development identity of the user's keychains
+// (developmentIdentity), as Xcode signs Debug builds, and ad hoc without
+// one. A provisioning profile needs the identity it names, which -sign
+// gives; without it, ad hoc signing leads to the error that says so.
+func devSign(c *Config, sign string) string {
+	if sign != "" {
+		return sign
+	}
+	if runtime.GOOS != "darwin" || c.MacOS.ProvisioningProfile != "" {
+		return "-"
+	}
+	out, _ := exec.Command("security", "find-identity", "-v", "-p", "codesigning").Output()
+	hash, name := developmentIdentity(string(out), signingTeam(c.MacOS.SigningIdentity))
+	if hash == "" {
+		warnf("Signing the development app ad hoc: macOS asks again for its permissions and Keychain items after each build. An Apple Development certificate keeps them; Xcode makes one for an Apple ID, free, in Settings > Accounts > Manage Certificates")
+		return "-"
+	}
+	logf("Signing the development app as %s", name)
+	return hash
 }
 
 // devSession builds and runs development builds of an app.

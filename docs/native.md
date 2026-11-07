@@ -593,7 +593,10 @@ token, err := mygo.Secrets.Service("MyApp").Get("refresh-token")
 Secrets protect against other users and stolen disks, not against other
 apps of the same user: macOS asks the user before another app reads them,
 and before a rebuilt app does when it is not signed with the same
-identity, while Linux and Windows let them read.
+identity, while Linux and Windows let them read. `mygo dev` signs every
+build with the user's Apple Development identity, so "Always Allow" lasts
+across rebuilds; apps signed ad hoc, as without one, with `-sign -` or with
+`go run`, are asked again after each build.
 
 Where there is no credential store, the methods fail with an error for
 which `errors.Is(err, errors.ErrUnsupported)` holds: in browsers, and on
