@@ -65,6 +65,33 @@ test("takes a Request", async () => {
   expect(res.body).toBeNull();
 });
 
+test("rejects URL credentials before calling Go", async () => {
+  go = fakeGo({ "plugin:fetch.Fetch": (c) => c.send(1, head(204)) });
+  for (const url of [
+    "https://user:password@example.com/",
+    "http://user@example.com/",
+    "https://:password@example.com/",
+  ]) {
+    for (const input of [url, new URL(url)]) {
+      await expect(fetch(input)).rejects.toThrow(TypeError);
+      expect(go.calls).toEqual([]);
+    }
+  }
+});
+
+test("allows an empty URL userinfo and explicit authorization", async () => {
+  let got: Req | undefined;
+  go = fakeGo({
+    "plugin:fetch.Fetch": (c) => {
+      got = c.args[0] as Req;
+      c.send(1, head(204));
+    },
+  });
+  await fetch("https://:@example.com/", { headers: { authorization: "Basic dXNlcjpwYXNzd29yZA==" } });
+  expect(got?.url).toBe("https://example.com/");
+  expect(got?.headers).toContainEqual(["authorization", "Basic dXNlcjpwYXNzd29yZA=="]);
+});
+
 test("inherits a Request body when init.body is null or omitted", async () => {
   let got: Req | undefined;
   go = fakeGo({

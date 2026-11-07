@@ -52,6 +52,7 @@ export async function fetch(input: RequestInfo | URL, init: RequestInit = {}): P
   const base = typeof location !== "undefined" ? location.href : undefined;
   const url = new URL(req ? req.url : input instanceof URL ? input.href : String(input), base);
   if (url.protocol !== "http:" && url.protocol !== "https:") return globalThis.fetch(input, init);
+  if (url.username || url.password) throw new TypeError("fetch: URL must not include credentials");
 
   const signal = init.signal === undefined ? req?.signal ?? null : init.signal;
   signal?.throwIfAborted();
