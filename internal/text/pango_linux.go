@@ -1110,7 +1110,13 @@ func (e *pangoEngine) scaledFont(f *Font, scale float32, subpixel bool) uintptr 
 	identity := cairoMatrix{xx: 1, yy: 1}
 	opts := l.cairoFontOptionsCreate()
 	l.cairoScaledFontOptions(src, opts)
-	if !subpixel && e.antialias == cairoAntialiasSubpixel {
+	if !subpixel && e.antialias != cairoAntialiasNone {
+		// Also where the desktop's settings leave antialiasing to
+		// fontconfig (cairo's default), which may give the font subpixel
+		// antialiasing (rgba): cairo would draw the glyph so, and draw
+		// would take its colored coverage for a color glyph's, white
+		// whatever the text's color (#1426). Fonts fontconfig draws
+		// without antialiasing keep it off.
 		l.cairoFontOptionsAntialias(opts, cairoAntialiasGray)
 	}
 	sf := l.cairoScaledFontCreate(l.cairoScaledFontFace(src), &m, &identity, opts)

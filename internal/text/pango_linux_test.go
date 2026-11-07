@@ -240,3 +240,50 @@ func TestLCDFilterRule(t *testing.T) {
 		t.Error("cairo's default filter is not FreeType's")
 	}
 }
+
+// Where the desktop's settings leave antialiasing to fontconfig (no
+// XSETTINGS value) and fontconfig gives fonts subpixel antialiasing
+// (rgba), glyphs are drawn in grayscale, not in the colors of their
+// subpixels, which made them color glyphs, white whatever the text's
+// color (#1426).
+func TestGrayGlyphsWhereFontconfigAsksForSubpixels(t *testing.T) {
+	if _, err := newPango(); err != nil {
+		t.Skip(err)
+	}
+	l := &pangoLib
+	if l.fcConfigParseFromMemory == nil {
+		t.Skip("no FcConfigParseAndLoadFromMemory")
+	}
+	rgba := `<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "fonts.dtd"><fontconfig><match target="font">` +
+		`<edit name="rgba" mode="assign"><const>rgb</const></edit></match></fontconfig>`
+	if l.fcConfigParseFromMemory(l.fcConfigGetCurrent(), rgba, int32(gTrue)) == 0 {
+		t.Fatalf("fontconfig refused %s", rgba)
+	}
+	for _, r := range [][3]string{{"", "", ""}, {"gray", "slight", ""}, {"subpixel", "slight", "rgb"}} {
+		e, err := newPango()
+		if err != nil {
+			t.Fatal(err)
+		}
+		e.setFontRendering(r[0], r[1], r[2])
+		_, subpixel := e.textParams()
+		drawn := 0
+		for _, run := range e.shape([]rune("Candle"), Style{Family: "sans-serif", Size: 13}, nil, 0, false, false)[0].runs {
+			for _, g := range run.glyphs {
+				b := e.glyph(run.font, g.ID, 1, 0, 0, subpixel)
+				if b.pix == nil {
+					continue
+				}
+				drawn++
+				if b.color {
+					t.Errorf("settings %q: glyph %d drawn as a color glyph", r, g.ID)
+				}
+				if b.subpixel != subpixel {
+					t.Errorf("settings %q: glyph %d drawn with subpixels %v, want %v", r, g.ID, b.subpixel, subpixel)
+				}
+			}
+		}
+		if drawn == 0 {
+			t.Skip("no glyphs drawn")
+		}
+	}
+}
