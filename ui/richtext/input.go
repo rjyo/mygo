@@ -541,8 +541,9 @@ func (v *view) press(ev ui.InputEvent) bool {
 		return true
 	}
 	i, aff := v.positionAt(x, y)
-	if ev.Clicks == 1 && ev.Mods&ui.Shift == 0 && i < v.shown.Len() {
-		v.pressLink = v.shown.AttributesAt(i).Link
+	v.pressPoint = ui.Point{X: ev.X, Y: ev.Y}
+	if ev.Clicks == 1 && ev.Mods&ui.Shift == 0 {
+		v.pressLink = v.linkAt(x, y)
 	}
 	v.dragging = true
 	v.hasDesired = false
@@ -572,7 +573,7 @@ func (v *view) move(ev ui.InputEvent) bool {
 		cursor := ui.CursorText
 		if _, box := v.taskBox(x, y); box || v.overScrollbar(ev.X) {
 			cursor = ui.CursorDefault
-		} else if i, _ := v.positionAt(x, y); i < v.shown.Len() && v.shown.AttributesAt(i).Link != "" {
+		} else if v.linkAt(x, y) != "" {
 			cursor = ui.CursorPointer
 		}
 		if cursor != v.cursor {
@@ -606,7 +607,8 @@ func (v *view) move(ev ui.InputEvent) bool {
 	default:
 		v.caret, v.affinity = i, aff
 	}
-	if i != v.dragStart[0] || v.dragUnit != 1 {
+	dx, dy := ev.X-v.pressPoint.X, ev.Y-v.pressPoint.Y
+	if i != v.dragStart[0] || v.dragUnit != 1 || dx*dx+dy*dy >= 16 {
 		v.pressLink = ""
 	}
 	v.reveal = true
@@ -626,7 +628,9 @@ func (v *view) release(ev ui.InputEvent) bool {
 	link := v.pressLink
 	v.pressLink = ""
 	// A press the system took opens no link.
-	if link != "" && v.caret == v.selAnchor && !ev.Canceled {
+	x, y := v.contentPoint(ev.X, ev.Y)
+	dx, dy := ev.X-v.pressPoint.X, ev.Y-v.pressPoint.Y
+	if link != "" && v.caret == v.selAnchor && !ev.Canceled && dx*dx+dy*dy < 16 && v.linkAt(x, y) == link {
 		if v.opts.OnLink != nil {
 			v.opts.OnLink(link)
 		} else if ui.SafeToOpen(link) {
@@ -634,6 +638,35 @@ func (v *view) release(ev ui.InputEvent) bool {
 		}
 	}
 	return true
+}
+
+// Attachments occupy one rune, but either half of their drawn box opens
+// the link. Keep nearest-caret hit testing for selection alone.
+func (v *view) linkAt(x float32, y float64) string {
+	p, l, _ := v.layoutPositionAt(x, y)
+	if p < 0 {
+		return ""
+	}
+	pv := v.paraLayout(p)
+	ox, oy := v.origin(p)
+	for _, object := range pv.layout.Objects() {
+		if object.Rect.Contains(x-ox, float32(y-oy)) {
+			at := pv.runeOfUnit(object.Index)
+			start := v.caret - v.shown.paraStart(p)
+			if v.compose != "" && v.shown.paraAt(v.caret) == p && at >= start && at < start+len([]rune(v.compose)) {
+				return ""
+			}
+			return v.shown.AttributesAt(v.global(p, at)).Link
+		}
+	}
+	i := v.global(p, l)
+	if i < v.shown.Len() {
+		a := v.shown.AttributesAt(i)
+		if a.Attachment == nil {
+			return a.Link
+		}
+	}
+	return ""
 }
 
 // taskBox reports whether (x, y), in the content, is on the check box of

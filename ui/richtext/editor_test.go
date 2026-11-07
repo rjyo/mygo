@@ -617,3 +617,73 @@ func TestScrollbarOnHover(t *testing.T) {
 		t.Fatal("the thumb stayed as the pointer left")
 	}
 }
+
+func TestAttachmentLinkBounds(t *testing.T) {
+	for _, readOnly := range []bool{false, true} {
+		t.Run(map[bool]string{false: "editable", true: "read-only"}[readOnly], func(t *testing.T) {
+			var boxes [2]ui.Rect
+			var opened []string
+			text := NewText("before ")
+			for i, link := range []string{"first", "second"} {
+				text = text.Append(string(ObjectReplacement), Attributes{Link: link, Attachment: &Attachment{
+					Name: link, Width: 120, Height: 24,
+					Draw: func(_ *ui.Painter, r ui.Rect) { boxes[i] = r },
+				}})
+			}
+			text = text.Append(" after", Attributes{})
+			doc := NewDocument(text)
+			tt := ui.NewTester(func(c *ui.Context) {
+				EditorBase(c, doc, EditorOptions{ReadOnly: readOnly, OnLink: func(s string) { opened = append(opened, s) }}).Fill()
+			}, 500, 200)
+			tt.Frame()
+			for i, box := range boxes {
+				for _, dx := range []float32{1, 20, 60, 119} {
+					tt.Advance(time.Second)
+					x, y := box.X+dx, box.Y+box.H/2
+					tt.Move(x, y)
+					if tt.Cursor() != ui.CursorPointer {
+						t.Fatalf("attachment %d at %v has no pointer cursor", i, dx)
+					}
+					tt.ClickAt(x, y)
+					want := []string{"first", "second"}[i]
+					if len(opened) != 1 || opened[0] != want {
+						t.Fatalf("attachment %d at %v: opened %v", i, dx, opened)
+					}
+					opened = nil
+				}
+			}
+			for _, point := range []ui.Point{
+				{X: boxes[0].X - 1, Y: boxes[0].Y + 12},
+				{X: boxes[1].X + 121, Y: boxes[1].Y + 12},
+				{X: boxes[0].X + 100, Y: boxes[0].Y + 30},
+			} {
+				tt.Advance(time.Second)
+				tt.ClickAt(point.X, point.Y)
+				if len(opened) != 0 {
+					t.Fatalf("outside attachment at %+v opened %v", point, opened)
+				}
+			}
+			// A drag within one half still has the same nearest caret.
+			box := boxes[0]
+			tt.Advance(time.Second)
+			tt.Press(box.X+4, box.Y+12)
+			tt.Move(box.X+30, box.Y+12)
+			tt.Move(box.X+4, box.Y+12)
+			tt.Release(box.X+4, box.Y+12)
+			if len(opened) != 0 {
+				t.Fatal("drag returning to the press opened the attachment")
+			}
+			tt.Advance(time.Second)
+			tt.Press(box.X+4, box.Y+12)
+			tt.Move(box.X+116, box.Y+12)
+			tt.Release(box.X+116, box.Y+12)
+			a, z := doc.Selection()
+			if len(opened) != 0 || min(a, z) != 7 || max(a, z) != 8 {
+				t.Fatalf("drag: opened=%v selection=%d,%d", opened, a, z)
+			}
+			if doc.Text().PlainText() != text.PlainText() {
+				t.Fatal("pointer input changed the document")
+			}
+		})
+	}
+}

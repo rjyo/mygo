@@ -125,11 +125,12 @@ type view struct {
 	coalesce bool
 	// The pointer: a drag selecting by runes, words or paragraphs, from
 	// where it started; a scroll bar's thumb held; a link pressed.
-	dragging  bool
-	dragUnit  int
-	dragStart [2]int
-	pressMods ui.Modifiers
-	pressLink string
+	dragging   bool
+	dragUnit   int
+	dragStart  [2]int
+	pressMods  ui.Modifiers
+	pressLink  string
+	pressPoint ui.Point
 	// cursor is the pointer's shape where it hovers: an arrow over task
 	// boxes and the scroll bar, a hand over links, an I-beam over text.
 	cursor     ui.Cursor
