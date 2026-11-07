@@ -3,11 +3,13 @@ package gpu
 import (
 	"bytes"
 	"fmt"
+	"image"
 	"math"
 	"slices"
 	"testing"
 
 	"github.com/egoist/mygo/internal/gpu/gputest"
+	"github.com/egoist/mygo/internal/raster"
 	"github.com/egoist/mygo/internal/scene"
 )
 
@@ -64,8 +66,8 @@ func TestAffineClipMaskCacheFollowsClipInsteadOfContent(t *testing.T) {
 	}
 	s.Ops[0].Rect.W = 60
 	build()
-	if mask.ID() != id || mask.W != 60 {
-		t.Fatal("resizing clip accumulated a new cached image")
+	if mask.ID() != id || mask.W != 70 || b.Instances[0].Clip != [4]float32{10, 10, 70, 50} {
+		t.Fatal("a clip that shrank did not keep its mask's size")
 	}
 	clipped := s.Ops
 	s.Ops = s.Ops[1:2]
@@ -78,6 +80,53 @@ func TestAffineClipMaskCacheFollowsClipInsteadOfContent(t *testing.T) {
 	build()
 	if mask.ID() != id || mask.Version() != version {
 		t.Fatal("a clip coming back rasterized its mask again")
+	}
+}
+
+func TestGrowingClipKeepsItsMask(t *testing.T) {
+	// egoist/mygo-music#55: a rounded card holding scaled covers grows
+	// out of a 48 px cover to fill the window. Its mask, of a new size on
+	// every frame, was allocated and uploaded as a new texture on each:
+	// 190 MB in 40 frames. It grows in steps now, and still holds the
+	// card's coverage where the shaders read it.
+	const frames, fw, fh = 40, 2400, 1500
+	var b Builder
+	defer b.Release()
+	var mask *scene.Image
+	sizes := map[[2]int]bool{}
+	for i := range frames {
+		k := 1 - float32(i)/frames // how near the cover the card is
+		r := 12 * k
+		card := scene.Rect{X: 100 * k, Y: (fh - 100) * k, W: 48 + (fw-48)*(1-k), H: 48 + (fh-48)*(1-k)}
+		s := &scene.Scene{Width: fw, Height: fh, Ops: []scene.Op{
+			{Kind: scene.OpPushClip, Rect: card, Radii: [4]float32{r, r, r, r}},
+			{Kind: scene.OpFill, Rect: scene.Rect{W: 600, H: 600}, Color: scene.Color{A: 255}, Transform: scene.Scaling(1+k, 1+k)},
+			{Kind: scene.OpPopClip},
+		}}
+		b.Build(s, func(m *scene.Image) uintptr { mask = m; return 1 })
+		if len(b.Instances) != 1 || b.Instances[0].Transform1[3] != 1 {
+			t.Fatalf("frame %d: the card's scaled content was not masked", i)
+		}
+		sizes[[2]int{mask.W, mask.H}] = true
+		// The texels the shaders read, from the instance's mapping of
+		// frame pixels, hold the coverage of a mask of the scissor alone.
+		sc := b.Batches[0].Scissor
+		area := image.Rect(int(sc.Left), int(sc.Top), int(sc.Right), int(sc.Bottom))
+		want := raster.ClipMask(nil, b.maskSlots[0].shapes, area)
+		at := b.Instances[0].Clip
+		ox, oy := area.Min.X-int(at[0]), area.Min.Y-int(at[1])
+		if int(at[2]) != mask.W || int(at[3]) != mask.H || ox < 0 || oy < 0 || ox+area.Dx() > mask.W || oy+area.Dy() > mask.H {
+			t.Fatalf("frame %d: scissor %v outside the mask's %v at %v", i, area, [2]int{mask.W, mask.H}, at)
+		}
+		for y := range area.Dy() {
+			got := mask.Pix[4*((oy+y)*mask.W+ox):][:4*area.Dx()]
+			if !bytes.Equal(got, want.Pix[4*y*area.Dx():][:4*area.Dx()]) {
+				t.Fatalf("frame %d: row %d of the mask differs from the clip's coverage", i, y)
+			}
+		}
+	}
+	if len(sizes) > 12 {
+		t.Fatalf("the mask took %d sizes in %d frames, want at most 12", len(sizes), frames)
 	}
 }
 
