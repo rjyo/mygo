@@ -1531,7 +1531,12 @@ DirectWrite's locale of text formats and of ranges
 (`IDWriteTextLayout::SetLocaleName`), Pango's language attributes. Han
 characters in a language that does not write them get the engine's own
 choice (`langRuns`), as Chromium's `LocaleForHan` does; Core Text does so
-by itself.
+by itself. DirectWrite's choice goes by the locale of the user's regional
+formats (`GetUserDefaultLocaleName`), whose fallback for English mixes Yu
+Gothic UI and Microsoft JhengHei UI in one Chinese text: where that locale
+writes no Han characters, they take the first of the user's preferred
+languages that does (`userHanRuns`, `userHanLanguage`), read once with
+`GetUserPreferredUILanguages`.
 
 WebView2's environment takes the language through
 `ICoreWebView2EnvironmentOptions`, a COM object of ours

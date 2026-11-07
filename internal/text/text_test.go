@@ -1361,6 +1361,39 @@ func TestLangRuns(t *testing.T) {
 			t.Errorf("langRuns(%q, %q, %+v) = %+v, want %+v", c.text, c.base, c.spans, got, c.want)
 		}
 	}
+	// The Han characters langRuns leaves in the engine's own language.
+	for _, c := range []struct {
+		text, base string
+		spans      []Span
+		want       []langRun
+	}{
+		{"abc", "", nil, nil},
+		{"直", "zh-Hans", nil, nil},
+		{"ab直骨。c", "", nil, []langRun{{2, 5, ""}}},
+		{"ab直骨。c", "en", nil, []langRun{{2, 5, ""}}},
+		{"直 直", "en", nil, []langRun{{0, 1, ""}, {2, 3, ""}}},
+		{"ab直c直", "en", []Span{{End: 2}, {End: 3, Lang: "ja"}}, []langRun{{4, 5, ""}}},
+		{"直直", "ja", []Span{{End: 1, Lang: "fr"}}, []langRun{{0, 1, ""}}},
+	} {
+		if got := userHanRuns([]rune(c.text), c.base, c.spans); !slices.Equal(got, c.want) {
+			t.Errorf("userHanRuns(%q, %q, %+v) = %+v, want %+v", c.text, c.base, c.spans, got, c.want)
+		}
+	}
+	for _, c := range []struct {
+		locale    string
+		preferred []string
+		want      string
+	}{
+		{"en-US", []string{"en-US", "zh-Hans-CN"}, "zh-Hans-CN"},
+		{"en-US", []string{"en-GB", "ja-JP", "zh-Hans-CN"}, "ja-JP"},
+		{"en-US", []string{"en-US"}, ""},
+		{"en-US", nil, ""},
+		{"zh-CN", []string{"en-US", "ja-JP"}, ""},
+	} {
+		if got := userHanLanguage(c.locale, c.preferred); got != c.want {
+			t.Errorf("userHanLanguage(%q, %q) = %q, want %q", c.locale, c.preferred, got, c.want)
+		}
+	}
 	for lang, want := range map[string]bool{"zh-Hant": true, "ja_JP": true, "ko": true, "yue": true, "en": false, "vi": false, "": false} {
 		if writesHan(lang) != want {
 			t.Errorf("writesHan(%q) = %v", lang, !want)

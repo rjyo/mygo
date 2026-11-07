@@ -1,6 +1,7 @@
 package text
 
 import (
+	"slices"
 	"strings"
 	"unicode"
 )
@@ -15,6 +16,16 @@ import (
 // Japanese should not draw a Japanese name with Chinese glyphs. Browsers
 // do the same (Chromium's LayoutLocale::LocaleForHan). Core Text does it
 // by itself; DirectWrite and Pango are told (cjkRuns).
+//
+// On Windows the user's settings are more than the locale of their
+// regional formats, which DirectWrite falls back by. DirectWrite's fallback
+// for English draws Chinese text in Yu Gothic UI, a Japanese font, where it
+// has the characters, and in Microsoft JhengHei UI, a Traditional Chinese
+// one, where it lacks them, strokes of two weights in one label (#1454):
+// a user of English Windows who reads Chinese lists it among their
+// preferred languages. Han characters in no language that writes them take
+// the first of those that does (userHanLanguage), as Chromium takes the
+// first of its accepted languages.
 
 // writesHan reports whether a language writes Han characters: Chinese,
 // with its languages of other codes, Japanese and Korean.
@@ -86,13 +97,35 @@ func langRuns(text []rune, base string, spans []Span) []langRun {
 		return nil
 	}
 	var out []langRun
-	add := func(i int, lang string) {
-		if n := len(out); n > 0 && out[n-1].end == i && out[n-1].lang == lang {
-			out[n-1].end = i + 1
-			return
+	eachLang(text, base, spans, func(i int, lang string) {
+		if lang != base {
+			out = addLangRun(out, i, lang)
 		}
-		out = append(out, langRun{i, i + 1, lang})
+	})
+	return out
+}
+
+// userHanRuns returns the runs of Han characters of a text, and their
+// punctuation, in no language that writes them: those langRuns leaves in
+// the engine's own language, in which the system picks their glyphs for
+// the user.
+func userHanRuns(text []rune, base string, spans []Span) []langRun {
+	if writesHan(base) && !spansHaveLang(spans) || !slices.ContainsFunc(text, isCJK) {
+		return nil
 	}
+	var out []langRun
+	eachLang(text, base, spans, func(i int, lang string) {
+		if lang == "" && isCJK(text[i]) {
+			out = addLangRun(out, i, "")
+		}
+	})
+	return out
+}
+
+// eachLang calls fn with the index of each rune of a text and its language
+// as the engine is to be told it: the base's, its span's, or "" for a Han
+// character in a language that does not write it.
+func eachLang(text []rune, base string, spans []Span, fn func(i int, lang string)) {
 	span, from := 0, 0
 	for i, r := range text {
 		lang := base
@@ -106,11 +139,35 @@ func langRuns(text []rune, base string, spans []Span) []langRun {
 		if lang != "" && isCJK(r) && !writesHan(lang) {
 			lang = ""
 		}
-		if lang != base {
-			add(i, lang)
+		fn(i, lang)
+	}
+}
+
+// addLangRun adds rune i, in a language, to runs, extending the last.
+func addLangRun(runs []langRun, i int, lang string) []langRun {
+	if n := len(runs); n > 0 && runs[n-1].end == i && runs[n-1].lang == lang {
+		runs[n-1].end = i + 1
+		return runs
+	}
+	return append(runs, langRun{i, i + 1, lang})
+}
+
+// userHanLanguage returns the language in which Han characters in no
+// language that writes them are drawn, given the locale of the user's
+// regional formats and the languages they prefer, in order: "" when the
+// locale writes them, which the engine draws them in already, else the
+// first preferred language that writes them, else "" for the system's own
+// choice.
+func userHanLanguage(locale string, preferred []string) string {
+	if writesHan(locale) {
+		return ""
+	}
+	for _, lang := range preferred {
+		if writesHan(lang) {
+			return lang
 		}
 	}
-	return out
+	return ""
 }
 
 func spansHaveLang(spans []Span) bool {
