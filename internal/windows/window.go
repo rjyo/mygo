@@ -113,6 +113,11 @@ type window struct {
 	glass       margins // the frame's extension under the material
 	shadow      bool
 	ignoreMouse bool
+	// inputRegion is SetInputRegion's (input_region.go), nil for none;
+	// through tells that the window lets the mouse through
+	// (WS_EX_TRANSPARENT), as it or SetIgnoreMouseEvents set it last.
+	inputRegion []platform.Rect
+	through     bool
 
 	menu    *platform.Menu // menu bar
 	hmenu   uintptr
@@ -506,6 +511,10 @@ func (w *window) message(m uint32, wp, lp uintptr) (uintptr, bool) {
 		w.h.Closed()
 		return 0, true
 	case wmTimer:
+		if wp == timerInputRegion && checkInputRegion != nil {
+			checkInputRegion(w)
+			return 0, true
+		}
 		if wp != timerWebView {
 			return 0, false
 		}
@@ -521,6 +530,9 @@ func (w *window) message(m uint32, wp, lp uintptr) (uintptr, bool) {
 		w.hidden = wp == 0
 		for _, v := range w.webViews {
 			v.placeEmbedded()
+		}
+		if inputRegionShown != nil {
+			inputRegionShown(w, wp != 0)
 		}
 		return 0, false
 	case wmMove:
@@ -1296,9 +1308,9 @@ func (w *window) SetOpacity(v float64) {
 func (w *window) Opacity() float64 { return w.opacity }
 
 // updateLayered makes the window layered while it is translucent or lets
-// the mouse through.
+// the mouse through, all of it or but its input region.
 func (w *window) updateLayered() {
-	layered := w.opacity < 1 || w.ignoreMouse
+	layered := w.opacity < 1 || w.ignoreMouse || w.inputRegion != nil
 	w.setExStyle(wsExLayered, layered)
 	if layered {
 		procSetLayeredWindowAttributes.Call(w.hwnd, 0, uintptr(byte(w.opacity*255+0.5)), lwaAlpha)
@@ -1325,12 +1337,6 @@ func (w *window) SetHasShadow(v bool) {
 }
 
 func (w *window) HasShadow() bool { return w.shadow }
-
-func (w *window) SetIgnoreMouseEvents(v bool) {
-	w.ignoreMouse = v
-	w.setExStyle(wsExTransparent, v)
-	w.updateLayered()
-}
 
 func (w *window) SetContentProtection(v bool) {
 	if !has(procSetWindowDisplayAffinity) {

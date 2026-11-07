@@ -248,7 +248,9 @@ Other properties:
   regular apps there, but [panels](#panels).
 - `SetContentProtection(true)` keeps it out of screenshots and screen
   recordings.
-- `SetIgnoreMouseEvents(true)` lets clicks through to what is behind it.
+- `SetIgnoreMouseEvents(true)` lets clicks through to what is behind it,
+  and `SetInputRegion` all of them but those on parts of it (see
+  [click-through windows](#click-through-windows)).
 - `SetActiveAppearance(true)` keeps the window drawn as active while
   another app is in front (macOS), so that the clear Liquid Glass
   (`VibrancyGlassClear`) of a panel floating over it stays clear. It uses a
@@ -648,6 +650,54 @@ keys from the start: it is blurred only as it hides, so close it on
 Escape, which the user presses there. Elsewhere, as on GNOME, which has no
 layer shell, it is a window as others: the compositor decides where it
 shows and what is above it.
+
+## Click-through windows
+
+A desktop pet is a frameless, transparent window always on top, which
+shows a character, and a speech bubble now and then: clicks on them reach
+the app, and clicks anywhere else the window or the desktop under it, as
+if the pet's window were not there. `SetInputRegion` gives the window the
+rectangles that take the mouse, in DIPs from the top-left corner of its
+content; presses, moves and the wheel elsewhere go through to what is
+behind it:
+
+```go
+pet := mygo.NewWindow(mygo.WindowOptions{
+	Frameless:   true,
+	Transparent: true,
+	AlwaysOnTop: true,
+	SkipTaskbar: true,
+	Width:       320,
+	Height:      240,
+	Content:     ui.View(app.pet),
+})
+character := mygo.Rectangle{X: 200, Y: 120, Width: 110, Height: 110}
+pet.SetInputRegion([]mygo.Rectangle{character})
+
+// The bubble shows: it takes clicks too, until it goes.
+pet.SetInputRegion([]mygo.Rectangle{character, {X: 10, Y: 10, Width: 220, Height: 90}})
+```
+
+Set the region again as what takes clicks moves or changes size: the
+rectangles stay where they were in the window, which may move as a whole
+(`SetPosition`, or `StartDrag` from the character). A page finds its
+rectangles with `getBoundingClientRect` and sends them through a bound
+method; native UI with an element's `Bounds`. `SetInputRegion(nil)` gives
+the window the mouse everywhere again, as it starts, and an empty slice
+lets it all through, as `SetIgnoreMouseEvents(true)` does, which wins
+over the region while it is set. `PassThrough` in native UI is another
+thing: it lets the pointer through an element to what the window shows
+under it, never to another window.
+
+How each platform does it:
+
+| | macOS | Linux | Windows |
+|---|---|---|---|
+| region | the window lets the mouse through (`ignoresMouseEvents`) while the pointer is outside the rectangles, switched as it moves, from monitors of the pointer's moves in the app and in other apps | the window's input shape: X11's SHAPE extension, Wayland's input region | the window lets the mouse through (layered, `WS_EX_TRANSPARENT`) while the cursor is outside the rectangles, which a timer asks 60 times a second while the window shows |
+
+On macOS and Windows a button held keeps the window as it is: a drag that
+started on the character ends there, as one that started on what is
+behind ends there, and the release settles which takes the mouse next.
 
 ## Events
 

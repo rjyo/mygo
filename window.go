@@ -1266,9 +1266,48 @@ func (w *Window) SetHasShadow(v bool) { w.do(func(n platform.Window) { n.SetHasS
 // HasShadow reports whether the window has a shadow.
 func (w *Window) HasShadow() bool { return get(w, platform.Window.HasShadow) }
 
-// SetIgnoreMouseEvents makes the window transparent to mouse events.
+// SetIgnoreMouseEvents makes the window transparent to mouse events. It
+// wins over SetInputRegion.
 func (w *Window) SetIgnoreMouseEvents(v bool) {
 	w.do(func(n platform.Window) { n.SetIgnoreMouseEvents(v) })
+}
+
+// SetInputRegion limits the part of the window that takes the mouse to
+// rects, in DIPs from the top-left corner of its content: presses, moves
+// and the wheel elsewhere go through to what is behind the window, as
+// with SetIgnoreMouseEvents, another app's window or the desktop. It is
+// what a desktop pet needs, a frameless, transparent window always on
+// top: its character and speech bubble take clicks, and the rest of the
+// screen works as if the window were not there. Native UI's PassThrough
+// only lets the pointer through an element to the window's own content.
+//
+// nil gives the window all of it back, as it starts; an empty slice none
+// of it. Rectangles without area are dropped. Set the region again as
+// what takes clicks moves or changes size.
+//
+// On Linux, the window's input shape is the region (X11's SHAPE
+// extension, Wayland's input region). macOS and Windows shape no window's
+// input: the window takes the mouse or lets all of it through, switched
+// as the pointer comes into the region or leaves it, which macOS tells as
+// it moves and Windows is asked 60 times a second while the window shows.
+// A button held keeps it as it is, so that a drag that started on the
+// character, as one moving the window, ends there; the release settles
+// it. In browsers it does nothing.
+func (w *Window) SetInputRegion(rects []Rectangle) {
+	var region []platform.Rect
+	if rects != nil {
+		region = make([]platform.Rect, 0, len(rects))
+		for _, r := range rects {
+			if r.Width > 0 && r.Height > 0 {
+				region = append(region, platform.Rect(r))
+			}
+		}
+	}
+	w.do(func(n platform.Window) {
+		if n, ok := n.(platform.InputRegionWindow); ok {
+			n.SetInputRegion(region)
+		}
+	})
 }
 
 // SetActiveAppearance keeps the window drawn as active, the key window of

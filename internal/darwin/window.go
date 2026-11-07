@@ -110,6 +110,13 @@ type window struct {
 	// a window was modal to it as it showed (holdPopover).
 	popover, popoverController  id
 	popoverClosing, popoverHeld bool
+	// ignoreMouse is SetIgnoreMouseEvents', and inputRegion
+	// SetInputRegion's (input_region.go), nil for none, whose tracking
+	// area is regionTracking; ignoring is whether the window lets the
+	// mouse through, as either set it last.
+	ignoreMouse, ignoring bool
+	inputRegion           []platform.Rect
+	regionTracking        id
 
 	lastMouseDown id
 	dropped       []string         // DroppedFiles
@@ -727,6 +734,9 @@ func (w *window) cleanup() {
 	delete(b.byDelegate, w.delegate)
 	delete(b.byWebView, w.web)
 	delete(b.byNSWindow, w.win)
+	if inputRegionClosed != nil {
+		inputRegionClosed(w)
+	}
 	w.forgetDrag()
 	release(w.ucc)
 	for _, j := range printJobs {
@@ -1304,11 +1314,10 @@ func (w *window) SetVisibleOnAllWorkspaces(v bool) {
 }
 
 // SetIcon does nothing: macOS windows show no icon of their own.
-func (w *window) SetIcon([]byte) error        { return nil }
-func (w *window) Opacity() float64            { return msgFloat(w.win, sel("alphaValue")) }
-func (w *window) SetHasShadow(v bool)         { send(w.win, "setHasShadow:", boolArg(v)) }
-func (w *window) HasShadow() bool             { return sendBool(w.win, "hasShadow") }
-func (w *window) SetIgnoreMouseEvents(v bool) { send(w.win, "setIgnoresMouseEvents:", boolArg(v)) }
+func (w *window) SetIcon([]byte) error { return nil }
+func (w *window) Opacity() float64     { return msgFloat(w.win, sel("alphaValue")) }
+func (w *window) SetHasShadow(v bool)  { send(w.win, "setHasShadow:", boolArg(v)) }
+func (w *window) HasShadow() bool      { return sendBool(w.win, "hasShadow") }
 
 func (w *window) SetContentProtection(v bool) {
 	sharing := uintptr(1) // NSWindowSharingReadOnly
@@ -2384,6 +2393,9 @@ func registerWindowClasses() {
 						w.h.Unmaximized()
 					}
 				}
+				if inputRegionMoved != nil {
+					inputRegionMoved(w) // the region moved under the pointer
+				}
 				w.h.Resized()
 			}),
 			method("windowWillMove:", func(self id, _ objc.SEL, n id) {
@@ -2395,6 +2407,9 @@ func registerWindowClasses() {
 			}),
 			method("windowDidMove:", func(self id, _ objc.SEL, n id) {
 				if w := b().windowFor(self); w != nil {
+					if inputRegionMoved != nil {
+						inputRegionMoved(w)
+					}
 					w.h.Moved()
 				}
 			}),

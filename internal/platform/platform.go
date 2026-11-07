@@ -140,6 +140,16 @@ type WindowStateWindow interface {
 	WindowStateBounds() Rect
 }
 
+// InputRegionWindow is a window that takes the mouse only where its input
+// region is (macOS, Linux, Windows): SetInputRegion limits it to region,
+// in DIPs from the top-left corner of the content, and lets the mouse
+// through elsewhere; nil gives it all of the window, an empty region
+// none. SetIgnoreMouseEvents(true) wins over it. Apart from Window, so
+// that only apps setting a region link it.
+type InputRegionWindow interface {
+	SetInputRegion(region []Rect)
+}
+
 // WindowStateBackend restores windows at their pixels (Windows):
 // RestoreWindowState sets opts.StateBounds and returns true when pixels,
 // zero for none, would show on a connected display. Otherwise the core

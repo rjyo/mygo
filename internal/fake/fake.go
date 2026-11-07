@@ -571,6 +571,9 @@ type Window struct {
 	// MaximizeButton is where the content last said it shows the maximize
 	// button.
 	MaximizeButton platform.RectF
+	// InputRegion is what SetInputRegion set last: nil for all of the
+	// window.
+	InputRegion []platform.Rect
 	// AsyncFunction answers CallAsyncFunction.
 	AsyncFunction func(body string) (string, error)
 	// AsyncCallback, when set, receives CallAsyncFunction calls to answer
@@ -746,6 +749,8 @@ func (w *Window) SetVibrancyTint(*platform.Color) {}
 func (w *Window) SetActiveAppearance(v bool)      { w.mu.Lock(); w.active = v; w.mu.Unlock() }
 
 func (w *Window) SetWindowButtonsTheme(string) {}
+
+func (w *Window) SetInputRegion(r []platform.Rect) { w.mu.Lock(); w.InputRegion = r; w.mu.Unlock() }
 
 // ActiveAppearance reports what SetActiveAppearance set last.
 func (w *Window) ActiveAppearance() bool             { w.mu.Lock(); defer w.mu.Unlock(); return w.active }

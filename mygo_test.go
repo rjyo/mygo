@@ -207,6 +207,33 @@ func TestGlassWindowOptions(t *testing.T) {
 	}
 }
 
+// TestInputRegion passes a desktop pet's region to the backend, a copy
+// without the rectangles that hold nothing, keeping nil (all of the
+// window) apart from an empty region (none of it).
+func TestInputRegion(t *testing.T) {
+	w, fw := testWindow(t, WindowOptions{Frameless: true, Transparent: true, AlwaysOnTop: true})
+	region := func() []platform.Rect {
+		return onMainValue(func() []platform.Rect { return fw.InputRegion })
+	}
+	if region() != nil {
+		t.Fatalf("a new window has region %v", region())
+	}
+	rects := []Rectangle{{X: 10, Y: 80, Width: 120, Height: 140}, {X: 0, Y: 0, Width: 0, Height: 40}, {X: 5, Y: 5, Width: 160, Height: -1}, {X: 0, Y: 0, Width: 200, Height: 60}}
+	w.SetInputRegion(rects)
+	rects[0].X = 99 // the caller's slice is its own
+	if got, want := region(), []platform.Rect{{X: 10, Y: 80, Width: 120, Height: 140}, {X: 0, Y: 0, Width: 200, Height: 60}}; !reflect.DeepEqual(got, want) {
+		t.Errorf("region %v, want %v", got, want)
+	}
+	w.SetInputRegion([]Rectangle{{Width: 0, Height: 10}})
+	if got := region(); got == nil || len(got) != 0 {
+		t.Errorf("region %#v, want an empty one", got)
+	}
+	w.SetInputRegion(nil)
+	if got := region(); got != nil {
+		t.Errorf("region %v, want nil", got)
+	}
+}
+
 func TestWindowOptions(t *testing.T) {
 	parent, _ := testWindow(t, WindowOptions{})
 	_, fw := testWindow(t, WindowOptions{
