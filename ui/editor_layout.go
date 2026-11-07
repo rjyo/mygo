@@ -114,9 +114,10 @@ func (e *node) layoutInput(cw, ch float32) {
 	}
 	// Text narrower than the box goes where TextAlign puts it: Start is
 	// the right of an input laid out right to left, whatever its text, as
-	// that of Text.
+	// that of Text. Its last column stays for the caret, as where the text
+	// scrolls: a caret on the box's right edge would be clipped away.
 	rtl := e.rtl()
-	if room := cw - l.Width; room > 0 {
+	if room := cw - l.Width - 1; room > 0 {
 		switch align := e.resolvedText().align; {
 		case align == Center:
 			ed.originX += room / 2
