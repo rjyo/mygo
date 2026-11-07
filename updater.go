@@ -625,6 +625,8 @@ func cleanUpdateLeftovers() {
 
 // httpGet fetches a URL over HTTPS (or plain HTTP from the loopback
 // interface, for tests), through the system's proxy (package netproxy).
+// A failure that a moment may mend, as a gateway timing out in front of
+// the store of a release's assets, is tried again (httpRetries).
 func httpGet(ctx context.Context, rawURL string) (io.ReadCloser, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -633,23 +635,65 @@ func httpGet(ctx context.Context, rawURL string) (io.ReadCloser, error) {
 	if u.Scheme != "https" && !(u.Scheme == "http" && isLoopback(u.Hostname())) {
 		return nil, fmt.Errorf("refusing to download %s: updates need HTTPS", rawURL)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return nil, err
+	client := &http.Client{Transport: netproxy.Transport()}
+	for try := 0; ; try++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		// Not the app's name: GitHub's release assets come from a store that
+		// answers 400 to a User-Agent with bytes outside ASCII, as 云音乐, for
+		// every file its CDN has not cached yet.
+		req.Header.Set("User-Agent", "mygo-updater")
+		resp, err := client.Do(req)
+		var wait time.Duration
+		switch {
+		case err != nil:
+			if ctx.Err() != nil || try >= len(httpRetries) {
+				return nil, err
+			}
+		case resp.StatusCode == http.StatusOK:
+			return resp.Body, nil
+		default:
+			resp.Body.Close()
+			if !transientStatus(resp.StatusCode) || try >= len(httpRetries) {
+				return nil, fmt.Errorf("GET %s: %s", rawURL, resp.Status)
+			}
+			wait = retryAfter(resp.Header.Get("Retry-After"))
+		}
+		wait = max(wait, httpRetries[try])
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(wait):
+		}
 	}
-	// Not the app's name: GitHub's release assets come from a store that
-	// answers 400 to a User-Agent with bytes outside ASCII, as 云音乐, for
-	// every file its CDN has not cached yet.
-	req.Header.Set("User-Agent", "mygo-updater")
-	resp, err := (&http.Client{Transport: netproxy.Transport()}).Do(req)
-	if err != nil {
-		return nil, err
+}
+
+// httpRetries are how long httpGet waits before each try after the first
+// of a request that failed for a while: three tries in all.
+var httpRetries = []time.Duration{time.Second, 3 * time.Second}
+
+// transientStatus reports whether a response of status code may succeed
+// when asked again: too many requests, or a server or gateway failing for
+// now.
+func transientStatus(code int) bool {
+	switch code {
+	case http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusBadGateway,
+		http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
 	}
-	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
-		return nil, fmt.Errorf("GET %s: %s", rawURL, resp.Status)
+	return false
+}
+
+// retryAfter is the wait of a Retry-After header in seconds, up to 30
+// seconds; 0 for none, or for a date.
+func retryAfter(h string) time.Duration {
+	n, err := strconv.Atoi(strings.TrimSpace(h))
+	if err != nil || n <= 0 {
+		return 0
 	}
-	return resp.Body, nil
+	return min(time.Duration(n)*time.Second, 30*time.Second)
 }
 
 func isLoopback(host string) bool {
