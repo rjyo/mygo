@@ -5,6 +5,7 @@ package text
 import (
 	"errors"
 	"fmt"
+	"hash/maphash"
 	"log"
 	"math"
 	"reflect"
@@ -389,7 +390,16 @@ type dwrite struct {
 	// fonts are the Fonts of faces at sizes, which hold a reference to
 	// their face until they are unreachable (nativeFonts).
 	fonts map[fontKey]*Font
-	thin  map[uintptr]bool // whether a font face is too thin for antialiasing
+	// numbers holds what text formats shape numbers into (shapeNumber).
+	numbers map[formatKey]*numberFont
+	// wholes are the texts wrapping lately, shaped into one line, wrapFonts
+	// what wrapping them keeps for text formats (wrapWhole), textSeed seeds
+	// the hashes of their keys, and frame counts the frames.
+	wholes    map[wholeKey]*keptWhole
+	wrapFonts map[formatKey]*wrapFont
+	textSeed  maphash.Seed
+	frame     uint64
+	thin      map[uintptr]bool // whether a font face is too thin for antialiasing
 
 	// The system's settings for text (settings): its rendering parameters,
 	// the correction renderers apply, whether it smooths fonts with
@@ -413,6 +423,9 @@ type dwrite struct {
 	names   []string
 
 	scratch []byte
+	// firsts is room for the code unit starting the cluster of each glyph of
+	// a run (run).
+	firsts []uint32
 }
 
 // appFont is a font file the app registers: its own families, the
@@ -469,6 +482,10 @@ func newDWrite() (*dwrite, error) {
 		fallbacks: map[string]uintptr{},
 		faces:     map[faceKey]uintptr{},
 		fonts:     map[fontKey]*Font{},
+		numbers:   map[formatKey]*numberFont{},
+		wholes:    map[wholeKey]*keptWhole{},
+		wrapFonts: map[formatKey]*wrapFont{},
+		textSeed:  maphash.MakeSeed(),
 		thin:      map[uintptr]bool{},
 		aliases:   map[string]string{},
 	}
@@ -815,6 +832,19 @@ func collect(run *dwGlyphRun, desc *dwGlyphRunDescription) {
 }
 
 func (e *dwrite) shape(text []rune, style Style, spans []Span, width float32, rtl, wholeWords bool) []shapedLine {
+	if lines := e.shapeNumber(text, style, spans, width, rtl); lines != nil {
+		return lines
+	}
+	if wrapsFromWhole(text, style, spans, width, rtl, wholeWords) {
+		if lines := e.wrapWhole(text, style, width); lines != nil {
+			return lines
+		}
+	}
+	return e.shapeText(text, style, spans, width, rtl, wholeWords)
+}
+
+// shapeText has DirectWrite shape text.
+func (e *dwrite) shapeText(text []rune, style Style, spans []Span, width float32, rtl, wholeWords bool) []shapedLine {
 	format := e.format(style)
 	if format == 0 || len(text) == 0 {
 		return nil
@@ -1193,9 +1223,12 @@ func (e *dwrite) typography(layout uintptr, list string, r uintptr) {
 // those hit testing finds.
 func (e *dwrite) run(layout uintptr, u16 []uint16, r dwRun, x float32, index []int) (shapedRun, float32) {
 	f := e.fontOf(r.face, r.size)
-	out := shapedRun{font: f, start: index[r.pos], end: index[r.pos+r.n], glyphs: make([]Glyph, len(r.glyphs))}
+	// The glyphs last until the next layout, which takes them into its lines.
+	out := shapedRun{font: f, start: index[r.pos], end: index[r.pos+r.n], glyphs: e.glyphRoom(len(r.glyphs))}
 	// The code unit starting the cluster of each glyph.
-	first := make([]uint32, len(r.glyphs))
+	e.firsts = slices.Grow(e.firsts[:0], len(r.glyphs))[:len(r.glyphs)]
+	first := e.firsts
+	clear(first)
 	for k := 0; k < len(r.clusters); {
 		g0 := int(r.clusters[k])
 		k1 := k + 1
@@ -1976,6 +2009,9 @@ func (e *dwrite) fontCount() int { return len(e.fonts) }
 // refers to them (releaseFonts).
 func (e *dwrite) forgetFonts() {
 	clear(e.fonts)
+	clear(e.numbers)
+	clear(e.wholes)
+	clear(e.wrapFonts)
 	e.dropScratch()
 }
 

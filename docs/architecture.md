@@ -4408,10 +4408,14 @@ either.
   `languageShapes` leaves the attribute out where it changes nothing. A
   number, new in each frame on a dashboard, is put together from the glyphs
   and kerning of its characters, measured once for each font and checked
-  against Core Text from time to time (`numbers_darwin.go`). Latin text
-  kept across widths is shaped into one line that its lines take their glyphs
-  from, breaking at the spaces before plain words and asking Core Text for
-  every other break, checked in the same way (`wrap_darwin.go`). Korean text
+  against Core Text or DirectWrite from time to time (`numbers.go`). Latin
+  text kept across widths is shaped into one line that its lines take their
+  glyphs from, breaking at the spaces before plain words, checked in the same
+  way (`wrap.go`): Core Text is asked for every other break, and DirectWrite,
+  which shapes a whole text before breaking it, lays out a text with any other
+  break, keeping the one line 8 frames after the last, or as windows go idle,
+  and drawing the spaces ending a line as a run of their own, as DirectWrite
+  does. Korean text
   breaks between words, as CSS's `word-break: keep-all` (`keepWordsWhole`
   takes the breaks between two letters or digits out of Unicode's): Core Text
   moves the break it suggests back to the last one left in the line; Pango
