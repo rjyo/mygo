@@ -1289,7 +1289,8 @@ func (w *Window) SetIgnoreMouseEvents(v bool) {
 // extension, Wayland's input region). macOS and Windows shape no window's
 // input: the window takes the mouse or lets all of it through, switched
 // as the pointer comes into the region or leaves it, which macOS tells as
-// it moves and Windows is asked 60 times a second while the window shows.
+// it moves and Windows is asked at each tick of its clock (15.6 ms) while
+// the window shows.
 // A button held keeps it as it is, so that a drag that started on the
 // character, as one moving the window, ends there; the release settles
 // it. In browsers it does nothing.

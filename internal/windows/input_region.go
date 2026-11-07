@@ -27,8 +27,8 @@ import (
 // WS_EX_TRANSPARENT before the press comes: a press then goes where the
 // cursor is as it would through a region. A window letting the mouse
 // through gets no WM_MOUSEMOVE, so the cursor is asked where it is
-// (GetCursorPos) on a timer of the window's, 60 times a second while it
-// shows, which costs next to nothing, and needs neither a low-level mouse
+// (GetCursorPos) on a timer of the window's, at each tick of the
+// system's clock (15.6 ms) while it shows, which costs next to nothing, and needs neither a low-level mouse
 // hook, which slows every move of the system's mouse while the main
 // thread is busy, nor raw input, which a process registers once for every
 // window and library in it. A button held keeps the window as it is, so
@@ -39,8 +39,14 @@ import (
 // comes and goes.
 
 const (
-	timerInputRegion = 5  // the window's timer that asks where the cursor is
-	inputRegionPoll  = 16 // milliseconds between asks, a frame at 60 Hz
+	timerInputRegion = 5 // the window's timer that asks where the cursor is
+	// inputRegionPoll is the milliseconds between asks: the least SetTimer
+	// takes (USER_TIMER_MINIMUM), which fires at each tick of the system's
+	// clock, 15.6 ms. A timer rounds its time up to whole ticks, so 16 ms
+	// fired every other tick, 31 ms apart: a press that came 17 to 35 ms
+	// after the cursor entered the region could find the window switching
+	// as Windows routed it, and went to no window at all.
+	inputRegionPoll = 10
 )
 
 var (

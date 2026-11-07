@@ -693,7 +693,7 @@ How each platform does it:
 
 | | macOS | Linux | Windows |
 |---|---|---|---|
-| region | the window lets the mouse through (`ignoresMouseEvents`) while the pointer is outside the rectangles, switched as it moves, from monitors of the pointer's moves in the app and in other apps | the window's input shape: X11's SHAPE extension, Wayland's input region | the window lets the mouse through (layered, `WS_EX_TRANSPARENT`) while the cursor is outside the rectangles, which a timer asks 60 times a second while the window shows |
+| region | the window lets the mouse through (`ignoresMouseEvents`) while the pointer is outside the rectangles, switched as it moves, from monitors of the pointer's moves in the app and in other apps | the window's input shape: X11's SHAPE extension, Wayland's input region | the window lets the mouse through (layered, `WS_EX_TRANSPARENT`) while the cursor is outside the rectangles, which a timer asks at each tick of the system's clock (15.6 ms) while the window shows |
 
 On macOS and Windows a button held keeps the window as it is: a drag that
 started on the character ends there, as one that started on what is
