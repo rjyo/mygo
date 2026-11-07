@@ -303,4 +303,13 @@ export const showcase: ShowcaseApp[] = [
     mode: "native",
     image: "/showcase/curlgo.jpg",
   },
+  {
+    name: "GoRequest",
+    description:
+      "An open-source, local-first API client and documentation workspace with native UI. Debug HTTP and WebSocket requests, keep YAML requests and Markdown docs together in Git, import from cURL, Postman and OpenAPI, and run automated tests and local mocks.",
+    url: "https://github.com/Flyinsky2004/GoRequest",
+    author: "Flyinsky2004",
+    mode: "native",
+    image: "/showcase/gorequest.jpg",
+  },
 ]
