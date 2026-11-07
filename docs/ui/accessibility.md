@@ -678,6 +678,7 @@ WAI-ARIA's Core Accessibility API Mappings say:
 | `ui.RoleLog` | a live region of messages added in order, as a chat's transcript | `AXGroup`, `AXApplicationLog` | log | Group "log", `LiveSetting` polite |
 | `ui.RoleTimer` | a count of time, as a countdown, read only when the user goes to it | `AXGroup`, `AXApplicationTimer` | timer | Group "timer" |
 | `ui.RoleAlert` | a live region of important news, as a field's error, read at once | `AXGroup`, `AXApplicationAlert` | notification | Group "alert", `LiveSetting` assertive |
+| `ui.RoleStatus` | a live region of advisory information, as "3 rows selected" or "Saved", whose whole text is read out politely when it changes | `AXGroup`, `AXApplicationStatus` | notification, or status bar before ATK has it | StatusBar, `LiveSetting` polite |
 | `ui.RoleSeparator` | a rule between groups of content or controls, running up and down when taller than wide | `AXSplitter` | separator, vertical or horizontal | Separator, with `Orientation` |
 | `ui.RoleRowHeader` | the cell naming its row of a table, named by its content, whose buttons and other elements stay reachable, as a cell's | `AXCell` | row header | HeaderItem "row header" |
 | `ui.RoleDeletion` | content removed from a document, as a diff's removed lines or an old price struck out, as HTML's `<del>`; its text is inside it | `AXGroup`, `AXDeleteStyleGroup` | content deletion, `xml-roles:deletion` | Text "deletion" |
@@ -690,9 +691,10 @@ after what screen readers are reading, as `c.Announce` does; an alert's
 text is read out at once, interrupting, as it appears and whenever it
 changes (VoiceOver's announcements of high priority, ATK's `notification`
 signal, assertive, where ATK has it (2.50), else an announcement, and an
-assertive live region on Windows). What they show as assistive
-technology comes, or as a log first shows, is not read out, and a timer
-reads nothing by itself:
+assertive live region on Windows); a status's (`ui.RoleStatus`), when its
+text changes, is read out whole, politely, as `aria-atomic` says. What
+they show as assistive technology comes, or as a log or a status first
+shows, is not read out, and a timer reads nothing by itself:
 
 ```go
 ui.Column(c).Role(ui.RoleLog).Label("Messages").Children(func() {
@@ -714,7 +716,10 @@ ui.Row(c).Role(ui.RoleToolbar).Label("Format").Children(func() {
 ```
 
 A log reads out the elements it gained, those of each row together; an
-alert, its text. Keyed rows (`Key`) keep what a log showed apart from
+alert, its text; a status, all its text, once it changed (nothing when it
+is emptied). A status is told from the last frame's by its element, so
+give it a `Key` when elements may come before it; one inside a log, an
+alert or another status is read as part of it, not on its own. Keyed rows (`Key`) keep what a log showed apart from
 what it gained when rows come before others.
 
 Screen readers list landmarks and jump to them, so a search field and its

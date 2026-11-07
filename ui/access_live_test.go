@@ -160,6 +160,78 @@ func TestLiveRegions(t *testing.T) {
 	check("the log again", nil, nil)
 }
 
+// TestStatusLiveRegion checks that a status reads out its whole text,
+// politely, when it changes: not as assistive technology came nor as the
+// status first shows, not when unchanged or emptied, and still when
+// another element appears before it; a status inside a log or an alert
+// is read as part of it.
+func TestStatusLiveRegion(t *testing.T) {
+	var selected, banner string
+	showStatus, extra, logged := true, false, false
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).AlignItems(Start).Children(func() {
+			if extra {
+				coreText(c, "Something new")
+			}
+			if showStatus {
+				coreRow(c).Key("sel").Role(RoleStatus).Gap(4).Children(func() {
+					coreText(c, selected)
+					coreText(c, "rows selected")
+				})
+			}
+			if logged {
+				coreColumn(c).Key("log").Role(RoleLog).Label("Messages").Children(func() {
+					coreText(c, "Hi").Key(1)
+					coreText(c, selected).Role(RoleStatus).Key(2)
+				})
+			}
+			if banner != "" {
+				coreColumn(c).Role(RoleAlert).Children(func() {
+					coreText(c, banner).Role(RoleStatus)
+				})
+			}
+		})
+	}, 400, 300)
+	selected = "3"
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
+	tt.Frame()
+	check := func(step string, announced ...string) {
+		t.Helper()
+		tree := tt.h.access
+		if !slices.Equal(tree.Announcements, announced) {
+			t.Errorf("%s: announcements %q, want %q", step, tree.Announcements, announced)
+		}
+	}
+	check("as it came")
+	tt.Frame()
+	check("unchanged")
+	selected = "4"
+	tt.Frame()
+	check("changed", "4 rows selected")
+	tt.Frame()
+	check("unchanged again")
+	// Another element appears before the status.
+	extra = true
+	selected = "5"
+	tt.Frame()
+	check("an element before", "5 rows selected")
+	// A status in a log or an alert is not read on its own.
+	logged = true
+	banner = "Saved"
+	tt.Frame()
+	check("inside others")
+	selected = "6"
+	tt.Frame()
+	check("changed with others", "6 rows selected")
+	// A status shown anew reads nothing.
+	showStatus = false
+	tt.Frame()
+	showStatus = true
+	selected = "7"
+	tt.Frame()
+	check("shown anew")
+}
+
 // TestRowHeaderKeepsChildren checks that a row header shows what is
 // inside it, as a cell does (ARIA's rowheader is not
 // children-presentational): a button in it stays reachable, while the

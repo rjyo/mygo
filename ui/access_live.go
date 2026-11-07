@@ -8,11 +8,12 @@ import (
 
 // liveState is what the live regions of the last tree held, which the
 // next tree's are told from: the nodes in logs (the logs among them), and
-// the texts alerts showed. spare holds the maps of the tree before,
-// reused.
+// the texts alerts showed, and the text of each status. spare holds the
+// maps of the tree before, reused.
 type liveState struct {
-	seen, spareSeen     map[uint64]bool
-	alerts, spareAlerts map[string]bool
+	seen, spareSeen         map[uint64]bool
+	alerts, spareAlerts     map[string]bool
+	statuses, spareStatuses map[uint64]string
 }
 
 // liveRegions adds to a frame's tree what its live regions read out, as
@@ -21,13 +22,21 @@ type liveState struct {
 // changes, at once. Screen readers read neither from the platforms' own
 // live regions outside web content, but all read announcements. Alerts
 // are told by their text, which an element's ID shifting as others
-// appear before it keeps. speak is false for the first tree assistive
+// appear before it keeps. A status (RoleStatus) is read as ARIA's is,
+// politely and whole (aria-atomic), when its text changes: all the text
+// inside it, after what is being read, as a log's additions are.
+// A status is told from the last tree's by its element's ID, which
+// keyed elements (Key) and elements whose siblings before them stay keep
+// from frame to frame, as a log's rows are; one whose ID shifted is read
+// as one appearing, which reads nothing, rather than as another's change.
+// A status inside a log, an alert or another status is read as part of
+// it, not on its own. Busy is not honoured, as for logs. speak is false for the first tree assistive
 // technology gets, whose content was there before it came.
 func (rt *engine) liveRegions(t *platform.AccessTree, speak bool) {
 	l := &rt.live
 	has := false
 	for i := range t.Nodes {
-		if r := t.Nodes[i].Role; r == platform.RoleLog || r == platform.RoleAlert {
+		if r := t.Nodes[i].Role; r == platform.RoleLog || r == platform.RoleAlert || r == platform.RoleStatus {
 			has = true
 			break
 		}
@@ -36,12 +45,17 @@ func (rt *engine) liveRegions(t *platform.AccessTree, speak bool) {
 		// As on most frames: nothing to tell, nor to keep.
 		clear(l.seen)
 		clear(l.alerts)
+		clear(l.statuses)
 		return
 	}
 	if l.spareSeen == nil {
 		l.spareSeen, l.spareAlerts = map[uint64]bool{}, map[string]bool{}
+		l.spareStatuses = map[uint64]string{}
 	}
-	seen, alerts := l.spareSeen, l.spareAlerts
+	if l.statuses == nil {
+		l.statuses = map[uint64]string{}
+	}
+	seen, alerts, statuses := l.spareSeen, l.spareAlerts, l.spareStatuses
 	// The log each node is in, its own if it is one: the nearest.
 	logOf := make([]int, len(t.Nodes))
 	added := map[int]string{}
@@ -94,10 +108,36 @@ func (rt *engine) liveRegions(t *platform.AccessTree, speak bool) {
 		}
 		alerts[text] = true
 	}
+	// Statuses outside the other live regions and statuses (their nodes
+	// follow their parents').
+	inside := make([]bool, len(t.Nodes))
+	for i, n := range t.Nodes {
+		if p := n.Parent; p >= 0 {
+			switch t.Nodes[p].Role {
+			case platform.RoleLog, platform.RoleAlert, platform.RoleStatus:
+				inside[i] = true
+			default:
+				inside[i] = inside[p]
+			}
+		}
+		if n.Role != platform.RoleStatus || inside[i] {
+			continue
+		}
+		text := liveText(t, i)
+		if text == "" {
+			text = n.Label
+		}
+		if before, shown := l.statuses[n.ID]; speak && shown && text != "" && text != before {
+			t.Announcements = append(t.Announcements, text)
+		}
+		statuses[n.ID] = text
+	}
 	clear(l.seen)
 	clear(l.alerts)
+	clear(l.statuses)
 	l.seen, l.spareSeen = seen, l.seen
 	l.alerts, l.spareAlerts = alerts, l.alerts
+	l.statuses, l.spareStatuses = statuses, l.statuses
 }
 
 // liveText returns the text of node i and those inside it, as a live

@@ -47,6 +47,12 @@ const (
 	RoleTabList
 	RoleTab
 	RoleSplitter
+	// RoleStatus is a live region of advisory information, as "3 rows
+	// selected" or "Saved": when its text changes, screen readers read the
+	// whole of it out, politely, after what they are reading. Give it a
+	// Key when elements come before it, so that it is the same status from
+	// frame to frame. What a status shows as assistive technology comes,
+	// or as it first shows, is not read.
 	RoleStatus
 	RoleTable
 	RoleRow
