@@ -50,7 +50,6 @@ var uiResults = map[string]string{
 	"MenuButton":           "Element",
 	"Meter":                "Element",
 	"Modal":                "Element",
-	"NativeView":           "Element",
 	"NumberInput":          "Element",
 	"Outline":              "Element",
 	"OutlineTable":         "Element",
