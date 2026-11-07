@@ -5,6 +5,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/egoist/mygo/internal/rope"
 )
 
 // apply makes edits to the buffer as one step of undo, and gives the
@@ -31,7 +33,7 @@ func (ed *editor) apply(edits []Edit, kind editKind, after func(move func(int, b
 		ed.snippet = nil
 	}
 	changes := b.edit(edits, kind, ed, before)
-	made := b.version
+	made, madeText := b.version, b.text
 	b.mu.Unlock()
 	if changes == nil {
 		// The edits change nothing, as pasting the text selected over
@@ -61,24 +63,41 @@ func (ed *editor) apply(edits []Edit, kind editKind, after func(move func(int, b
 	if sels != nil {
 		// Placed in the text the edit made, and moved through the edits
 		// made after it before the editor followed.
-		if ed.view.version != made {
-			entries, _, _ := b.entriesSince(made)
-			for _, e := range entries {
-				if e.version > ed.view.version {
-					break
-				}
-				for i := range sels {
-					sels[i] = mapSel(sels[i], e.changes)
-				}
-			}
-		}
-		ed.sels = mergeSels(sels)
+		ed.sels = mergeSels(followSels(b, sels, made, madeText, ed.view.version, ed.view.text))
 	}
 	b.setSelectionsAfter(ed, slices.Clone(ed.sels))
 	ed.reveal = max(ed.reveal, revealFit)
 	ed.blinkStart = ed.frameNow
 	ed.needsBuild = true
 	return true
+}
+
+// followSels moves sels, placed in text of version made, through the
+// buffer's edits up to version to and its text: by the edits themselves,
+// or, when the log no longer reaches back to made, as another goroutine
+// edited the buffer many times meanwhile, by the lines changed between
+// the two texts, as an editor that far behind follows (view.sync).
+func followSels(b *Buffer, sels []sel, made uint64, madeText rope.Text, to uint64, toText rope.Text) []sel {
+	if to == made {
+		return sels
+	}
+	entries, _, ok := b.entriesSince(made)
+	if !ok {
+		cs := changesBetween(madeText, toText)
+		for i := range sels {
+			sels[i] = mapSel(sels[i], cs)
+		}
+		return sels
+	}
+	for _, e := range entries {
+		if e.version > to {
+			break
+		}
+		for i := range sels {
+			sels[i] = mapSel(sels[i], e.changes)
+		}
+	}
+	return sels
 }
 
 // replaceEach replaces each selection with the text of fn and puts the

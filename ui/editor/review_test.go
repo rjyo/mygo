@@ -628,6 +628,29 @@ func TestReviewConcurrentTyping(t *testing.T) {
 	}
 }
 
+// A caret placed in the text an edit made follows the edits another
+// goroutine makes before the editor looks, even more of them than the
+// buffer's log keeps.
+func TestReviewSelsFollowPastLog(t *testing.T) {
+	for _, n := range []int{3, logMax * 2} {
+		b := NewBuffer("")
+		b.Edit(Edit{Text: "abc"})
+		b.mu.Lock()
+		made, madeText := b.version, b.text
+		b.mu.Unlock()
+		for range n {
+			b.Edit(Edit{Start: 0, End: 0, Text: "z"})
+		}
+		b.mu.Lock()
+		to, toText := b.version, b.text
+		b.mu.Unlock()
+		sels := followSels(b, []sel{{anchor: 3, head: 3, goal: -1}}, made, madeText, to, toText)
+		if want := toText.Len(); sels[0].head != want || sels[0].anchor != want {
+			t.Fatalf("after %d edits: caret at %d, want the end, %d", n, sels[0].head, want)
+		}
+	}
+}
+
 // An input method composing in a range it names, with several carets,
 // composes there alone and commits there.
 func TestReviewMarkedRangeCarets(t *testing.T) {
