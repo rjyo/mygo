@@ -90,7 +90,12 @@ building the list.
 - `Selected` lets a click, or Up, Down, Home and End while the list has the
   keyboard focus (and Page Up and Page Down on Linux and Windows), choose a
   row, which shows in the accent color; the list's `Changed` reports a new
-  choice, and `Submitted` a double click or Enter.
+  choice, and `Submitted` a double click or Enter. `-1` is no row chosen.
+  With a `Key`, the choice follows its item as rows are added, removed or
+  sorted, and becomes `-1` when its item leaves the rows. The list writes
+  that as it builds, in the same pass, so what you build after the list
+  (a detail panel reading the chosen row) must take `-1` as none. Without
+  a `Key`, the choice stays at its index.
 - `Selection` lets the user choose several rows, held in a
   `ui.Selection[K]` by the keys of their items (`Key`), or by their indices
   without one: a click chooses one, Cmd-click (Ctrl-click on Linux and
@@ -99,6 +104,23 @@ building the list.
   Linux and Windows, Ctrl with the keys moves without choosing, and
   Ctrl+Space adds the row there or takes it out. `Selected`, set as well, is
   the row last chosen.
+
+A table and the editor of its chosen row below it:
+
+```go
+app.list.Key = func(i int) any { return app.cols[i].Name }
+app.list.Selected = &app.colRow
+ui.List(c, &app.list, len(app.cols), func(i int) {
+	ui.Text(c, app.cols[i].Name).Padding(6, 12)
+}).Grow(1)
+if app.colRow >= 0 { // -1 once another table's columns replaced the chosen one
+	columnEditor(c, &app.cols[app.colRow])
+}
+```
+
+When the same list shows another set of rows, as another table's, start
+its state afresh (`app.list = ui.ListState{}`) so that it forgets the item
+chosen before and the place it scrolled to.
 
 Files to choose several of, by their paths:
 
