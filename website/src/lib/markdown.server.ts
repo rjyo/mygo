@@ -44,7 +44,7 @@ let highlighter: Promise<Highlighter> | undefined
 function getHighlighter() {
   highlighter ??= createHighlighter({
     themes: Object.values(themes),
-    langs: ["go", "ts", "tsx", "js", "json", "sh", "css", "html", "xml", "yaml"],
+    langs: ["go", "ts", "tsx", "js", "json", "sh", "css", "html", "xml", "yaml", "swift"],
   })
   return highlighter
 }

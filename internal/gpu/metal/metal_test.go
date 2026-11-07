@@ -1256,3 +1256,62 @@ func TestBorderedCardDrawsAsTheCPURenderer(t *testing.T) {
 		}
 	}
 }
+
+// gpuSource gives the texture tex while give is set, else none.
+type gpuSource struct {
+	give bool
+	tex  id
+}
+
+func (g *gpuSource) GPUTexture(api scene.GPUAPI, device uintptr) uintptr {
+	if !g.give || api != scene.Metal {
+		return 0
+	}
+	send(g.tex, "retain") // the renderer owns what it is given
+	return uintptr(g.tex)
+}
+
+// An image whose GPUSource stops giving a texture draws its pixels into a
+// texture of their own, not the one it was given, which holds memory of
+// its own (an IOSurface).
+func TestGPUSourceFallsBackToPixels(t *testing.T) {
+	r, err := newRenderer()
+	if err != nil {
+		unavailable(t, err)
+	}
+	defer r.Release()
+	blue := make([]byte, 4*4*4) // BGRA
+	for i := 0; i < len(blue); i += 4 {
+		blue[i], blue[i+3] = 255, 255
+	}
+	src := &gpuSource{give: true}
+	pool(func() { src.tex = r.newTexture(4, 4, pixelFormatBGRA8Unorm, usageShaderRead, blue, 16) })
+	defer release(&src.tex)
+	red := make([]byte, 4*4*4) // RGBA
+	for i := 0; i < len(red); i += 4 {
+		red[i], red[i+3] = 255, 255
+	}
+	img := scene.NewImageRGBA(4, 4, nil)
+	img.Restore = func() []byte { return append([]byte(nil), red...) }
+	img.GPU = src
+	s := &scene.Scene{Width: 8, Height: 8, Scale: 1, Clear: scene.Color{A: 255}}
+	s.Ops = []scene.Op{{Kind: scene.OpImage, Rect: scene.Rect{W: 8, H: 8}, Image: img, Src: scene.Rect{W: 4, H: 4}, Opacity: 1}}
+	// center returns the red and blue of the middle pixel, which the
+	// target holds as BGRA.
+	center := func() (red, blue byte) {
+		pix, err := r.renderOffscreen(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		i := 4 * (4*8 + 4)
+		return pix[i+2], pix[i]
+	}
+	if r, b := center(); b < 200 || r > 50 {
+		t.Fatalf("the texture given draws red %d blue %d, not blue", r, b)
+	}
+	src.give = false
+	img.Changed()
+	if r, b := center(); r < 200 || b > 50 {
+		t.Fatalf("the pixels draw red %d blue %d, not red", r, b)
+	}
+}

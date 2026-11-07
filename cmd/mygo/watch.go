@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/internal/i18ngen"
+	"github.com/egoist/mygo/internal/nativegen"
 )
 
 // buildInputs is what building the app reads, which is what mygo dev
@@ -108,6 +109,16 @@ func listBuildInputs(c *Config) (*buildInputs, error) {
 			continue
 		}
 		in.sourceDirs = append(in.sourceDirs, p.Dir)
+		if nativegen.IsModule(p.Dir) {
+			// A native module: its Swift package, but not what mygo dev
+			// generates from its interfaces.
+			apple := filepath.Join(p.Dir, "apple")
+			in.files = append(in.files, filepath.Join(apple, "Package.swift"), filepath.Join(apple, "Info.plist"), filepath.Join(apple, "Entitlements.plist"))
+			in.trees = append(in.trees, filepath.Join(apple, "Sources"))
+			if m, err := nativegen.Load(p.Dir); err == nil {
+				in.generated = append(in.generated, filepath.Join(p.Dir, nativegen.GeneratedGo(m.Package)), filepath.Join(nativegen.SwiftDir(m), nativegen.SwiftFile(m)))
+			}
+		}
 		for _, f := range p.EmbedFiles {
 			path := filepath.Join(p.Dir, f)
 			in.files = append(in.files, path)

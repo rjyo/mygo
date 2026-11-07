@@ -195,6 +195,73 @@ errors, such as messages that do not parse or arguments a translation adds,
 and their warnings, such as missing translations, and exits with status 1
 when there are errors.
 
+## mygo native
+
+The commands of [native modules](native-modules.md): Go interfaces
+implemented in a platform's own language. `[module dir]` defaults to the
+current directory.
+
+### mygo native new
+
+```
+mygo native new [-platform <platforms>] <module name>
+```
+
+Makes a module in `modules/<module name>`, or at the path given instead of
+a name: the Go package with the interface, its generated Go, an
+`AGENTS.md`, and a directory per platform. `-platform` takes the
+directories' names, separated by commas: `apple` (the default), a Swift
+package for Apple's platforms, or `none` for the Go side alone.
+
+### mygo native add
+
+```
+mygo native add <platform> [module dir]
+```
+
+Adds a platform's directory to an existing module, with a factory for
+every entry point and methods that say they are unsupported, so the
+module builds at once.
+
+### mygo native check
+
+```
+mygo native check [module dir]
+```
+
+Generates the module, builds the implementation of the platform it runs
+on and vets the Go package. It lists every problem as `file:line: message`,
+with what to change, and exits with status 1 when there are problems.
+
+### mygo native call
+
+```
+mygo native call [-timeout <duration>] [module dir] <Interface>.<Method> [<arguments>]
+```
+
+Makes the implementation of an entry point, calls one method with
+`<arguments>`, a JSON object of its parameters by their Go names, and
+prints the result as JSON, a line per value of a stream. It makes the
+method's context, which `-timeout` limits, and prints the calls of
+callbacks.
+
+### mygo native prebuild
+
+```
+mygo native prebuild [-repo owner/name] [-no-upload] [module dir]
+```
+
+Builds the module's implementations, uploads them as release assets of the
+app's repository (the GitHub repository of the module's git checkout, or
+`-repo`, with the GitHub CLI) and records them in the module's
+`mygo-plugin.json`, so machines without the platforms' tools build the app
+with them while they match the sources. `-no-upload` only builds the
+archive, into `apple/.build/mygo`.
+
+`mygo generate` generates every native module of the app, and `mygo dev`
+and `mygo build` build them; see
+[build, run and test](native-modules.md#build-run-and-test).
+
 ## mygo keygen
 
 ```

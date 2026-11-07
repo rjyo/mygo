@@ -53,25 +53,44 @@ func (c *Config) appResources(goos, goarch string) ([]resource, error) {
 	return c.resourcesWith(goos, goarch, natives, reservedNames(c, goos)...)
 }
 
+// packageDirs returns the directories of the packages, outside the
+// standard library, that the app for goos/goarch is built from, listed
+// once per build (Config.deps).
+func (c *Config) packageDirs(goos, goarch string) ([]string, error) {
+	arch := goarch
+	if goarch == "universal" {
+		arch = "arm64" // the packages are the same
+	}
+	key := goos + "/" + arch
+	if dirs, ok := c.deps[key]; ok {
+		return dirs, nil
+	}
+	var out, stderr bytes.Buffer
+	cmd := goCommand(c.root, []string{"GOOS=" + goos, "GOARCH=" + arch}, "list", "-e", "-deps", "-f", "{{if not .Standard}}{{.Dir}}{{end}}", c.Main)
+	cmd.Stdout, cmd.Stderr = &out, &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("go list: %v\n%s", err, strings.TrimSpace(stderr.String()))
+	}
+	dirs := strings.Fields(out.String())
+	if c.deps == nil {
+		c.deps = map[string][]string{}
+	}
+	c.deps[key] = dirs
+	return dirs, nil
+}
+
 // natives returns the native libraries the packages of the app for
 // goos/goarch name in their mygo-plugin.json, downloaded into the user's
 // cache, as resources: both architectures of a universal macOS app, which
 // combine into one file.
 func (c *Config) natives(goos, goarch string) ([]source, error) {
-	arch := goarch
-	if goarch == "universal" {
-		arch = "arm64" // the packages are the same
-	}
-	var out, stderr bytes.Buffer
-	cmd := goCommand(c.root, []string{"GOOS=" + goos, "GOARCH=" + arch}, "list", "-e", "-deps", "-f", "{{.Dir}}", c.Main)
-	cmd.Stdout, cmd.Stderr = &out, &stderr
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("go list: %v\n%s", err, strings.TrimSpace(stderr.String()))
+	dirs, err := c.packageDirs(goos, goarch)
+	if err != nil {
+		return nil, err
 	}
 	var list []source
 	seen := map[string]bool{}
-	for dir := range strings.Lines(out.String()) {
-		dir = strings.TrimSpace(dir)
+	for _, dir := range dirs {
 		data, err := os.ReadFile(filepath.Join(dir, pluginFile))
 		if errors.Is(err, fs.ErrNotExist) || dir == "" {
 			continue

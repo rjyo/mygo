@@ -503,6 +503,7 @@ func devHelp() string {
 // sibling for its icon, when there is one, to tell it from the app's.
 func devConfig(c *Config) *Config {
 	d := *c
+	d.deps = nil // a build of its own, which lists its packages anew
 	d.Name += " Dev"
 	d.Identifier += ".dev"
 	if d.Slug != "" {
@@ -552,6 +553,10 @@ func (s *devSession) buildAndLaunch(ctx context.Context, t *task, running [32]by
 		cleanup()
 		return nil, sum, err
 	}
+	if err := prepareNative(dc, runtime.GOOS, runtime.GOARCH, nativeDev); err != nil {
+		cleanup()
+		return nil, sum, err
+	}
 	err = goBuild(ctx, c, t, bin, nil, "-ldflags", strings.TrimSpace(packageFlags(dc)))
 	cleanup()
 	if err != nil {
@@ -576,6 +581,9 @@ func (s *devSession) buildAndLaunch(ctx context.Context, t *task, running [32]by
 		return nil, sum, err
 	}
 	if err := hashResources(h, res); err != nil {
+		return nil, sum, err
+	}
+	if err := hashNative(h, dc); err != nil {
 		return nil, sum, err
 	}
 	var icns []byte

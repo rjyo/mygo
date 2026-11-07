@@ -30,6 +30,7 @@ Commands:
 	i18n check [dir]     check the app's catalogs of messages
 	dev                  run a development build with live reload
 	build                build production apps (a .app and a .dmg on macOS)
+	native <command>     make, check and call native modules (mygo native help)
 	keygen               create the key pair that signs updates
 	doctor               check that the development environment is ready
 	version              print the MyGo version
@@ -78,6 +79,8 @@ func main() {
 		err = runI18n(args)
 	case "build":
 		err = runBuild(args)
+	case "native":
+		err = runNative(args)
 	case "doctor":
 		err = runDoctor(args)
 	case "keygen":

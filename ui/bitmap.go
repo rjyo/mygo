@@ -19,6 +19,7 @@ import (
 // Bitmap is an image to show with Image. Create it once: converting an
 // image is not free.
 type Bitmap struct {
+	imageMark
 	img  *scene.Image
 	w, h int
 	// levels are the bitmap halved again and again, made as it shows

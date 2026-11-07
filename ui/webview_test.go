@@ -422,3 +422,51 @@ func TestWebViewKey(t *testing.T) {
 		t.Error("a key of another web view reached the shortcut")
 	}
 }
+
+// A nil native view, a module's where it has no implementation, is a
+// plain box: it paints its background, and punches no hole.
+func TestNativeViewNil(t *testing.T) {
+	tt := coreNewTester(func(c *context) {
+		coreNativeView(c, PlatformView(nil)).Size(20, 20).Background(RGB(255, 0, 0))
+	}, 20, 20)
+	if got := tt.Image().RGBAAt(10, 10); got.R != 255 || got.A != 255 {
+		t.Fatalf("the nil view's box shows %v, not its background", got)
+	}
+}
+
+// fakeView is a view of the platform, closed once its handle is 0.
+type fakeView struct{ h uintptr }
+
+func (v *fakeView) NativeView() uintptr { return v.h }
+
+// A view gone, closed or released, leaves the window: the frames after
+// forget it. The window holds no Go value of it.
+func TestNativeViewGone(t *testing.T) {
+	v := &fakeView{h: 1}
+	show := true
+	tt := coreNewTester(func(c *context) {
+		if show {
+			coreNativeView(c, v).Size(20, 20)
+		}
+	}, 20, 20)
+	if len(tt.rt.platformViews) != 1 || tt.rt.platformViews[0].h != 1 {
+		t.Fatalf("%d views stand for the one shown", len(tt.rt.platformViews))
+	}
+	// Hidden, it keeps its state: it stays.
+	show = false
+	tt.Frame()
+	if len(tt.rt.platformViews) != 1 {
+		t.Fatal("a view the frame does not build was dropped")
+	}
+	tt.rt.platformViews[0].leave() // as native tells of it
+	tt.Frame()
+	if len(tt.rt.platformViews) != 0 {
+		t.Fatal("a view gone is still in the window")
+	}
+	// A closed view, whose handle is 0, is a plain box.
+	v.h, show = 0, true
+	tt.Frame()
+	if len(tt.rt.platformViews) != 0 {
+		t.Fatal("a closed view came back")
+	}
+}

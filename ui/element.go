@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/egoist/mygo/internal/imagesrc"
 	"github.com/egoist/mygo/internal/platform"
 	"github.com/egoist/mygo/internal/scene"
 	"github.com/egoist/mygo/internal/text"
@@ -468,7 +469,8 @@ type node struct {
 	// in place of the window's (Themed).
 	themed  *Theme
 	image   *Bitmap
-	svg     *SVG // of an Icon, or an Image in its own colors
+	texture imagesrc.Frames // of an Image showing a native.Texture
+	svg     *SVG            // of an Icon, or an Image in its own colors
 	webView NativeWebView
 	// maximizeButton marks the window's maximize button (MaximizeButton).
 	maximizeButton bool

@@ -285,6 +285,10 @@ func buildPlatform(c *Config, goos, goarch string, opts buildOptions) ([]string,
 		return t.end(err, "Compiled "+goos+"/"+arch)
 	}
 
+	if err := prepareNative(c, goos, goarch, nativeRelease); err != nil {
+		return nil, err
+	}
+	defer func() { c.native = nil }()
 	name := c.executableName()
 	var artifacts []string
 	switch goos {

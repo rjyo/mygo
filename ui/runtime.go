@@ -220,6 +220,9 @@ type engine struct {
 	webPlaces []webPlace
 	webOut    []placedWebView
 	webShown  bool
+	// platformViews stand for the views of the platform the window shows
+	// (NativeView): a few, which a slice finds them among.
+	platformViews []*platformView
 	// glassPlaces are where the frame shows the system's glass, and
 	// glassShown tells that the last frame showed some.
 	glassPlaces []platform.GlassPlacement

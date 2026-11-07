@@ -100,6 +100,9 @@ What every app has, whether its windows show native UI or web pages.
 - [Desktop APIs](native.md): dialogs, notifications, the clipboard, the
   shell, displays, dark mode, power, the network status, secrets, watching
   files and global shortcuts.
+- [Native modules](native-modules.md): Go interfaces implemented in a
+  platform's own language, Swift on macOS, for the platform's frameworks,
+  its packages, and its views shown in native UI.
 - [Clipboard and drag data](data-transfer.md): multiple representations,
   file lists, custom formats, lazy providers, and clipboard persistence.
 - [Audio](audio.md): sound effects, streamed music and sound an app makes

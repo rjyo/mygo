@@ -131,9 +131,12 @@ type window struct {
 	// layer cutting pane to corners of different radii.
 	webViews []*window
 	host     *window
-	clip     id
-	pane     id
-	mask     id
+	// foreign is set for a view of a native module that the surface shows
+	// as it shows a web view (EmbedView): web is that view, not WebKit's.
+	foreign bool
+	clip    id
+	pane    id
+	mask    id
 	// pointerIn tells that the page of a web view has the pointer, where
 	// nothing the content painted covers it.
 	pointerIn bool

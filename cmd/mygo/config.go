@@ -116,6 +116,13 @@ type Config struct {
 
 	root string
 	file string // the configuration file, "" without one
+	// native is what the app's native modules add to its bundle, once
+	// prepareNative built them.
+	native *nativeApp
+	// deps caches the directories of the packages the app is built from,
+	// by target, for one build: listing them once serves both the native
+	// libraries (natives) and the native modules (appNativeModules).
+	deps map[string][]string
 	// langs are the languages the app ships, which languages reads once.
 	langs     []appLanguage
 	langsErr  error

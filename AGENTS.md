@@ -65,6 +65,8 @@ go run ./cmd/mygo generate examples/todo   # regenerate an example's TypeScript 
 go run ./cmd/mygo dev examples/todo        # live reload (dev bundle in examples/todo/.mygo)
 go run ./cmd/mygo dev -web examples/counter-native   # native UI in the browser, with live reload
 go run ./cmd/mygo build examples/todo      # .app + .dmg in examples/todo/build
+go run ./cmd/mygo generate examples/native-module   # regenerate a native module, build its Swift package (macOS)
+go run ./cmd/mygo native check examples/native-module/modules/language   # a native module's problems, as file:line
 go run ./cmd/mygo build -platform web examples/counter-native   # a static site in examples/counter-native/dist/web
 go run ./examples/gallery                  # the native UI toolkit's tour
 go run ./examples/code-editor              # the code editor and the diff viewer (ui/editor)
@@ -103,6 +105,11 @@ Windows GUI tests need Windows with the WebView2 Runtime (a GitHub Actions
   `darwin`, `linux`, `windows`, `web`, `fake` and `unsupported`.
 - Objective-C: `alloc`/`init` objects are owned and must be released; wrap
   temporary objects in `withPool`; copy blocks you call later.
+- Native modules (`native`, `internal/nativegen`, docs/native-modules.md):
+  keep the generated example (`examples/native-module`) up to date, which
+  `TestExampleUpToDate` checks, and change the Swift glue in
+  `internal/nativegen/support.go` with `TestScaffoldBuilds` passing
+  without warnings.
 - Official plugins live in `plugins/<name>`: the Go package and its npm
   package (`@mygo-plugins/<name>`) side by side, released with
   mygo-runtime's version. The updater plugin is Go only; its `native`

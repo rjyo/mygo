@@ -6,7 +6,9 @@ import (
 	"slices"
 	"sync"
 	"time"
+	"weak"
 
+	"github.com/egoist/mygo/internal/imagesrc"
 	"github.com/egoist/mygo/internal/scene"
 	"github.com/egoist/mygo/internal/text"
 )
@@ -1321,11 +1323,33 @@ func (p *Painter) image(e *node) {
 		p.drawSVG(s, e.contentBox(), e.fit, e.objectPos, e.radius, e.resolvedText().color, e.gray)
 		return
 	}
+	if e.texture != nil {
+		p.drawTexture(e, e.texture)
+		return
+	}
 	img := e.image
 	if img == nil || img.w == 0 || img.h == 0 {
 		return
 	}
 	p.drawBitmap(img, e.contentBox(), e.fit, e.objectPos, e.radius, e.gray)
+}
+
+// drawTexture draws the frame a native module presented last into a
+// texture; the next it presents asks the window for a frame.
+func (p *Painter) drawTexture(e *node, t imagesrc.Frames) {
+	rt := e.c.rt
+	owner := weak.Make(rt)
+	img := t.Frame(owner, func() { Services{owner: owner}.Invalidate() })
+	if img == nil || img.W == 0 || img.H == 0 {
+		return
+	}
+	iw, ih := float32(img.W), float32(img.H)
+	dst, frac := fitIn(e.contentBox(), iw, ih, e.fit, e.objectPos)
+	if dst.W <= 0 || dst.H <= 0 {
+		return
+	}
+	src := scene.Rect{X: frac.X * iw, Y: frac.Y * ih, W: frac.W * iw, H: frac.H * ih}
+	p.add(scene.Op{Kind: scene.OpImage, Rect: p.snap(dst), Radii: p.radii(e.radius), Continuous: continuousCorners, Image: img, Src: src, Opacity: p.opacity, Grayscale: e.gray})
 }
 
 // fitIn returns where a picture w×h DIPs goes in box as fit says, placed
