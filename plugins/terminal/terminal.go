@@ -254,6 +254,12 @@ type Options struct {
 	// the clipboard's files or image (d.Files, transfer.PNG) for a remote
 	// program, then pastes their paths with Paste.
 	OnPaste func(d transfer.Data) bool
+	// OnDrop sees the paths of files dropped on the terminal before it
+	// pastes them, escaped for a shell, on the main thread, and reports
+	// whether it took the drop; a drop taken sends nothing, as when an app
+	// uploads the files for a remote program, then pastes their paths
+	// there with Paste.
+	OnDrop func(paths []string) bool
 	// OnKey sees a key press before Keybinds and before the terminal
 	// encodes it, on the main thread, and reports whether it took the key;
 	// a key taken sends nothing, neither the text it types nor its

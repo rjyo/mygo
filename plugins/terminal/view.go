@@ -268,7 +268,9 @@ type pendingKey struct {
 func (v *view) build(c *ui.Context, e ui.Element) {
 	t := v.t
 	if files := e.DroppedFiles(); len(files) > 0 {
-		t.dropFiles(files)
+		if on := t.opts.OnDrop; on == nil || !on(files) {
+			t.dropFiles(files)
+		}
 	}
 	v.lang = c.Locale()
 	dark := c.Theme().Dark

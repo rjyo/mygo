@@ -3089,3 +3089,36 @@ func TestDropFiles(t *testing.T) {
 		t.Errorf("dropping in bracketed paste pasted %q, want %q", got, want)
 	}
 }
+
+// OnDrop sees dropped files first, and a drop it takes pastes nothing, as
+// when an app uploads the files to the remote machine a program runs on.
+func TestOnDrop(t *testing.T) {
+	loadLib(t)
+	conn := newPipe()
+	var got []string
+	take := true
+	term, err := New(Options{Conn: conn, OnDrop: func(paths []string) bool {
+		got = append(got, paths...)
+		return take
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	tt := ui.NewTester(func(c *ui.Context) { View(c, term).Fill() }, 400, 200)
+	tt.Frame()
+	tt.DropFiles(100, 100, "/tmp/shot.png")
+	tt.Frame()
+	if len(got) != 1 || got[0] != "/tmp/shot.png" {
+		t.Errorf("OnDrop saw %q", got)
+	}
+	if s := conn.take(term); s != "" {
+		t.Errorf("a drop OnDrop took pasted %q", s)
+	}
+	take = false
+	tt.DropFiles(100, 100, "/tmp/b.txt")
+	tt.Frame()
+	if s := conn.take(term); !strings.Contains(s, "b.txt") {
+		t.Errorf("a drop OnDrop left pasted %q", s)
+	}
+}
