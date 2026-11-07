@@ -177,6 +177,35 @@ ui.List(c, &app.list, len(app.files), func(i int) {
 })
 ```
 
+Rows that draw their own hover and press, as a chat list's, ask the row
+built with `Rows` rather than an element of their own: `ListRow`'s
+`Hovered`, `Pressed` and `PointerPosition` report the row's, as the
+row's element would. `Pressed` or `Hovered` on an element inside the row
+would make that element take the press, and the row would not choose,
+nor would `Tester.Click` on the row's `Label` reach it. A press starts a
+ripple where the pointer went down:
+
+```go
+ui.List(c, &app.chats, len(app.items)).Grow(1).Rows(func(row ui.ListRow) {
+	bg := ui.Transparent
+	switch {
+	case row.Pressed():
+		bg = row.Context.Theme().SurfacePressed
+		if app.ripple.Row != row.Index {
+			x, y, _ := row.PointerPosition()
+			app.ripple = Ripple{Row: row.Index, X: x, Y: y, At: time.Now()}
+		}
+	case row.Hovered():
+		bg = row.Context.Theme().SurfaceHover
+	}
+	ui.Box(row.Context).Background(bg).Padding(8, 12).Children(func() {
+		ui.Text(row.Context, app.items[row.Index].Title)
+	})
+})
+```
+
+In a list that chooses no rows, `Pressed` makes the row take the press.
+
 ## Scrolling
 
 `ScrollTo(row, align)` shows a row at the `ui.Start`, `ui.Center` or
@@ -267,7 +296,8 @@ Call `app.list.Handle.Focus()` on the UI thread to request focus, or
 list and `FocusWithin(c)` includes its descendants. A handle's shortcut
 action runs after construction only if its enabled control is present.
 
-`ListRow` supplies the current Context, row index, selection and list focus.
+`ListRow` supplies the current Context, row index, selection and list focus,
+and the row's hover and press (see [choosing rows](#choosing-rows)).
 `ListState.Selected` or `Selection` enables selection. `ItemKey` gives each
 item a stable key. Configure them before calling Rows.
 

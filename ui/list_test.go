@@ -1521,3 +1521,104 @@ func TestRightClickChoiceIsChanged(t *testing.T) {
 	}
 	tt.CloseMenu()
 }
+
+// Issue #1439: a chat list draws its rows' hover, press and ripple in the
+// content it builds, which reads them from its ListRow and takes no input
+// for it: the row, named by the state's Label, still takes the click.
+func TestListRowPointerState(t *testing.T) {
+	names := []string{"Alice", "Bob", "Carol"}
+	sel := -1
+	s := ListState{Selected: &sel, Label: func(i int) string { return "Chat with " + names[i] }}
+	type seen struct {
+		hovered, pressed, over bool
+		x, y                   float32
+	}
+	var rows [3]seen
+	changed := 0
+	tt := NewTester(func(c *Context) {
+		List(c, &s, len(names)).Grow(1).OnChange(func() { changed++ }).Rows(func(row ListRow) {
+			x, y, over := row.PointerPosition()
+			rows[row.Index] = seen{row.Hovered(), row.Pressed(), over, x, y}
+			Box(row.Context).Height(40).Grow(1).Children(func() {
+				Text(row.Context, names[row.Index])
+			})
+		})
+	}, 300, 200)
+	defer tt.rt.close()
+	tt.Frame()
+	bob, ok := tt.Find("Chat with Bob")
+	if !ok {
+		t.Fatal("no row is labeled Chat with Bob")
+	}
+	at := func(r Rect) (float32, float32) { return r.X + 30, r.Y + 10 }
+	only := func(what string, i int, get func(seen) bool) {
+		t.Helper()
+		for j, r := range rows {
+			if get(r) != (j == i) {
+				t.Errorf("%s: row %d reports %v", what, j, get(r))
+			}
+		}
+	}
+
+	x, y := at(bob)
+	tt.Move(x, y)
+	only("hover over Bob", 1, func(r seen) bool { return r.hovered })
+	only("hover over Bob", 1, func(r seen) bool { return r.over })
+	only("hover over Bob", -1, func(r seen) bool { return r.pressed })
+	if r := rows[1]; r.x != 30 || r.y != 10 {
+		t.Errorf("hover over Bob: the pointer is at (%v, %v) in the row, want (30, 10)", r.x, r.y)
+	}
+
+	tt.Press(x, y)
+	only("press on Bob", 1, func(r seen) bool { return r.pressed })
+	if r := rows[1]; r.x != 30 || r.y != 10 {
+		t.Errorf("press on Bob: pressed at (%v, %v) in the row, want (30, 10)", r.x, r.y)
+	}
+	tt.Release(x, y)
+	only("released", -1, func(r seen) bool { return r.pressed })
+	if sel != 1 || changed != 1 {
+		t.Fatalf("click on Bob: chose %d, changed %d times; want 1, 1", sel, changed)
+	}
+
+	// The content reading the row's state takes no click: the row stays
+	// the input target of its label.
+	if err := tt.Click("Chat with Carol"); err != nil {
+		t.Fatal(err)
+	}
+	if sel != 2 || changed != 2 {
+		t.Errorf("Click on Carol: chose %d, changed %d times; want 2, 2", sel, changed)
+	}
+	only("after the click on Carol", 2, func(r seen) bool { return r.hovered })
+	tt.Move(x, y)
+	only("hover back over Bob", 1, func(r seen) bool { return r.hovered })
+}
+
+// A list choosing no rows has rows taking no press, until their content
+// asks whether the row is pressed: the row then takes it, as an element
+// asking Pressed does.
+func TestListRowPressedWithoutChoosing(t *testing.T) {
+	pressed := -1
+	tt := NewTester(func(c *Context) {
+		pressed = -1
+		List(c, nil, 3).Grow(1).Rows(func(row ListRow) {
+			if row.Pressed() {
+				pressed = row.Index
+			}
+			Textf(row.Context, "Row %d", row.Index).Height(40)
+		})
+	}, 300, 200)
+	defer tt.rt.close()
+	tt.Frame()
+	r, ok := tt.Find("Row 2")
+	if !ok {
+		t.Fatal("no Row 2")
+	}
+	tt.Press(r.X+5, r.Y+5)
+	if pressed != 2 {
+		t.Errorf("press on Row 2: row %d reports the press", pressed)
+	}
+	tt.Release(r.X+5, r.Y+5)
+	if pressed != -1 {
+		t.Errorf("released: row %d reports the press", pressed)
+	}
+}

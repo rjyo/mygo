@@ -174,8 +174,10 @@ ui.List(c.Key("files"), &a.list, len(a.files)).Bind(&a.filesView).Grow(1).
 A Handle's shortcut may be declared before Bind. It runs after construction
 only if that window built an enabled control for the handle, so a hidden
 control takes no command. `ListRow` supplies the shared Context, index,
-selection and list focus. `List(c, state, n, func(i int))` also accepts a row
-callback directly. Configure fluent lists before calling Rows.
+selection, list focus, and the row's hover and press (`Hovered`, `Pressed`,
+`PointerPosition`), which row content draws without taking the click.
+`List(c, state, n, func(i int))` also accepts a row callback directly.
+Configure fluent lists before calling Rows.
 
 ## Persistent services and verification
 

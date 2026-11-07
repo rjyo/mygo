@@ -448,10 +448,11 @@ type listRow struct {
 }
 
 // rowBuild is the row of a list being built, for what is inside it: its
-// list, index and key, whether it was chosen before a click on it in this
-// frame, and whether it was double-clicked.
+// list, element, index and key, whether it was chosen before a click on it
+// in this frame, and whether it was double-clicked.
 type rowBuild struct {
 	f                       *listFrame
+	e                       *node
 	i                       int
 	key                     any
 	clicked, chosen, double bool
@@ -728,7 +729,7 @@ func (f *listFrame) build(i int) *node {
 		d.on, w.st.clicks, w.st.doubleClicks = false, 0, 0
 	}
 	prev := f.rb
-	f.rb = rowBuild{f: f, i: i, key: key, clicked: w.st.clicks > 0 && w.st.clickMods == 0, double: w.st.doubleClicks > 0}
+	f.rb = rowBuild{f: f, e: w, i: i, key: key, clicked: w.st.clicks > 0 && w.st.clickMods == 0, double: w.st.doubleClicks > 0}
 	rb := &f.rb
 	if sel := s.cursor(); sel != nil && !f.isHeader(i) {
 		t := c.theme
