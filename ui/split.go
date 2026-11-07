@@ -222,20 +222,31 @@ func split(c *context, size *float32, first, second func(), vertical, inPercent 
 					return
 				}
 				if !held {
+					// The next drag starts with the divider under the
+					// pointer.
+					if o, ok := handle.st.locals[splitOvershoot{}].(*float32); ok {
+						*o = 0
+					}
 					return
 				}
 				div.Focus()
 				if dx == 0 && dy == 0 {
 					return
 				}
+				d := dx
 				switch {
 				case vertical:
-					set(shown + dy)
+					d = dy
 				case handle.rtl():
-					set(shown - dx)
-				default:
-					set(shown + dx)
+					d = -dx
 				}
+				// The pointer goes on past a pane's limit, where the divider
+				// stops: what it went past is kept, so that coming back
+				// moves the divider only once the pointer is over it again.
+				o, _ := keepLocal(handle.st, splitOvershoot{}, func() float32 { return 0 })
+				want := shown + d + *o
+				*o = want - fitSplit(want, total, minPane)
+				set(want)
 			})
 			div.Draw(func(p *Painter, r Rect) {
 				line := t.Border
@@ -253,6 +264,11 @@ func split(c *context, size *float32, first, second func(), vertical, inPercent 
 	})
 	return e
 }
+
+// splitOvershoot keys a split's handle's local value: how far the pointer
+// dragging the divider went past where the divider stopped, at a pane's
+// limit.
+type splitOvershoot struct{}
 
 // fitSplit clamps v, the first pane's size, to leave minPane on either side
 // of the divider in total, the room as last laid out (0 before the first

@@ -105,6 +105,39 @@ func TestSplit(t *testing.T) {
 	}
 }
 
+// TestSplitDragKeepsOvershoot checks that a drag past a pane's limit
+// keeps how far it went: coming back moves the divider only once the
+// pointer is over it again (#1474).
+func TestSplitDragKeepsOvershoot(t *testing.T) {
+	size := float32(120)
+	tt := coreNewTester(func(c *context) {
+		coreSplit(c, &size, func() { coreText(c, "left") }, func() { coreText(c, "right") }).Fill()
+	}, 400, 200)
+	x, y := float32(123), float32(100)
+	tt.Press(x, y)
+	// 80 DIPs to the first pane's least, 40, and 200 past it.
+	tt.Move(x-280, y)
+	if size != 40 {
+		t.Fatalf("dragged past the least, the first pane is %v wide", size)
+	}
+	tt.Move(x-130, y)
+	if size != 40 {
+		t.Errorf("150 DIPs back, still 50 past the divider, the first pane is %v wide", size)
+	}
+	tt.Move(x-30, y)
+	if size != 90 {
+		t.Errorf("100 more back, 50 over the divider, the first pane is %v wide", size)
+	}
+	tt.Release(x-30, y)
+	// The next drag starts afresh.
+	tt.Press(93, y)
+	tt.Move(113, y)
+	tt.Release(113, y)
+	if size != 110 {
+		t.Errorf("a new drag of 20 DIPs right, the first pane is %v wide", size)
+	}
+}
+
 func TestSplitVertical(t *testing.T) {
 	size := float32(60)
 	tt := coreNewTester(func(c *context) {
