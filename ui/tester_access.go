@@ -126,9 +126,43 @@ func (t *Tester) AccessByRole(r Role, name string) (AccessInfo, bool) {
 	})
 }
 
+// AccessAll returns what assistive technology sees of every element of
+// the last frame, in the order screen readers read them, as Access gives
+// each: to check what a whole view tells screen readers, as that every
+// control has a name.
+//
+//	for _, a := range tt.AccessAll() {
+//		if a.Role == ui.RoleButton && a.Name == "" {
+//			t.Errorf("a button at %v has no name", a.Bounds)
+//		}
+//	}
+func (t *Tester) AccessAll() []AccessInfo {
+	var all []AccessInfo
+	t.accessEach(func(_ Role, _ *platform.AccessNode, info func() AccessInfo) bool {
+		all = append(all, info())
+		return true
+	})
+	return all
+}
+
 // access describes the last frame as it would for assistive technology,
 // and returns the first node that match takes, given its role.
 func (t *Tester) access(match func(r Role, n *platform.AccessNode) bool) (AccessInfo, bool) {
+	var found AccessInfo
+	ok := false
+	t.accessEach(func(r Role, n *platform.AccessNode, info func() AccessInfo) bool {
+		if match(r, n) {
+			found, ok = info(), true
+		}
+		return !ok
+	})
+	return found, ok
+}
+
+// accessEach describes the last frame as it would for assistive
+// technology, and calls fn with each node in reading order, its role and
+// what info returns of it, until fn returns false.
+func (t *Tester) accessEach(fn func(r Role, n *platform.AccessNode, info func() AccessInfo) bool) {
 	// Reading the window's focus would have its next change rebuild the
 	// frame.
 	defer func(read bool) { t.rt.focusRead = read }(t.rt.focusRead)
@@ -162,7 +196,7 @@ func (t *Tester) access(match func(r Role, n *platform.AccessNode) bool) (Access
 			// (accessRole).
 			r = Role(n.Role) + RoleGroup
 		}
-		if match(r, n) {
+		info := func() AccessInfo {
 			a := accessInfoOf(r, n, tree.Focus)
 			names := func(ids []uint64) []string {
 				var out []string
@@ -177,10 +211,12 @@ func (t *Tester) access(match func(r Role, n *platform.AccessNode) bool) (Access
 				return out
 			}
 			a.Controls, a.DescribedBy, a.ErrorMessage = names(n.Controls), names(n.DescribedBy), names(n.ErrorMessage)
-			return a, true
+			return a
+		}
+		if !fn(r, n, info) {
+			return
 		}
 	}
-	return AccessInfo{}, false
 }
 
 // accessInfoOf returns what n tells of an element of role r, in the tree

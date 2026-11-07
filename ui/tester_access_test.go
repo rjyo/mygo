@@ -276,3 +276,31 @@ func TestTesterAccessRelations(t *testing.T) {
 	accessOf(t, tt, ui.RoleDeletion, "$40")
 	accessOf(t, tt, ui.RoleInsertion, "$30")
 }
+
+// TestTesterAccessAll checks that Tester.AccessAll lists every element of
+// the last frame in reading order, as Access describes each, and finds a
+// control without a name.
+func TestTesterAccessAll(t *testing.T) {
+	plus := ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" stroke="currentColor"/></svg>`))
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Column(c).Children(func() {
+			ui.Button(c.Key("save"), "Save")
+			ui.ButtonBase(c.Key("add")).Children(func() { ui.Icon(c, plus) })
+			ui.ButtonBase(c.Key("close")).Label("Close").Children(func() { ui.Icon(c, plus) })
+		})
+	}, 300, 200)
+	tt.Frame()
+	all := tt.AccessAll()
+	var buttons []string
+	for _, a := range all {
+		if a.Role == ui.RoleButton {
+			buttons = append(buttons, a.Name)
+		}
+	}
+	if !slices.Equal(buttons, []string{"Save", "", "Close"}) {
+		t.Fatalf("buttons %q of %+v", buttons, all)
+	}
+	if save, _ := tt.AccessByRole(ui.RoleButton, "Save"); !slices.ContainsFunc(all, func(a ui.AccessInfo) bool { return reflect.DeepEqual(a, save) }) {
+		t.Errorf("Save as Access reads it, %+v, missing", save)
+	}
+}
