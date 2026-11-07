@@ -294,4 +294,13 @@ export const showcase: ShowcaseApp[] = [
     mode: "native",
     image: "/showcase/tangit.jpg",
   },
+  {
+    name: "CurlGo",
+    description:
+      "An open-source, local-first API client for macOS and Windows, drawn with MyGo's native UI. Paste a curl command or import Postman v2.1 and Bruno collections, send HTTP, SSE and WebSocket requests, keep environments, global headers and a persistent cookie jar in one local workspace, and check responses with assertions and variable extraction; a CLI and agent skill run the same requests headlessly.",
+    url: "https://github.com/echoVic/curlgo",
+    author: "echoVic",
+    mode: "native",
+    image: "/showcase/curlgo.jpg",
+  },
 ]
