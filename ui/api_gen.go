@@ -5372,7 +5372,9 @@ func (_handle Element) HandleTextInput(client TextInputClient) Element {
 // opens, as a button opening a list of options (PopupListBox) or a menu
 // (PopupMenu), which Expanded says shows: screen readers read it with the
 // element ("pop-up button", "menu button") and offer to open it.
-// PopupNone takes it back.
+// PopupNone takes it back. Menu buttons (Menu, PopoverMenuButton,
+// MenuButton, MenuBase) tell PopupMenu themselves; HasPopup, before or
+// after, wins over it.
 func (_handle Element) HasPopup(kind Popup) Element {
 	_node := _handle.node()
 	if _node == nil {

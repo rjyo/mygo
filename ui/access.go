@@ -492,10 +492,20 @@ const (
 // opens, as a button opening a list of options (PopupListBox) or a menu
 // (PopupMenu), which Expanded says shows: screen readers read it with the
 // element ("pop-up button", "menu button") and offer to open it.
-// PopupNone takes it back.
+// PopupNone takes it back. Menu buttons (Menu, PopoverMenuButton,
+// MenuButton, MenuBase) tell PopupMenu themselves; HasPopup, before or
+// after, wins over it.
 func (e *node) HasPopup(kind Popup) *node {
-	e.hasPopup = kind
+	e.hasPopup, e.popupSet = kind, true
 	return e
+}
+
+// opensMenu tells assistive technology that the element, a menu button,
+// opens a menu (PopupMenu), unless the app said otherwise (HasPopup).
+func (e *node) opensMenu() {
+	if !e.popupSet {
+		e.hasPopup = PopupMenu
+	}
 }
 
 // SortDirection is the order a table's rows are sorted in by a column

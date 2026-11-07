@@ -634,10 +634,13 @@ type node struct {
 	gridFit    *gridFit
 	// roleDescription names the element's role to assistive technology
 	// (RoleDescription), controls are the elements it controls
-	// (Controls), and hasPopup the kind of popup it opens (HasPopup).
+	// (Controls), and hasPopup the kind of popup it opens (HasPopup),
+	// which popupSet marks the app as having said, over a menu button's
+	// PopupMenu.
 	roleDescription string
 	controls        []*node
 	hasPopup        Popup
+	popupSet        bool
 	tl              *text.Layout
 	measured
 	// lay says what the layout cache may do with the element

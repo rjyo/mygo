@@ -99,6 +99,7 @@ func (e *node) PopoverMenuButton(build func(m *Menu), options ...PopoverMenuButt
 	if e.role == RoleAuto || e.role == RoleButton {
 		e.role = RoleMenuButton
 	}
+	e.opensMenu()
 	rt := e.c.rt
 	var synced *bool
 	if o.Open != nil && e.hasState() {
@@ -305,6 +306,7 @@ func coreMenuBase(c *context, open *bool) *menuParts {
 	b := coreButtonBase(c)
 	b.widget, b.role = "MenuBase", RoleMenuButton
 	b.flags |= flagMenuButton
+	b.opensMenu()
 	m := newMenu(c, b, open, true)
 	b.expanded = *open
 	return m

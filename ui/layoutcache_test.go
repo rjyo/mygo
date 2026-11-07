@@ -461,7 +461,7 @@ func TestLayoutInputs(t *testing.T) {
 		"keyShortcuts accGrid accSet " +
 		"setPos setSize choosesItems search description invalid describedBy errorMessage followX sort level expandable " +
 		"chooseMany serial ignoreInput accessHidden accessDisabled themed lift ringOffset ringColor ringSet clipping zIndex zOrder " +
-		"roleDescription controls hasPopup"
+		"roleDescription controls hasPopup popupSet"
 	known := map[string]bool{}
 	for _, f := range strings.Fields(read + " " + other) {
 		known[f] = true

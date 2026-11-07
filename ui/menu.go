@@ -78,6 +78,7 @@ func (e *node) Menu(build func(m *Menu)) *node {
 	if e.role == RoleAuto || e.role == RoleButton {
 		e.role = RoleMenuButton
 	}
+	e.opensMenu()
 	e.buildMenu(true, false, build)
 	return e
 }
