@@ -139,7 +139,9 @@ framework safely. Read it before changing anything under `internal/`.
 ├── transfer/           immutable data items, representations, lazy providers and drag effects
 ├── netproxy/           the proxy of the system's settings, for Go's HTTP clients
 ├── audio/              sound: players, the mixer, the output of each platform, WAV;
-│                       audio/vorbis and audio/mp3 decode Ogg Vorbis and MP3
+│                       audio/vorbis and audio/mp3 decode Ogg Vorbis and MP3,
+│                       audio/mp4 MP4 (fragmented too) with ALAC, audio/aac
+│                       AAC, audio/flac FLAC
 ├── cmd/mygo/           the CLI: init, generate, dev, build, doctor
 ├── examples/           hello, todo, frameless, native; counter-native, vibrancy,
 │                       effort-slider, flyout, menubar-flyout, piano, farm
@@ -2225,7 +2227,17 @@ Where `openDevice` fails, a null device takes the frames on the wall
 clock and fails after two seconds, so the output tries the device again;
 `audio.Err` reports the failure. Formats register a magic prefix and a
 constructor as `image` does: WAV is built in, `audio/vorbis` and
-`audio/mp3` wrap pure Go decoders.
+`audio/mp3` wrap pure Go decoders, and so do `audio/aac` and `audio/flac`.
+A file that starts with an ID3 tag is matched by what follows it.
+`audio/mp4` reads the container and leaves its packets to a codec
+registered by the sample entry's type (`mp4.RegisterCodec`): ALAC, an
+in-package port of Apple's decoder, `mp4a` from `audio/aac`, `fLaC` from
+`audio/flac`, so that the LGPL of go-aac stays with the apps that import
+`audio/aac`. It places packets from the sample table, or, of a fragmented
+file, from each `moof`'s `trun` as playing reaches it, with the length
+from the `sidx`; AAC's packets it places 1024 frames apart whatever their
+durations say, since that is what each decodes to, and a seek decodes one
+packet before the one it lands in, whose sound overlaps it.
 
 ## Watching files (`watch.go`)
 

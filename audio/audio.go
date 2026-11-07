@@ -69,8 +69,10 @@ var (
 
 // RegisterFormat registers a format for DecodeSound, OpenStream and
 // NewDecoder: magic is the start of its files, where '?' matches any
-// byte, and open returns a decoder reading r from its start. A package
-// for a format calls it in its init function.
+// byte, and open returns a decoder reading r from its start. A file that
+// starts with an ID3 tag is of the format its bytes after the tag match,
+// and its decoder reads it from the tag. A package for a format calls it
+// in its init function.
 func RegisterFormat(name, magic string, open func(r io.ReadSeeker) (Decoder, error)) {
 	formatsMu.Lock()
 	defer formatsMu.Unlock()
@@ -98,10 +100,19 @@ func NewDecoder(r io.ReadSeeker) (Decoder, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	var head [16]byte
+	var head, after [16]byte
 	n, err := io.ReadFull(r, head[:])
 	if err != nil && err != io.ErrUnexpectedEOF {
 		return nil, "", err
+	}
+	// An ID3 tag first, as MP3s have and some FLAC and AAC files too: the
+	// format is what follows it.
+	m := 0
+	if n >= 10 && string(head[:3]) == "ID3" {
+		size := int64(head[6]&0x7f)<<21 | int64(head[7]&0x7f)<<14 | int64(head[8]&0x7f)<<7 | int64(head[9]&0x7f)
+		if _, err := r.Seek(start+10+size, io.SeekStart); err == nil {
+			m, _ = io.ReadFull(r, after[:])
+		}
 	}
 	if _, err := r.Seek(start, io.SeekStart); err != nil {
 		return nil, "", err
@@ -109,13 +120,15 @@ func NewDecoder(r io.ReadSeeker) (Decoder, string, error) {
 	formatsMu.Lock()
 	fs := formats
 	formatsMu.Unlock()
-	for _, f := range fs {
-		if match(f.magic, head[:n]) {
-			d, err := f.open(r)
-			if err != nil {
-				return nil, f.name, err
+	for _, b := range [][]byte{after[:m], head[:n]} {
+		for _, f := range fs {
+			if len(b) > 0 && match(f.magic, b) {
+				d, err := f.open(r)
+				if err != nil {
+					return nil, f.name, err
+				}
+				return d, f.name, nil
 			}
-			return d, f.name, nil
 		}
 	}
 	return nil, "", ErrFormat

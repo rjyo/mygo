@@ -113,6 +113,12 @@ box. Import a format's package for its side effect, as with package
 | `audio` | WAV | built in |
 | `audio/vorbis` | Ogg Vorbis | [jfreymuth/oggvorbis](https://github.com/jfreymuth/oggvorbis) |
 | `audio/mp3` | MP3 | [hajimehoshi/go-mp3](https://github.com/hajimehoshi/go-mp3) |
+| `audio/flac` | FLAC, in MP4 too | [mewkiz/flac](https://github.com/mewkiz/flac) |
+| `audio/aac` | AAC-LC: in MP4 (.m4a), and ADTS (.aac) | [tphakala/go-aac](https://github.com/tphakala/go-aac), under the LGPL |
+| `audio/mp4` | MP4 (.m4a, .mp4, .m4s), with Apple Lossless (ALAC) | built in |
+
+A file that starts with an ID3 tag, as MP3s do and some FLAC and AAC
+files, is of the format that follows it.
 
 Prefer Ogg Vorbis for music that loops: MP3 files begin and end with the
 encoder's padding, a few milliseconds of silence that a loop plays too,
@@ -145,6 +151,47 @@ audio.NewPlayer(&tone{}).Play()
 ```
 
 `NewSound` takes samples an app computed once.
+
+### MP4
+
+Package `audio/mp4` reads the container: a whole .m4a, or one cut into
+fragments, as a stream for DASH is (.m4s), whose packets are in a header
+of their own each, after the movie header. Codecs decode the packets:
+Apple Lossless is built in, and `audio/aac` and `audio/flac` add AAC and
+FLAC in MP4, importing `audio/mp4` themselves:
+
+```go
+import _ "github.com/egoist/mygo/audio/aac" // .m4a of AAC, and .aac
+
+f, _ := os.Open("song.m4a")
+music, err := audio.OpenStream(f)
+```
+
+It reads the packets as they play, so a file still coming in, as a
+stream from the network, plays as it comes when its reader waits for the
+bytes asked of it: a fragmented one plays from its first fragment, its
+length from its segment index (`sidx`), and one with no index is read
+through for its length as it opens. The encoder's priming, which an edit
+list says to skip, is skipped, and the padding of the last packet, so a
+track lasts what it was encoded from. A seek lands on the frame asked
+for; AAC's decodes the packet before too, whose sound overlaps it.
+
+`mp4.ReadTrack` describes a file's sound track from its movie header,
+without decoding it, for a music library scanning files: its codec, its
+configuration, how long it plays, and whether a codec registered decodes
+it (`Decodable`). `mp4.RegisterCodec` adds a codec of your own, by the
+type of its sample entry:
+
+```go
+mp4.RegisterCodec("Opus", func(config []byte) (mp4.Codec, error) {
+	return newOpusCodec(config) // config is the boxes within the sample entry: dOps
+})
+```
+
+HE-AAC (AAC+, with SBR) does not decode: its files fail to open, and
+`Decodable` says so. go-aac is under the LGPL 2.1 or later, unlike MyGo:
+an app that imports `audio/aac` links it, and takes on the LGPL's terms
+for it; apps that don't, don't.
 
 ## The output
 
