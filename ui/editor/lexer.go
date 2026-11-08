@@ -34,6 +34,9 @@ type lexer struct {
 	calls bool
 	// keys makes identifiers and strings before : properties, as JSON's.
 	keys bool
+	// assignKeys makes identifiers before = properties, and the first of
+	// a path before it, as Nix's a.b.c = 1.
+	assignKeys bool
 	// decorator starts annotations, as @ in Java and Python.
 	decorator byte
 	// directives makes # at the start of a line a preprocessor line, as
@@ -357,6 +360,8 @@ func (lx *lexer) code(st *lexState, i int) int {
 			switch {
 			case lx.keys && next == ':' && (k+1 >= n || line[k+1] != ':'):
 				kind = TokenProperty
+			case lx.assignKeys && assignAhead(line, k, lx.identChars):
+				kind = TokenProperty
 			case lx.calls && (next == '(' || next == '!' && k+1 < n && line[k+1] == '('):
 				kind = TokenFunction
 			case st.prevDot:
@@ -422,6 +427,38 @@ func (lx *lexer) code(st *lexState, i int) int {
 	out.add(i+k, TokenText)
 	st.prevDot = false
 	return i + k
+}
+
+// assignAhead reports whether an assignment starts at i, after any rest
+// of a path, as .b."c".${d}: an = that is no ==.
+func assignAhead(line string, i int, identChars string) bool {
+	n := len(line)
+	for i < n && line[i] == '.' {
+		i++
+		switch {
+		case i < n && line[i] == '"':
+			for i++; i < n && line[i] != '"'; i++ {
+				if line[i] == '\\' {
+					i++
+				}
+			}
+			i++
+		case strings.HasPrefix(line[i:], "${"):
+			for i < n && line[i] != '}' {
+				i++
+			}
+			i++
+		default:
+			for i < n && identPart(line[i:], identChars) {
+				_, k := utf8.DecodeRuneInString(line[i:])
+				i += k
+			}
+		}
+	}
+	for i < n && (line[i] == ' ' || line[i] == '\t') {
+		i++
+	}
+	return i < n && line[i] == '=' && (i+1 == n || line[i+1] != '=')
 }
 
 func (lx *lexer) prefixes() bool {

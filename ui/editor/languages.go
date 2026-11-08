@@ -489,8 +489,21 @@ func makeLanguages() {
 				TokenConstant, "true false null undefined"),
 			calls: true, capitalTypes: true, decorator: '@', operators: cOperators},
 	}
+	nix := &Language{
+		Name: "Nix", Extensions: []string{".nix"}, LineComment: "#", BlockComment: [2]string{"/*", "*/"},
+		Brackets: cBrackets, AutoClose: cAutoClose("\""), WordChars: "-", TabSize: 2,
+		Tokenizer: &lexer{lineComments: []string{"#"}, blockComments: [][2]string{{"/*", "*/"}},
+			// ''…'' strings lex without their escapes, ''$, ''' and ''\,
+			// which end them early: an escape here is one byte.
+			strings: []lexString{{open: "\"", close: "\"", escape: '\\', multiline: true, interpOpen: "${", interpClose: "}", kind: TokenString},
+				{open: "''", close: "''", multiline: true, interpOpen: "${", interpClose: "}", kind: TokenString}},
+			words: words(TokenKeyword, "assert else if in inherit let or rec then with",
+				TokenConstant, "true false null builtins",
+				TokenFunction, "import abort throw derivation toString map removeAttrs baseNameOf dirOf isNull fetchTarball fetchGit"),
+			identChars: "-", assignKeys: true, operators: "+-*/=<>!&|?:@"},
+	}
 	// HTML's tokenizer highlights the scripts and styles inside it.
 	html.Tokenizer = &markupLexer{html: true, script: javascript.Tokenizer, style: css.Tokenizer}
 	languageList = []*Language{goLang, javascript, typescript, json, python, rust, c, cpp, java, kotlin, scala, swift, dart, csharp,
-		shell, yaml, toml, sql, rLang, ruby, lua, php, css, html, xml, markdown, diffLang, dockerfile, makefile, protobuf, graphql, zig}
+		shell, yaml, toml, sql, rLang, ruby, lua, php, css, html, xml, markdown, diffLang, dockerfile, makefile, protobuf, graphql, zig, nix}
 }

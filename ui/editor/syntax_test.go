@@ -96,6 +96,10 @@ func TestTokenizers(t *testing.T) {
 		{"graphql", []string{`query Get($id: ID!) @cached { user(id: $id) { ...F ... on User { name } } } # c`, `"""Doc`, `"""`},
 			`kw(query)type(Get)punct(()var($id)op(:)type(ID)op(!)punct())meta(@cached)punct({)var(user)punct(()prop(id)op(:)var($id)punct())punct({)` +
 				`punct(...)type(F)punct(...)kw(on)type(User)punct({)var(name)punct(})punct(})punct(})comment(# c) / str("""Doc) / str(""")`},
+		{"nix", []string{`{ pkgs ? import <nixpkgs> {} }: let s = "a${pkgs.hello-world}\n"; # c`, `in rec { x = '' echo ${s}`, `''; y = s // { z = true; }; /* d */ }`, `inputs.x."y".${s} = a.b == c;`},
+			`punct({)var(pkgs)op(?)fn(import)op(<)var(nixpkgs)op(>)punct({})punct(})op(:)kw(let)prop(s)op(=)str("a)esc(${)var(pkgs)punct(.)prop(hello-world)esc(}\n)str(")punct(;)comment(# c) / ` +
+				`kw(in)kw(rec)punct({)prop(x)op(=)str('' echo)esc(${)var(s)esc(}) / str('')punct(;)prop(y)op(=)var(s)op(//)punct({)prop(z)op(=)const(true)punct(;)punct(};)comment(/* d */)punct(}) / ` +
+				`prop(inputs)punct(.)prop(x)punct(.)str("y")punct(.)text($)punct({)var(s)punct(})op(=)var(a)punct(.)prop(b)op(==)var(c)punct(;)`},
 	} {
 		l := LanguageNamed(c.lang)
 		if l == nil {
@@ -139,7 +143,7 @@ func TestInterpolatedStringsFit(t *testing.T) {
 
 func TestLanguageFor(t *testing.T) {
 	for name, want := range map[string]string{"main.go": "Go", "a/b/Makefile": "Makefile", "x.TSX": "TypeScript", "Dockerfile": "Dockerfile", "x.unknown": "",
-		"main.dart": "Dart", "schema.graphql": "GraphQL", "q.gql": "GraphQL", "plot.r": "R", "plot.R": "R", "Main.scala": "Scala", "build.sc": "Scala"} {
+		"main.dart": "Dart", "schema.graphql": "GraphQL", "q.gql": "GraphQL", "plot.r": "R", "plot.R": "R", "Main.scala": "Scala", "build.sc": "Scala", "flake.nix": "Nix"} {
 		l := LanguageFor(name)
 		got := ""
 		if l != nil {
