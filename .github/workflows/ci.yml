@@ -126,10 +126,49 @@ jobs:
             ${{ runner.os == 'Windows' && '~/AppData/Local' || runner.os == 'macOS' && '~/Library/Caches' || '~/.cache' }}/mygo/natives
             ${{ runner.os == 'Windows' && '~/AppData/Local' || runner.os == 'macOS' && '~/Library/Caches' || '~/.cache' }}/mygo/nsis-*
           key: ${{ steps.downloads.outputs.cache-primary-key }}
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      # The SQLite plugin's native module, from its Zig and the SQLite its
+      # build.zig.zon pins, which the plugin's tests and the end-to-end
+      # tests load: built here, so that they test these sources.
+      - name: Build the SQLite plugin's native module
+        run: go run ./cmd/mygo native build -target host plugins/sqlite/internal/sqlitecore
       # cmd/mygo builds and packages apps, which takes the macOS runners
       # about six minutes and, on a slow one beside the other packages,
       # past go test's ten: the same tests, more time.
       - run: go test -timeout ${{ runner.os == 'macOS' && '20m' || '10m' }} ./...
+      # A Rust crate that the CLI builds and package ffi binds, with the
+      # cargo of the runners' images, which go test ./... skips unbuilt.
+      - name: Test a native library built from its sources
+        env:
+          MYGO_NATIVE_TESTS: 1
+        run: |
+          go run ./cmd/mygo native build -target host examples/rust-native
+          go test -count=1 ./examples/rust-native/...
+      # A native module's three implementations, built with the runners'
+      # own Swift (Xcode's, and that of Ubuntu's image) and cargo, and Zig:
+      # every kind of value both ways, which go test ./... skips unbuilt. On
+      # macOS, the examples too, whose Swift uses Apple's frameworks.
+      - name: Test a native module built from its Swift
+        if: runner.os != 'Windows'
+        run: |
+          go run ./cmd/mygo native build -target host -lang swift native/internal/roundtrip/uses  # and roundtrip, which it uses
+          go test -count=1 ./native/internal/roundtrip/...
+      - name: Test a native module built from its Rust, and from its Zig
+        shell: bash
+        run: |
+          go test -count=1 -run TestScaffoldBuildsRustZig ./internal/nativegen
+          for lang in rust zig; do
+            go run ./cmd/mygo native build -target host -lang $lang native/internal/roundtrip
+            out=$(go test -count=1 -v ./native/internal/roundtrip) || { echo "$out"; exit 1; }
+            if grep -- '--- SKIP' <<<"$out"; then exit 1; fi  # as when the library did not load
+            echo "$lang: $(grep -c -- '--- PASS' <<<"$out") tests passed"
+          done
+      - name: Build the example's native modules
+        if: runner.os == 'macOS'
+        working-directory: examples/native-module
+        run: for m in language motion places; do go run ../../cmd/mygo native check modules/$m; done
       - name: Test without the inspector, as production builds
         if: runner.os == 'Linux'
         run: go test -tags mygo_noinspector ./ui .
@@ -188,6 +227,18 @@ jobs:
             ${{ runner.os == 'Windows' && '~/AppData/Local' || runner.os == 'macOS' && '~/Library/Caches' || '~/.cache' }}/mygo/natives
             ${{ runner.os == 'Windows' && '~/AppData/Local' || runner.os == 'macOS' && '~/Library/Caches' || '~/.cache' }}/mygo/nsis-*
           key: ${{ steps.downloads.outputs.cache-primary-key }}
+      # Zig 0.16's aarch64 Windows build crashes running zig build (the
+      # build runner segfaults at once), so this job uses its x86_64
+      # build, which Windows runs emulated and which cross-compiles the
+      # arm64 library just the same.
+      - name: Install Zig (x86_64)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://ziglang.org/download/0.16.0/zig-x86_64-windows-0.16.0.zip -OutFile "$env:RUNNER_TEMP\zig.zip"
+          Expand-Archive "$env:RUNNER_TEMP\zig.zip" -DestinationPath "$env:RUNNER_TEMP"
+          "$env:RUNNER_TEMP\zig-x86_64-windows-0.16.0" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+      - name: Build the SQLite plugin's native module
+        run: go run ./cmd/mygo native build -target host plugins/sqlite/internal/sqlitecore
       - run: go test ./...
       - name: Test without the inspector, as production builds
         if: runner.os == 'Linux'

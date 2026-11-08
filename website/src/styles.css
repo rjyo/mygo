@@ -364,6 +364,17 @@
   }
 }
 
+/* The language of a code block, at its top right, where the copy button
+   takes its place on hover. */
+.code-lang {
+  @apply pointer-events-none absolute top-2.5 right-3 text-xs font-medium text-muted-foreground transition-opacity select-none;
+
+  .code-block:hover &,
+  .code-block:has(.copy-button:focus-visible) & {
+    @apply opacity-0;
+  }
+}
+
 .copy-button {
   @apply absolute top-2 right-2 flex size-7 items-center justify-center rounded-md border bg-card text-muted-foreground opacity-0 transition-all hover:text-foreground focus-visible:opacity-100;
 

@@ -1,0 +1,46 @@
+{
+  "libraries": [
+    {
+      "name": "Sqlitecore",
+      "release": "https://github.com/egoist/mygo/releases/download/native-sqlitecore",
+      "files": {
+        "darwin-amd64": {
+          "name": "libSqlitecore.dylib",
+          "url": "https://github.com/egoist/mygo/releases/download/native-sqlitecore/Sqlitecore-darwin-amd64-c491f101a653.dylib",
+          "sha256": "c491f101a65377953ef1822c3d80e78874560a668ea59161b2d68ebced225f23",
+          "sourceHash": "f9507095cbbe51626c43c6d9237a38bc94c596cf700a88c029d2f0abb065b818"
+        },
+        "darwin-arm64": {
+          "name": "libSqlitecore.dylib",
+          "url": "https://github.com/egoist/mygo/releases/download/native-sqlitecore/Sqlitecore-darwin-arm64-6834cd1cf7f4.dylib",
+          "sha256": "6834cd1cf7f48647276144ad5afb669edcd0c6c4ad169eebbc24a1cd1624abdb",
+          "sourceHash": "f9507095cbbe51626c43c6d9237a38bc94c596cf700a88c029d2f0abb065b818"
+        },
+        "linux-amd64": {
+          "name": "libSqlitecore.so",
+          "url": "https://github.com/egoist/mygo/releases/download/native-sqlitecore/Sqlitecore-linux-amd64-81aad721b6fd.so",
+          "sha256": "81aad721b6fd3673bca25436d9521b2896e4b01e75fa6d41af1b52cd1485fd33",
+          "sourceHash": "f9507095cbbe51626c43c6d9237a38bc94c596cf700a88c029d2f0abb065b818"
+        },
+        "linux-arm64": {
+          "name": "libSqlitecore.so",
+          "url": "https://github.com/egoist/mygo/releases/download/native-sqlitecore/Sqlitecore-linux-arm64-2a0725d65873.so",
+          "sha256": "2a0725d6587388fefe3f04b28f9eafbd66b2f67aa6d413f89aee32238d1ff4ef",
+          "sourceHash": "f9507095cbbe51626c43c6d9237a38bc94c596cf700a88c029d2f0abb065b818"
+        },
+        "windows-amd64": {
+          "name": "Sqlitecore.dll",
+          "url": "https://github.com/egoist/mygo/releases/download/native-sqlitecore/Sqlitecore-windows-amd64-029fd2db48c3.dll",
+          "sha256": "029fd2db48c3cc30de13f0a5f33c7604460f8f61496b9e641d7de7e394d3f8e6",
+          "sourceHash": "f9507095cbbe51626c43c6d9237a38bc94c596cf700a88c029d2f0abb065b818"
+        },
+        "windows-arm64": {
+          "name": "Sqlitecore.dll",
+          "url": "https://github.com/egoist/mygo/releases/download/native-sqlitecore/Sqlitecore-windows-arm64-db27799190bc.dll",
+          "sha256": "db27799190bce425f0c833c11298f1582489e747bfef6dd437df4a3fd2cc08ef",
+          "sourceHash": "f9507095cbbe51626c43c6d9237a38bc94c596cf700a88c029d2f0abb065b818"
+        }
+      }
+    }
+  ]
+}

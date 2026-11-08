@@ -7,6 +7,7 @@ import (
 	"math"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -14,11 +15,22 @@ import (
 	"github.com/egoist/mygo/internal/wait"
 )
 
-func testDB(t *testing.T, path string) *DB {
+// needSQLite skips a test in -short mode, and where the plugin's native
+// module is not built: mygo native build -target host
+// ./plugins/sqlite/internal/sqlitecore builds it, with Zig.
+func needSQLite(t *testing.T) {
 	t.Helper()
 	if testing.Short() {
-		t.Skip("requires the plugin's native SQLite library; run go generate ./plugins/sqlite")
+		t.Skip("requires the plugin's native module")
 	}
+	if err := Load(); err != nil && strings.Contains(err.Error(), "mygo native build") {
+		t.Skip(err)
+	}
+}
+
+func testDB(t *testing.T, path string) *DB {
+	t.Helper()
+	needSQLite(t)
 	db, err := Open(context.Background(), path, OpenOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -202,7 +214,7 @@ func TestCloseAndQueuedCancellation(t *testing.T) {
 	started := make(chan struct{})
 	done := make(chan error, 1)
 	go func() {
-		done <- db.operation(context.Background(), func() error { close(started); _, _, err := db.run(longQuery, nil, true); return err })
+		done <- db.operation(context.Background(), func(func()) error { close(started); _, _, err := db.run(longQuery, nil, true); return err })
 	}()
 	<-started
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
@@ -252,7 +264,7 @@ func TestDiskReadOnlyAndBusy(t *testing.T) {
 	defer b.Close()
 	locked, release, done := make(chan struct{}), make(chan struct{}), make(chan error, 1)
 	go func() {
-		done <- w.operation(context.Background(), func() error {
+		done <- w.operation(context.Background(), func(func()) error {
 			if err := w.control("BEGIN IMMEDIATE"); err != nil {
 				close(locked)
 				return err

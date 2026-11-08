@@ -1,0 +1,10 @@
+{
+  "libraries": [
+    {
+      "name": "adder",
+      "build": {
+        "cargo": "./rust"
+      }
+    }
+  ]
+}

@@ -1,9 +1,10 @@
 # SQLite
 
 The SQLite plugin provides local databases to web pages and Go, including
-native UI apps. It ships prebuilt SQLite libraries and loads them through
-purego, so apps build without cgo or a C compiler. It supports macOS,
-Linux and Windows on amd64 and arm64.
+native UI apps. Its SQLite is a [native module](../native-modules.md)
+written in Zig, published prebuilt for each platform, so apps build
+without cgo, a C compiler or Zig. It supports macOS, Linux and Windows on
+amd64 and arm64.
 
 ## Using the page plugin
 
@@ -111,9 +112,9 @@ connections; app quit closes every remaining connection. `close()` is
 idempotent and cancels active operations. Concurrent operations on one
 connection serialize; await dependent calls to give them an order.
 
-Cancellation is handled by a progress handler and busy handler in C, with
-an atomic cancellation token. SQLite retains no Go pointers or purego
-callbacks. Go callers can cancel each operation with its context.
+Canceling an operation interrupts its statement with
+`sqlite3_interrupt`, and its wait for another connection's lock. Go
+callers can cancel each operation with its context.
 
 ## From Go or native UI
 
@@ -147,22 +148,22 @@ and canceled operations return their context error.
 
 ## Building and shipping
 
-Prebuilt libraries are published in
-[sqlite-3.53.4-1](https://github.com/egoist/mygo/releases/tag/sqlite-3.53.4-1).
-CI, `go test` and unpackaged programs download the matching library and
-verify its SHA-256. Testing and building apps require no Zig installation.
+SQLite runs in the native module `plugins/sqlite/internal/sqlitecore`: a
+Go interface, `Engine`, that its Zig implements by compiling SQLite's
+amalgamation, which `zig/build.zig.zon` pins by hash. `mygo dev` and
+`mygo build` put the module's library for the platform among the app's
+resources, signed with the app on macOS, and `go run` and `go test` of an
+app download it. Packaged apps never download native code at run time.
 
-When updating SQLite or its C shim, run `go generate ./plugins/sqlite` with
-Zig 0.16.0 to build all six native libraries from the pinned,
-checksum-verified SQLite 3.53.4 source. It writes the manifest, ignored
-release assets and local CLI cache. From `plugins/sqlite`,
-`go run ./internal/libbuild -target host` builds just the host for local
-development before new release assets are published.
+In this repository, the module is built from its sources, with Zig 0.16.0:
 
-`mygo build` and `mygo dev` discover `mygo-plugin.json` and put the correct
-library among the app's resources, signed with the app on macOS. macOS
-universal builds merge both architectures. Packaged apps need no runtime
-downloads. `MYGO_SQLITE_LIBRARY` names a custom build for development.
+```sh
+go run ./cmd/mygo native build -target host plugins/sqlite/internal/sqlitecore
+```
+
+The plugin's tests skip where it is not built. `mygo native build -upload`
+publishes it for every platform (see
+[Publish a module](../native-modules.md#publish-a-module)).
 
 See [the plugin README](https://github.com/egoist/mygo/tree/main/plugins/sqlite)
 for release-asset publication and compile options. SQLite's upstream

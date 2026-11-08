@@ -1,0 +1,13 @@
+.{
+    .name = .sqlitecore,
+    .version = "0.0.0",
+    .fingerprint = 0xbeed00044bd68e0,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        .sqlite = .{
+            .url = "https://www.sqlite.org/2026/sqlite-amalgamation-3530400.zip",
+            .hash = "N-V-__8AAGVtrgCcOcmjrOJnagmnRyMrcKaOo09KbU-vu8w8",
+        },
+    },
+    .paths = .{ "build.zig", "build.zig.zon", "src" },
+}

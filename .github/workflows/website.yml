@@ -1,11 +1,13 @@
 name: Website
 
-# The website branch is what the site serves in production: every tag
-# moves it to the tagged commit. It only fast-forwards, so a tag of an
+# The website branch is what the site serves in production: every release
+# tag moves it to the tagged commit. Other tags, such as the release
+# native-libraries that mygo native build -upload uploads to, or the
+# releases of the plugins' libraries, leave it. It only fast-forwards, so a tag of an
 # older commit fails here instead of rolling the site back.
 on:
   push:
-    tags: ["**"]
+    tags: ["v*"]
 
 permissions:
   contents: read

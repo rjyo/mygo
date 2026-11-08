@@ -134,9 +134,12 @@ func sameLayout(e *node, parent uint64, index int, changed bool) bool {
 	var media [2]float32
 	switch e.kind {
 	case kindImage:
-		if e.image != nil {
+		switch {
+		case e.image != nil:
 			media[0], media[1] = e.image.imageSize()
-		} else {
+		case e.texture != nil:
+			media[0], media[1] = e.texture.Size()
+		default:
 			media[0], media[1] = e.svg.imageSize()
 		}
 	case kindIcon:

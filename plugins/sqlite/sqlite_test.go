@@ -2,13 +2,9 @@ package sqlite
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
 	"math"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -32,9 +28,7 @@ func TestPluginBindings(t *testing.T) {
 }
 
 func TestPageOwnershipAndCleanup(t *testing.T) {
-	if testing.Short() {
-		t.Skip("requires native library")
-	}
+	needSQLite(t)
 	s := New(Options{Directory: t.TempDir()}).Service.(*service)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -124,24 +118,6 @@ func TestWireRoundTrip(t *testing.T) {
 		if _, err := parameters([]wireValue{value}); err == nil {
 			t.Fatal("invalid value accepted", value)
 		}
-	}
-}
-
-func TestDownloadChecksum(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte("library")) }))
-	defer srv.Close()
-	sum := sha256.Sum256([]byte("library"))
-	file := nativeFile{Name: "library.so", URL: srv.URL, SHA256: hex.EncodeToString(sum[:])}
-	path := filepath.Join(t.TempDir(), "cache", file.Name)
-	if err := downloadLibrary(file, path); err != nil || !checkFile(path, file.SHA256) {
-		t.Fatalf("download: %v", err)
-	}
-	file.SHA256 = strings.Repeat("0", 64)
-	if err := downloadLibrary(file, path); err == nil {
-		t.Fatal("bad checksum accepted")
-	}
-	if contents, _ := os.ReadFile(path); string(contents) != "library" {
-		t.Fatal("failed download replaced the cache")
 	}
 }
 

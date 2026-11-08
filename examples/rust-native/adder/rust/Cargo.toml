@@ -1,0 +1,12 @@
+[package]
+name = "adder"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+# A dynamic library with a C ABI, which package ffi loads.
+crate-type = ["cdylib"]
+
+[profile.release]
+strip = true

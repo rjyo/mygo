@@ -9,10 +9,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/egoist/mygo/internal/nativelib"
 )
 
 // TestNatives puts the native libraries that a package of the app names in
@@ -119,7 +122,7 @@ func TestNatives(t *testing.T) {
 		t.Errorf("downloads = %d, %v", downloads, err)
 	}
 	// Names and sums that would reach outside the cache are refused.
-	for _, f := range []nativeFile{
+	for _, f := range []nativelib.File{
 		{Name: "..", URL: srv.URL, SHA256: strings.Repeat("a", 64)},
 		{Name: "lib/../../x", URL: srv.URL, SHA256: strings.Repeat("a", 64)},
 		{Name: "x.so", URL: srv.URL, SHA256: strings.Repeat("../", 20) + "etc/"},
@@ -133,5 +136,127 @@ func TestNatives(t *testing.T) {
 	writeFiles(t, dir, map[string]string{"resources/libx.so": "mine"})
 	if _, err := c.appResources("linux", "amd64"); err == nil || !strings.Contains(err.Error(), "would both be installed as libx.so") {
 		t.Errorf("a resource named as the library: %v", err)
+	}
+}
+
+// TestNativesFromSources builds a library of the app's own package from
+// its Rust crate with cargo, puts it among the app's resources, and binds
+// it. A package in the module cache downloads the published build instead,
+// and fails without one.
+func TestNativesFromSources(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs go list and cargo")
+	}
+	if _, err := exec.LookPath("cargo"); err != nil {
+		t.Skip("cargo is not installed")
+	}
+	// go list reports the directories of packages with their links
+	// resolved, as macOS's /var in /private/var.
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFiles(t, dir, map[string]string{
+		"go.mod":            "module example.com/app\n\ngo 1.27\n",
+		"main.go":           "package main\n\nimport _ \"example.com/app/lib\"\n\nfunc main() {}\n",
+		"lib/lib.go":        "package lib\n",
+		"lib/" + pluginFile: `{"libraries": [{"name": "adder", "build": {"cargo": "./rust"}}]}`,
+		"lib/rust/Cargo.toml": "[package]\nname = \"adder\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n" +
+			"[lib]\ncrate-type = [\"cdylib\"]\n",
+		"lib/rust/src/lib.rs": "#[no_mangle]\npub extern \"C\" fn add(a: i32, b: i32) -> i32 { a + b }\n",
+		"mygo.json":           `{"name": "App"}`,
+	})
+	c, err := loadConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, err := c.natives(runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(nativelib.LocalDir(dir, runtime.GOOS, runtime.GOARCH), nativelib.FileName("adder", runtime.GOOS))
+	if len(list) != 1 || list[0].path != want || list[0].name != filepath.Base(want) {
+		t.Fatalf("natives = %+v, want %s", list, want)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "lib", "rust", "target")); err == nil {
+		t.Error("cargo wrote into the crate")
+	}
+	if add, err := loadAdd(want); err != nil {
+		t.Fatal(err)
+	} else if add != nil && add(40, 2) != 42 {
+		t.Errorf("add(40, 2) = %d", add(40, 2))
+	}
+
+	// A published build of these sources serves the app instead, until the
+	// sources change.
+	built, err := os.ReadFile(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write(built) }))
+	defer srv.Close()
+	// A cache of its own, where macOS's is under $HOME, as rustup's and
+	// cargo's homes are unless their variables name them.
+	if home, err := os.UserHomeDir(); err == nil {
+		for v, dir := range map[string]string{"RUSTUP_HOME": ".rustup", "CARGO_HOME": ".cargo"} {
+			if os.Getenv(v) == "" {
+				t.Setenv(v, filepath.Join(home, dir))
+			}
+		}
+	}
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("LocalAppData", t.TempDir())
+	build := &nativelib.Build{Cargo: "./rust"}
+	sources, err := nativelib.SourceHash(filepath.Join(dir, "lib", "rust"), build)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(built)
+	manifest := nativelib.Manifest{Libraries: []nativelib.Library{{Name: "adder", Build: build, Files: map[string]nativelib.File{
+		runtime.GOOS + "-" + runtime.GOARCH: {Name: filepath.Base(want), URL: srv.URL, SHA256: hex.EncodeToString(sum[:]), SourceHash: sources},
+	}}}}
+	if err := writeManifest(filepath.Join(dir, "lib", pluginFile), manifest); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(want); err != nil {
+		t.Fatal(err)
+	}
+	if list, err := c.natives(runtime.GOOS, runtime.GOARCH); err != nil || len(list) != 1 || list[0].path == want {
+		t.Fatalf("with a published build of the sources, natives = %+v, %v", list, err)
+	}
+	writeFiles(t, dir, map[string]string{"lib/rust/src/lib.rs": "#[no_mangle]\npub extern \"C\" fn add(a: i32, b: i32) -> i32 { a.wrapping_add(b) }\n"})
+	if list, err := c.natives(runtime.GOOS, runtime.GOARCH); err != nil || len(list) != 1 || list[0].path != want {
+		t.Fatalf("with changed sources, natives = %+v, %v", list, err)
+	}
+
+	// The same package in the module cache has no published build.
+	writeFiles(t, dir, map[string]string{"lib/" + pluginFile: `{"libraries": [{"name": "adder", "build": {"cargo": "./rust"}}]}`})
+	old := goEnv("GOMODCACHE")
+	goEnvCache.Store("GOMODCACHE", dir)
+	defer goEnvCache.Store("GOMODCACHE", old)
+	if _, err := c.natives(runtime.GOOS, runtime.GOARCH); err == nil || !strings.Contains(err.Error(), "has no build for") {
+		t.Errorf("a package of the module cache: %v", err)
+	}
+}
+
+func TestNativeTargets(t *testing.T) {
+	if list, err := nativeTargets("all"); err != nil || len(list) != 6 {
+		t.Errorf("all = %v, %v", list, err)
+	}
+	if list, err := nativeTargets("linux-amd64,windows-arm64"); err != nil || len(list) != 2 {
+		t.Errorf("a list = %v, %v", list, err)
+	}
+	if _, err := nativeTargets("plan9-amd64"); err == nil {
+		t.Error("accepted an unknown platform")
+	}
+	repo, tag, err := githubRelease("https://github.com/me/app/releases/download/adder-v1")
+	if err != nil || repo != "me/app" || tag != "adder-v1" {
+		t.Errorf("githubRelease = %q, %q, %v", repo, tag, err)
+	}
+	for _, bad := range []string{"https://example.com/me/app/releases/download/v1", "https://github.com/me/app", "::"} {
+		if _, _, err := githubRelease(bad); err == nil {
+			t.Errorf("githubRelease(%q) accepted it", bad)
+		}
 	}
 }

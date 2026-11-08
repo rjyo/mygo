@@ -1,6 +1,6 @@
-// Package sqlite is MyGo's SQLite plugin. SQLite's C amalgamation and a
-// small C shim are compiled with Zig and loaded through purego: no cgo,
-// Zig, Bun or compiler is needed at application run time.
+// Package sqlite is MyGo's SQLite plugin. SQLite runs in a native module
+// written in Zig (internal/sqlitecore), published prebuilt for each
+// platform: no cgo, Zig, Bun or compiler is needed to build or run an app.
 //
 // Register the plugin only when the web frontend uses @mygo-plugins/sqlite:
 //

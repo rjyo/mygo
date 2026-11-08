@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/egoist/mygo/internal/imagesrc"
 )
 
 // Box creates a container that lays its children out in a column.
@@ -530,19 +532,29 @@ func coreScrollBoth(c *context) *node {
 	return e
 }
 
-// ImageSource is what Image shows: a *Bitmap, or an *SVG in its own
-// colors.
+// ImageSource is what Image shows: a *Bitmap, an *SVG in its own
+// colors, or a *native.Texture, which a native module draws into on the
+// GPU.
 type ImageSource interface {
-	imageSize() (w, h float32)
+	imagesrc.Source
 }
 
+// imageMark makes the types embedding it ImageSources.
+type imageMark = imagesrc.Mark
+
 // ImageSize returns the size Image shows src at by default, in DIPs: a
-// bitmap's pixels, or the size an SVG says it has. It is 0×0 for nil.
+// bitmap's pixels, the size an SVG says it has, or a texture's pixels as
+// its last frame has them. It is 0×0 for nil.
 func ImageSize(src ImageSource) (w, h float32) {
-	if src == nil {
-		return 0, 0
+	switch s := src.(type) {
+	case *Bitmap:
+		return s.imageSize()
+	case *SVG:
+		return s.imageSize()
+	case imagesrc.Frames:
+		return s.Size()
 	}
-	return src.imageSize()
+	return 0, 0
 }
 
 // DecodeImage decodes a picture whose format is not known up front, as
@@ -569,11 +581,11 @@ func coreImage(c *context, src ImageSource) *node {
 		e.image = s
 	case *SVG:
 		e.svg = s
+	case imagesrc.Frames:
+		e.texture = s
 	}
-	if src != nil {
-		if w, h := src.imageSize(); h > 0 {
-			e.aspect = w / h
-		}
+	if w, h := ImageSize(src); h > 0 {
+		e.aspect = w / h
 	}
 	return e
 }
@@ -583,8 +595,11 @@ func coreImage(c *context, src ImageSource) *node {
 func (e *node) intrinsicSize() (w, h float32) {
 	switch e.kind {
 	case kindImage:
-		if e.image != nil {
+		switch {
+		case e.image != nil:
 			return e.image.imageSize()
+		case e.texture != nil:
+			return e.texture.Size()
 		}
 		return e.svg.imageSize()
 	case kindIcon:

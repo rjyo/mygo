@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"math"
 	"reflect"
-	"runtime"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
-	"unsafe"
+
+	"github.com/egoist/mygo/native"
+	"github.com/egoist/mygo/plugins/sqlite/internal/sqlitecore"
 )
 
 // ErrClosed is returned when an operation uses a closed database.
@@ -62,17 +64,25 @@ type Statement struct {
 // goroutine; operations serialize on the connection and may be canceled
 // while waiting for it. Use Transaction for atomic groups of statements.
 type DB struct {
-	gate    chan struct{}
-	life    context.Context
-	cancel  context.CancelFunc
-	handle  uintptr // guarded by gate
-	token   uintptr // the current C operation, guarded by gate
-	timeout int
+	gate   chan struct{}
+	life   context.Context
+	cancel context.CancelFunc
+	conn   sqlitecore.Conn // guarded by gate; nil once closed
 }
 
-// Open opens path (or ":memory:") with the SQLite C library compiled by
-// Zig, without cgo. It creates a missing file unless ReadOnly. The parent
-// directory must already exist. Close the returned connection when done.
+var engine = sync.OnceValues(sqlitecore.NewEngine)
+
+// Load loads the plugin's SQLite, a native module, once. Open calls it
+// lazily, so binding the plugin and generating clients need no library.
+func Load() error {
+	_, err := engine()
+	return err
+}
+
+// Open opens path (or ":memory:") with SQLite, which the plugin compiles
+// with Zig into a native module, without cgo. It creates a missing file
+// unless ReadOnly. The parent directory must already exist. Close the
+// returned connection when done.
 func Open(ctx context.Context, path string, opts OpenOptions) (*DB, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -80,28 +90,13 @@ func Open(ctx context.Context, path string, opts OpenOptions) (*DB, error) {
 	if path == "" || strings.IndexByte(path, 0) >= 0 || !utf8.ValidString(path) {
 		return nil, errors.New("sqlite: database path must be nonempty UTF-8 without NUL")
 	}
-	if err := Load(); err != nil {
+	e, err := engine()
+	if err != nil {
 		return nil, err
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	flags := uintptr(0x00000002 | 0x00000004 | 0x00010000) // READWRITE | CREATE | FULLMUTEX
-	if opts.ReadOnly {
-		flags = 0x00000001 | 0x00010000
-	}
-	var h uintptr
-	name := append([]byte(path), 0)
-	rc := call(native.open, uintptr(unsafe.Pointer(&name[0])), uintptr(unsafe.Pointer(&h)), flags, 0)
-	runtime.KeepAlive(name)
-	if int32(rc) != 0 {
-		err := sqliteError(h, rc)
-		if h != 0 {
-			call(native.close, h)
-		}
-		return nil, err
-	}
-	call(native.extendedResults, h, 1)
 	timeout := opts.BusyTimeout
 	if timeout == 0 {
 		timeout = 5 * time.Second
@@ -111,8 +106,12 @@ func Open(ctx context.Context, path string, opts OpenOptions) (*DB, error) {
 		ms = 1
 	}
 	ms = max(0, min(ms, math.MaxInt32))
+	conn, err := e.Open(path, opts.ReadOnly, int(ms))
+	if err != nil {
+		return nil, sqliteError(err)
+	}
 	life, cancel := context.WithCancel(context.Background())
-	db := &DB{handle: h, gate: make(chan struct{}, 1), life: life, cancel: cancel, timeout: int(ms)}
+	db := &DB{conn: conn, gate: make(chan struct{}, 1), life: life, cancel: cancel}
 	db.gate <- struct{}{}
 	if err := ctx.Err(); err != nil {
 		db.Close()
@@ -127,14 +126,13 @@ func (d *DB) Close() error {
 	d.cancel()
 	<-d.gate
 	defer func() { d.gate <- struct{}{} }()
-	if d.handle == 0 {
+	if d.conn == nil {
 		return nil
 	}
-	rc := call(native.close, d.handle)
-	if int32(rc) != 0 {
-		return sqliteError(d.handle, rc)
+	if err := d.conn.Close(); err != nil {
+		return sqliteError(err)
 	}
-	d.handle = 0
+	d.conn = nil
 	return nil
 }
 
@@ -143,7 +141,7 @@ func (d *DB) Close() error {
 // json.Number. SQL text may not contain NUL. Transaction control, ATTACH
 // and VACUUM INTO are rejected; use Transaction for groups of statements.
 func (d *DB) Execute(ctx context.Context, sql string, args ...any) (result Result, err error) {
-	err = d.operation(ctx, func() error {
+	err = d.operation(ctx, func(func()) error {
 		var e error
 		result, _, e = d.run(sql, args, false)
 		return e
@@ -154,7 +152,7 @@ func (d *DB) Execute(ctx context.Context, sql string, args ...any) (result Resul
 // Query runs exactly one statement and copies its rows. It also supports
 // statements with RETURNING. For large results, select a bounded page.
 func (d *DB) Query(ctx context.Context, sql string, args ...any) (rows Rows, err error) {
-	err = d.operation(ctx, func() error {
+	err = d.operation(ctx, func(func()) error {
 		var e error
 		_, rows, e = d.run(sql, args, true)
 		return e
@@ -166,7 +164,7 @@ func (d *DB) Query(ctx context.Context, sql string, args ...any) (rows Rows, err
 // other operations on this connection. Any error, including cancellation,
 // rolls back the batch. Results are returned only after COMMIT succeeds.
 func (d *DB) Transaction(ctx context.Context, statements []Statement) (results []Result, err error) {
-	err = d.operation(ctx, func() (err error) {
+	err = d.operation(ctx, func(detach func()) (err error) {
 		if len(statements) == 0 {
 			results = []Result{}
 			return nil
@@ -177,11 +175,11 @@ func (d *DB) Transaction(ctx context.Context, statements []Statement) (results [
 		committed := false
 		defer func() {
 			if !committed {
-				// Cleanup must run even when the operation's token is canceled.
-				call(native.operationEnd, d.handle)
+				// Cleanup must run even when the operation is canceled.
+				detach()
 				if rollback := d.control("ROLLBACK"); rollback != nil {
 					// SQLITE_INTERRUPT may already have rolled the transaction back.
-					if call(native.autocommit, d.handle) == 0 {
+					if !d.conn.Autocommit() {
 						err = errors.Join(err, rollback)
 					}
 				}
@@ -217,7 +215,10 @@ func (d *DB) Transaction(ctx context.Context, statements []Statement) (results [
 	return
 }
 
-func (d *DB) operation(ctx context.Context, fn func() error) error {
+// operation runs fn alone on the connection. Canceling ctx, or closing
+// the connection, interrupts the statement running; fn's detach stops
+// that, waiting for an interruption that started, as before cleanup.
+func (d *DB) operation(ctx context.Context, fn func(detach func()) error) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -229,35 +230,31 @@ func (d *DB) operation(ctx context.Context, fn func() error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if d.handle == 0 || d.life.Err() != nil {
+	if d.conn == nil || d.life.Err() != nil {
 		return ErrClosed
 	}
-	op := call(native.operationNew, uintptr(d.timeout))
-	if op == 0 {
-		return &Error{7, 7, "out of memory"}
-	}
-	d.token = op
-	call(native.operationStart, d.handle, op)
-	watch := func(c context.Context) (func() bool, chan struct{}) {
+	conn := d.conn
+	watch := func(c context.Context) func() {
 		done := make(chan struct{})
-		stop := context.AfterFunc(c, func() { call(native.operationCancel, op); close(done) })
-		return stop, done
+		stop := context.AfterFunc(c, func() { conn.Interrupt(); close(done) })
+		return func() {
+			// An interruption that started ends before the next statement.
+			if !stop() {
+				<-done
+			}
+		}
 	}
-	stopCaller, callerDone := watch(ctx)
-	stopClose, closeDone := watch(d.life)
-	defer func() {
-		// A callback that started must finish before its C token is freed.
-		if !stopCaller() {
-			<-callerDone
+	stopCaller, stopClose := watch(ctx), watch(d.life)
+	detached := false
+	detach := func() {
+		if !detached {
+			detached = true
+			stopCaller()
+			stopClose()
 		}
-		if !stopClose() {
-			<-closeDone
-		}
-		call(native.operationEnd, d.handle)
-		call(native.free, op)
-		d.token = 0
-	}()
-	err := fn()
+	}
+	defer detach()
+	err := fn(detach)
 	if err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -269,207 +266,132 @@ func (d *DB) operation(ctx context.Context, fn func() error) error {
 	return err
 }
 
-func sqliteError(db, rc uintptr) error {
-	code := int(int32(rc))
-	message := "could not open database"
-	if db != 0 {
-		code = int(int32(call(native.extendedCode, db)))
-		message = cString(call(native.errmsg, db))
+// sqliteError makes an Error of an error of SQLite's that the module
+// reports, by its extended code.
+func sqliteError(err error) error {
+	var e *native.Error
+	if errors.As(err, &e) && e.Domain == "SQLite" {
+		code := int(e.Number)
+		return &Error{Code: code & 255, ExtendedCode: code, Message: e.Message}
 	}
-	return &Error{Code: code & 255, ExtendedCode: code, Message: message}
+	if errors.As(err, &e) && e.Domain == "" && e.Code == "" {
+		return errors.New(e.Message)
+	}
+	return err
 }
 
-func (d *DB) prepare(sql string, control bool) (uintptr, error) {
+func checkSQL(sql string) error {
 	if len(sql) > math.MaxInt32-1 || strings.IndexByte(sql, 0) >= 0 || !utf8.ValidString(sql) {
-		return 0, errors.New("sqlite: SQL must be UTF-8 without NUL and fit in a C int")
+		return errors.New("sqlite: SQL must be UTF-8 without NUL and fit in a C int")
 	}
-	buf := append([]byte(sql), 0)
-	defer runtime.KeepAlive(buf)
-	fn := native.prepare
-	if control {
-		fn = native.prepareControl
-	}
-	var stmt, tail uintptr
-	base := uintptr(unsafe.Pointer(&buf[0]))
-	rc := call(fn, d.handle, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)), uintptr(unsafe.Pointer(&stmt)), uintptr(unsafe.Pointer(&tail)), d.token)
-	if int32(rc) != 0 {
-		err := sqliteError(d.handle, rc)
-		if stmt != 0 {
-			call(native.finalize, stmt)
-		}
-		return 0, err
-	}
-	if stmt == 0 {
-		return 0, errors.New("sqlite: SQL contains no statement")
-	}
-	// Compile the tail before executing anything: extra SQL, including invalid
-	// SQL after a valid first statement, never runs a partial operation.
-	for offset := int(tail - base); offset < len(sql); offset = int(tail - base) {
-		var extra uintptr
-		rc = call(fn, d.handle, uintptr(unsafe.Pointer(&buf[offset])), uintptr(len(buf)-offset), uintptr(unsafe.Pointer(&extra)), uintptr(unsafe.Pointer(&tail)), d.token)
-		if int32(rc) != 0 || extra != 0 {
-			err := errors.New("sqlite: expected exactly one statement")
-			if int32(rc) != 0 {
-				err = sqliteError(d.handle, rc)
-			}
-			if extra != 0 {
-				call(native.finalize, extra)
-			}
-			call(native.finalize, stmt)
-			return 0, err
-		}
-		if int(tail-base) <= offset {
-			break
-		}
-	}
-	return stmt, nil
+	return nil
 }
 
 func (d *DB) run(sql string, args []any, query bool) (Result, Rows, error) {
-	stmt, err := d.prepare(sql, false)
-	if err != nil {
+	if err := checkSQL(sql); err != nil {
 		return Result{}, Rows{}, err
 	}
-	defer call(native.finalize, stmt)
-	if count := int(call(native.parameterCount, stmt)); count != len(args) {
-		return Result{}, Rows{}, fmt.Errorf("sqlite: statement needs %d parameters, got %d", count, len(args))
-	}
+	values := make([]sqlitecore.Value, len(args))
 	for i, arg := range args {
-		if err := d.bind(stmt, i+1, arg); err != nil {
+		v, err := value(arg)
+		if err != nil {
 			return Result{}, Rows{}, fmt.Errorf("sqlite: parameter %d: %w", i+1, err)
 		}
+		values[i] = v
+	}
+	out, err := d.conn.Run(sql, values, query)
+	if err != nil {
+		return Result{}, Rows{}, sqliteError(err)
 	}
 	rows := Rows{Columns: []string{}, Values: [][]any{}}
 	if query {
-		for i, n := 0, int(call(native.columnCount, stmt)); i < n; i++ {
-			rows.Columns = append(rows.Columns, cString(call(native.columnName, stmt, uintptr(i))))
-		}
-	}
-	before := call(native.totalChanges, d.handle)
-	for {
-		rc := call(native.step, stmt)
-		switch int32(rc) {
-		case 100: // SQLITE_ROW
-			if query {
-				row := make([]any, len(rows.Columns))
-				for i := range row {
-					row[i] = column(stmt, i)
+		rows.Columns = append(rows.Columns, out.Columns...)
+		if n := len(out.Columns); n > 0 {
+			for i := 0; i+n <= len(out.Values); i += n {
+				row := make([]any, n)
+				for j, v := range out.Values[i : i+n] {
+					row[j] = goValue(v)
 				}
 				rows.Values = append(rows.Values, row)
 			}
-		case 101: // SQLITE_DONE
-			result := Result{LastInsertID: int64(call(native.lastInsertID, d.handle))}
-			if call(native.totalChanges, d.handle) != before {
-				result.Changes = int64(call(native.changes, d.handle))
-			}
-			return result, rows, nil
-		default:
-			return Result{}, Rows{}, sqliteError(d.handle, rc)
 		}
 	}
+	return Result{Changes: out.Changes, LastInsertID: out.LastInsertID}, rows, nil
 }
 
 func (d *DB) control(sql string) error {
-	stmt, err := d.prepare(sql, true)
-	if err != nil {
-		return err
-	}
-	defer call(native.finalize, stmt)
-	if rc := call(native.step, stmt); int32(rc) != 101 {
-		return sqliteError(d.handle, rc)
-	}
-	return nil
+	return sqliteError(d.conn.Control(sql))
 }
 
-func (d *DB) bind(stmt uintptr, index int, value any) error {
-	var rc uintptr
-	if value == nil {
-		rc = call(native.bindNull, stmt, uintptr(index))
-	} else if b, ok := value.([]byte); ok {
-		if len(b) > math.MaxInt32 {
-			return errors.New("BLOB is too large")
+// value converts a parameter of Go's to SQLite's.
+func value(arg any) (sqlitecore.Value, error) {
+	switch v := arg.(type) {
+	case nil:
+		return sqlitecore.Value{Type: sqlitecore.Null}, nil
+	case []byte:
+		if len(v) > math.MaxInt32 {
+			return sqlitecore.Value{}, errors.New("BLOB is too large")
 		}
-		// Non-NULL pointer for an empty BLOB distinguishes it from SQL NULL.
-		data := b
-		if len(data) == 0 {
-			data = []byte{0}
+		return sqlitecore.Value{Type: sqlitecore.Blob, Blob: v}, nil
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			return value(i)
 		}
-		rc = call(native.bindBlob, stmt, uintptr(index), uintptr(unsafe.Pointer(&data[0])), uintptr(len(b)), ^uintptr(0))
-		runtime.KeepAlive(data)
-	} else if n, ok := value.(json.Number); ok {
-		if v, err := n.Int64(); err == nil {
-			return d.bind(stmt, index, v)
+		if !strings.ContainsAny(string(v), ".eE") {
+			return sqlitecore.Value{}, errors.New("integer exceeds SQLite's signed 64-bit range")
 		}
-		if !strings.ContainsAny(string(n), ".eE") {
-			return errors.New("integer exceeds SQLite's signed 64-bit range")
-		}
-		v, err := n.Float64()
+		f, err := v.Float64()
 		if err != nil {
-			return err
+			return sqlitecore.Value{}, err
 		}
-		return d.bind(stmt, index, v)
-	} else {
-		v := reflect.ValueOf(value)
-		switch v.Kind() {
-		case reflect.Bool:
-			n := uintptr(0)
-			if v.Bool() {
-				n = 1
-			}
-			rc = call(native.bindInt64, stmt, uintptr(index), n)
-		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			rc = call(native.bindInt64, stmt, uintptr(index), uintptr(v.Int()))
-		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			if v.Uint() > math.MaxInt64 {
-				return errors.New("integer exceeds SQLite's signed 64-bit range")
-			}
-			rc = call(native.bindInt64, stmt, uintptr(index), uintptr(v.Uint()))
-		case reflect.Float32, reflect.Float64:
-			f := v.Float()
-			if math.IsNaN(f) || math.IsInf(f, 0) {
-				return errors.New("number must be finite")
-			}
-			rc = call(native.bindDouble, stmt, uintptr(index), uintptr(math.Float64bits(f)))
-		case reflect.String:
-			s := v.String()
-			if len(s) > math.MaxInt32 || !utf8.ValidString(s) {
-				return errors.New("text must be UTF-8 and fit in a C int")
-			}
-			data := append([]byte(s), 0)
-			rc = call(native.bindText, stmt, uintptr(index), uintptr(unsafe.Pointer(&data[0])), uintptr(len(s)), ^uintptr(0))
-			runtime.KeepAlive(data)
-		default:
-			return fmt.Errorf("unsupported value %T", value)
+		return value(f)
+	}
+	v := reflect.ValueOf(arg)
+	switch v.Kind() {
+	case reflect.Bool:
+		n := int64(0)
+		if v.Bool() {
+			n = 1
 		}
+		return sqlitecore.Value{Type: sqlitecore.Integer, Int: n}, nil
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return sqlitecore.Value{Type: sqlitecore.Integer, Int: v.Int()}, nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		if v.Uint() > math.MaxInt64 {
+			return sqlitecore.Value{}, errors.New("integer exceeds SQLite's signed 64-bit range")
+		}
+		return sqlitecore.Value{Type: sqlitecore.Integer, Int: int64(v.Uint())}, nil
+	case reflect.Float32, reflect.Float64:
+		f := v.Float()
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			return sqlitecore.Value{}, errors.New("number must be finite")
+		}
+		return sqlitecore.Value{Type: sqlitecore.Real, Real: f}, nil
+	case reflect.String:
+		s := v.String()
+		if len(s) > math.MaxInt32 || !utf8.ValidString(s) {
+			return sqlitecore.Value{}, errors.New("text must be UTF-8 and fit in a C int")
+		}
+		return sqlitecore.Value{Type: sqlitecore.Text, Text: s}, nil
 	}
-	if int32(rc) != 0 {
-		return sqliteError(d.handle, rc)
-	}
-	return nil
+	return sqlitecore.Value{}, fmt.Errorf("unsupported value %T", arg)
 }
 
-func column(stmt uintptr, index int) any {
-	i := uintptr(index)
-	switch call(native.columnType, stmt, i) {
-	case 1:
-		return int64(call(native.columnInt64, stmt, i))
-	case 2:
-		return math.Float64frombits(uint64(call(native.columnDouble, stmt, i)))
-	case 3:
-		p := call(native.columnText, stmt, i)
-		n := int(call(native.columnBytes, stmt, i))
-		if n == 0 {
-			return ""
-		}
-		return string(unsafe.Slice((*byte)(mem(p)), n))
-	case 4:
-		p := call(native.columnBlob, stmt, i)
-		n := int(call(native.columnBytes, stmt, i))
-		if n == 0 {
+// goValue converts a column of SQLite's to Go's: nil, int64, float64,
+// string or []byte.
+func goValue(v sqlitecore.Value) any {
+	switch v.Type {
+	case sqlitecore.Integer:
+		return v.Int
+	case sqlitecore.Real:
+		return v.Real
+	case sqlitecore.Text:
+		return v.Text
+	case sqlitecore.Blob:
+		if v.Blob == nil {
 			return []byte{}
 		}
-		return append([]byte{}, unsafe.Slice((*byte)(mem(p)), n)...)
-	default:
-		return nil
+		return v.Blob
 	}
+	return nil
 }

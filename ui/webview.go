@@ -6,6 +6,7 @@ import (
 	"github.com/egoist/mygo/internal/platform"
 	"github.com/egoist/mygo/internal/scene"
 	"github.com/egoist/mygo/internal/surface"
+	"github.com/egoist/mygo/internal/viewhost"
 )
 
 // NativeWebView is a web view a window made for its content to show,
@@ -43,6 +44,119 @@ func coreWebView(c *context, v NativeWebView) *node {
 	// own focus.
 	e.flags |= flagFocusable | flagOwnRing
 	return e
+}
+
+// NativeView shows a view of the platform, a value of a native module's
+// interface that embeds native.View (an NSView on macOS), in the element's
+// content box, as WebView shows a web view: it has no size of its own and
+// takes its size from layout, it is cut to the element's Radius, and what
+// paints after it shows over it, its children first. Make the view once,
+// outside the view function, and show it from there:
+//
+//	ui.NativeView(c, app.player).Fill().Children(func() {
+//		ui.Text(c, caption).Absolute().Left(24).Bottom(24)
+//	})
+//
+// The view takes the pointer where it shows, and the keyboard once
+// clicked or tabbed into, as any view of the platform. A view the frame
+// does not build hides and keeps its state; one closed leaves the window.
+// Where views of the platform cannot show, as in browsers, the element
+// shows nothing.
+//
+// v is nil where the module has no implementation, its constructor having
+// returned errors.ErrUnsupported: the element is then a plain box, which
+// paints its background and children, so a view can show something else
+// in the view's place.
+func coreNativeView(c *context, v PlatformView) *node {
+	var h uintptr
+	if v != nil {
+		h = v.NativeView()
+	}
+	if h == 0 {
+		// No implementation, or closed.
+		e := coreBox(c)
+		e.self = Stretch
+		return e
+	}
+	rt := c.rt
+	var pv *platformView
+	for _, p := range rt.platformViews {
+		// One gone may have had the address of a view made since.
+		if p.h == h && !p.gone {
+			pv = p
+			break
+		}
+	}
+	if pv == nil {
+		pv = &platformView{h: h}
+		rt.platformViews = append(rt.platformViews, pv)
+	}
+	return coreWebView(c, pv)
+}
+
+// PlatformView is a view of the platform, which NativeView shows: a value
+// of a native module's interface that embeds native.View.
+type PlatformView interface {
+	// NativeView returns the view, an NSView* on macOS, or 0 once it is
+	// closed.
+	NativeView() uintptr
+}
+
+// platformView stands for a view of the platform in the window of an
+// engine, which places it as it places web views: the surface hosts it
+// (viewhost.Embed, which package native sets) the first time a frame
+// shows it. It holds the view by its handle, not the Go value: a view the
+// app lets go of is released, which tells the window (gone).
+type platformView struct {
+	h     uintptr
+	embed platform.WebView
+	conn  *surface.Conn
+	gone  bool
+}
+
+// SurfaceWebView puts the view under the surface of conn, the first time,
+// and returns what stands for it there. Main thread only.
+func (p *platformView) SurfaceWebView(conn *surface.Conn) platform.WebView {
+	if p.gone {
+		return nil
+	}
+	if p.embed != nil && p.conn == conn {
+		return p.embed
+	}
+	if viewhost.Embed == nil {
+		return nil
+	}
+	e := viewhost.Embed(conn.Surface, p.h, p.leave)
+	if e == nil {
+		return nil
+	}
+	if p.embed != nil {
+		p.embed.Close()
+	}
+	p.embed, p.conn = e, conn
+	return e
+}
+
+// leave takes the view out of the window, as it is closed or released.
+// Main thread only.
+func (p *platformView) leave() {
+	p.gone = true
+	if p.embed != nil {
+		p.embed.Close()
+		p.embed = nil
+	}
+}
+
+// pruneViews forgets the views of the platform that are gone.
+func (rt *engine) pruneViews() {
+	kept := rt.platformViews[:0]
+	for _, pv := range rt.platformViews {
+		if !pv.gone {
+			kept = append(kept, pv)
+		}
+	}
+	clear(rt.platformViews[len(kept):])
+	rt.platformViews = kept
 }
 
 // webPlace is where a frame shows a web view: size is the size its page
@@ -220,6 +334,9 @@ func rectF(r Rect) platform.RectF {
 
 // placeWebViews tells the host where the frame shows its web views.
 func (rt *engine) placeWebViews() {
+	if len(rt.platformViews) > 0 {
+		rt.pruneViews()
+	}
 	if len(rt.webPlaces) == 0 && !rt.webShown {
 		return
 	}
