@@ -177,6 +177,11 @@ transformed. A clip that reaches into the rounded corners of a clip around
 it, such as a clipped column filling the bottom of a rounded card, uses the
 rounded clip's mask too, whatever its content. Moving content under a
 stationary clip reuses that mask without CPU pixel work.
+Stationary clips that reduce to one ordinary rounded rectangle need no
+mask, even around scaled, rotated or perspective content. This includes a
+fractional rectangular viewport that removes whole corners. Overlapping
+antialiased edges, continuous corners and image or gradient masks keep
+their existing mask path.
 Hard clips sharing their content's coordinates, including transformed text
 inputs, are evaluated directly in the fragment shader and reuse their
 ancestor's mask. Changing a complex clip recomputes its coverage; resizing
