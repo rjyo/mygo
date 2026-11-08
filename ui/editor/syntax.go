@@ -279,7 +279,7 @@ func (h *tokenHighlighter) Highlight(last int, budget time.Duration) bool {
 		}
 	}()
 	start := time.Now()
-	count := 0
+	count, work := 0, 0
 	for h.frontier <= last {
 		stopped := false
 		// The next line starting in state 0, -1 for none.
@@ -289,12 +289,23 @@ func (h *tokenHighlighter) Highlight(last int, budget time.Duration) bool {
 			restart = h.restarts[k]
 		}
 		h.text.t.EachLine(h.frontier-1, last, func(i, _ int, line string) bool {
-			if count++; count&63 == 0 && time.Since(start) > budget {
-				stopped = true
-				return false
+			// The clock is read every 64 lines, and sooner after long ones:
+			// 64 lines of a minified file are megabytes.
+			if count++; count&63 == 0 || work >= highlightCheckBytes {
+				if time.Since(start) > budget {
+					stopped = true
+					return false
+				}
+				work = 0
 			}
-			var end uint64
-			h.scratch, end = h.t.Tokenize(line, h.states[i], h.scratch[:0])
+			// A line too long to color shows plain (Tokens), so it isn't
+			// tokenized here either: the line after it starts as it did, as
+			// VS Code's maxTokenizationLineLength leaves it.
+			end := h.states[i]
+			if len(line) <= maxTokenize {
+				h.scratch, end = h.t.Tokenize(line, h.states[i], h.scratch[:0])
+				work += len(line)
+			}
 			if i+1 == restart {
 				end = 0
 				if k++; k < len(h.restarts) {
@@ -374,6 +385,10 @@ func moveRestarts(lines []int, old, new Snapshot, changes []Change) []int {
 // maxTokenize leaves longer lines plain, as Pierre's
 // tokenizeMaxLineLength does.
 const maxTokenize = 10000
+
+// highlightCheckBytes is how much text Highlight tokenizes before it reads
+// the clock again, well under a millisecond of it.
+const highlightCheckBytes = 16 << 10
 
 // syntaxState is a buffer's highlighter and the text it follows.
 type syntaxState struct {
