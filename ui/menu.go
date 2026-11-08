@@ -44,10 +44,13 @@ import (
 // PopoverMenu draws the same menu in the window, with the theme's look, as
 // ContextMenu does while the window draws its menus (SetMenuPresentation).
 func (e *node) ContextMenu(build func(m *Menu)) *node {
-	if e.c.rt.drawsMenus() {
-		return menusInWindow.contextMenu(e, build)
-	}
 	e.flags |= flagContextMenu
+	if rt := e.c.rt; rt.drawsMenus() {
+		// As PopoverMenu, through menusInWindow (drawMenuWith).
+		e.buildMenu(false, true, build)
+		drawMenuWith(rt, e, build, menusInWindow.beginMenu, menusInWindow.menuBuilt)
+		return e
+	}
 	e.buildMenu(false, false, build)
 	return e
 }
@@ -71,14 +74,21 @@ func (e *node) ContextMenu(build func(m *Menu)) *node {
 // look, as Menu does while the window draws its menus
 // (SetMenuPresentation).
 func (e *node) Menu(build func(m *Menu)) *node {
-	if e.c.rt.drawsMenus() {
-		return menusInWindow.menuButton(e, build)
-	}
 	e.flags |= flagMenuButton | flagClickable | flagFocusable
 	if e.role == RoleAuto || e.role == RoleButton {
 		e.role = RoleMenuButton
 	}
 	e.opensMenu()
+	if rt := e.c.rt; rt.drawsMenus() {
+		// As PopoverMenuButton without options, through menusInWindow
+		// (drawMenuWith).
+		e.buildMenu(true, true, build)
+		if d := rt.menu.drawn; d != nil && d.id == e.id {
+			d.menu.attach = 0
+		}
+		drawMenuWith(rt, e, build, menusInWindow.beginMenu, menusInWindow.menuBuilt)
+		return e
+	}
 	e.buildMenu(true, false, build)
 	return e
 }

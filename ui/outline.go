@@ -35,6 +35,9 @@ type OutlineState[K comparable] struct {
 	// what they hold; an OutlineTable's first cells keep their padding.
 	Prefix func(r OutlineRow)
 	rows   []outlineRow[K]
+	// children is the function giving the items' children in the last
+	// build, for the rows' arrows.
+	children func(K) []K
 }
 
 // OutlineRow is a row of an outline as its Prefix builds it, while it
@@ -45,7 +48,17 @@ type OutlineRow struct {
 	Depth        int
 	Branch, Open bool
 	c            *context
-	arrow        func() *node
+	// The outline, row and tree item Arrow makes the arrow of, without a
+	// closure built for each row in every frame.
+	outline outlineArrows
+	row     int
+	item    *node
+}
+
+// outlineArrows makes the arrows of an outline's rows: an OutlineState of
+// any type of item.
+type outlineArrows interface {
+	arrow(c *context, i int, item *node) *node
 }
 
 // Arrow creates the row's arrow without a look: a box that opens or
@@ -60,7 +73,7 @@ func (r OutlineRow) Arrow() Element {
 	// A constructor, as the generated ones: its click applies as it
 	// returns.
 	r.c.rt.beginBuild()
-	a := r.arrow()
+	a := r.outline.arrow(r.c, r.row, r.item)
 	r.c.rt.endBuild()
 	return wrapElement(a)
 }
@@ -91,6 +104,7 @@ func (s *OutlineState[K]) flatten(roots []K, children func(K) []K) {
 		panic("ui: an OutlineState's Indent must not be negative")
 	}
 	s.rows = s.rows[:0]
+	s.children = children
 	var walk func(items []K, depth, parent int)
 	walk = func(items []K, depth, parent int) {
 		for _, item := range items {
@@ -191,50 +205,22 @@ func (s *OutlineState[K]) prefix(c *context, i int, children func(K) []K, conten
 	t := c.theme
 	r := s.rows[i]
 	open := r.branch && s.Open.Has(r.item)
-	// The list's element holding the row is the tree's item.
-	var item *node
-	for p := c.parent; p != nil; p = p.parent {
-		if p.listRow {
-			item = p
-			p.level, p.expandable, p.expanded = r.depth+1, r.branch, open
-			break
-		}
-	}
-	toggle := func(all bool) {
-		s.setOpen(r.item, !open, all, children)
-		s.closed(i, open)
-		open = !open
-		if item != nil {
-			item.expanded = open
-		}
-	}
+	item := treeItemOf(c, r.depth, r.branch, open)
 	if item != nil && r.branch && item.st.expand != 0 {
 		// Assistive technology opening or closing it, once the outline is
 		// built, as a click on the arrow does.
 		item.afterInput(func() {
 			if st := item.st; st.expand != 0 {
-				if (st.expand > 0) != open {
-					toggle(false)
+				if (st.expand > 0) != s.Open.Has(r.item) {
+					s.toggle(i, item, false, children)
 				}
 				st.expand = 0
 				c.rt.consumed = true
 			}
 		})
 	}
-	arrow := func() *node {
-		a := coreBox(c).Shrink(0).Role(RoleNone)
-		if r.branch {
-			a.flags |= flagClickable | flagKeepFocus
-			a.afterInput(func() {
-				if a.Clicked() {
-					toggle(a.ClickModifiers()&Alt != 0)
-				}
-			})
-		}
-		return a
-	}
 	if s.Prefix != nil {
-		s.Prefix(OutlineRow{Depth: r.depth, Branch: r.branch, Open: open, c: c, arrow: arrow})
+		s.Prefix(OutlineRow{Depth: r.depth, Branch: r.branch, Open: open, c: c, outline: s, row: i, item: item})
 		content()
 		return
 	}
@@ -245,7 +231,7 @@ func (s *OutlineState[K]) prefix(c *context, i int, children func(K) []K, conten
 		}
 		coreBox(c).Width(float32(r.depth) * indent).Shrink(0)
 	}
-	a := arrow().Size(t.Space(4), t.Space(4))
+	a := s.arrow(c, i, item).Size(t.Space(4), t.Space(4))
 	if r.branch {
 		turn := a.Animate("open", 90*b2f(open), 150*time.Millisecond)
 		rtl := a.rtl()
@@ -254,6 +240,48 @@ func (s *OutlineState[K]) prefix(c *context, i int, children func(K) []K, conten
 		})
 	}
 	content()
+}
+
+// treeItemOf returns the list's element holding the row being built,
+// which is the tree's item, telling it how deep the row is, whether it has
+// children and whether they show; nil outside a list's row.
+func treeItemOf(c *context, depth int, branch, open bool) *node {
+	for p := c.parent; p != nil; p = p.parent {
+		if p.listRow {
+			p.level, p.expandable, p.expanded = depth+1, branch, open
+			return p
+		}
+	}
+	return nil
+}
+
+// arrow creates the box of row i's arrow, which opens or closes its item
+// when clicked, with all inside it with Option (Alt); item is the tree's
+// item holding the row.
+func (s *OutlineState[K]) arrow(c *context, i int, item *node) *node {
+	a := coreBox(c).Shrink(0).Role(RoleNone)
+	if r := s.rows[i]; r.branch {
+		a.flags |= flagClickable | flagKeepFocus
+		children := s.children
+		a.afterInput(func() {
+			if a.Clicked() {
+				s.toggle(i, item, a.ClickModifiers()&Alt != 0, children)
+			}
+		})
+	}
+	return a
+}
+
+// toggle opens row i's item if it is closed, or closes it, with all
+// inside it with all, and tells the tree's item holding the row.
+func (s *OutlineState[K]) toggle(i int, item *node, all bool, children func(K) []K) {
+	key := s.rows[i].item
+	open := s.Open.Has(key)
+	s.setOpen(key, !open, all, children)
+	s.closed(i, open)
+	if item != nil {
+		item.expanded = !open
+	}
 }
 
 // closed moves the choice to row i as it closes, from a row inside it,

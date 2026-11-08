@@ -1,6 +1,10 @@
 package ui
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/egoist/mygo/internal/platform"
+)
 
 // MenuPresentation is how a window shows its popup menus
 // (Context.SetMenuPresentation): the system's, or drawn in the window.
@@ -31,7 +35,7 @@ const (
 func (c *context) SetMenuPresentation(p MenuPresentation) {
 	if p == PopoverMenus {
 		linkMenusInWindow.Do(func() {
-			menusInWindow.contextMenu, menusInWindow.menuButton = (*node).PopoverMenu, popoverMenuButton
+			menusInWindow.beginMenu, menusInWindow.menuBuilt = (*engine).beginDrawnMenu, (*engine).drawnMenuBuilt
 			menusInWindow.openEditMenu, menusInWindow.drawEditMenu = (*engine).openDrawnEditMenu, (*engine).drawEditMenu
 		})
 	}
@@ -45,16 +49,13 @@ func (c *context) SetMenuPresentation(p MenuPresentation) {
 // frame.
 var (
 	menusInWindow struct {
-		contextMenu, menuButton func(e *node, build func(m *Menu)) *node
-		openEditMenu            func(rt *engine, s *state)
-		drawEditMenu            func(rt *engine)
+		beginMenu    func(rt *engine, e *node) (*drawnMenu, *Menu)
+		menuBuilt    func(rt *engine, e *node, d *drawnMenu, m *Menu) *platform.MenuItem
+		openEditMenu func(rt *engine, s *state)
+		drawEditMenu func(rt *engine)
 	}
 	linkMenusInWindow sync.Once
 )
-
-// popoverMenuButton is PopoverMenuButton without options, for Menu's
-// buttons in a window that draws its menus.
-func popoverMenuButton(e *node, build func(m *Menu)) *node { return e.PopoverMenuButton(build) }
 
 // MenuPresentation returns how the window shows its popup menus
 // (SetMenuPresentation).

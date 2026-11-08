@@ -259,3 +259,43 @@ func TestOutlineExpandsForAssistiveTechnology(t *testing.T) {
 		t.Fatal("expanding a tree's item")
 	}
 }
+
+// An outline's rows build their arrows without closures of their own in
+// every frame: with a Prefix that builds nothing, thirty rows with
+// children allocate as much a frame as ten, and with one that builds the
+// arrow, each row adds its arrow's click handler alone.
+func TestOutlineRowAllocs(t *testing.T) {
+	if testing.Short() {
+		t.Skip("measures")
+	}
+	kids := []int{1000}
+	frame := func(rows int, prefix func(r OutlineRow)) float64 {
+		var s OutlineState[int]
+		s.Prefix = prefix
+		roots := make([]int, rows)
+		for i := range roots {
+			roots[i] = i
+		}
+		tt := coreNewTester(func(c *context) {
+			coreOutline(c, &s, roots, func(int) []int { return kids }, func(int) {
+				coreText(c, "row")
+			}).FillWidth().Height(800)
+		}, 300, 800)
+		defer tt.rt.close()
+		tt.Frame()
+		return testing.AllocsPerRun(50, tt.Frame)
+	}
+	for _, tc := range []struct {
+		name   string
+		prefix func(r OutlineRow)
+		perRow float64
+	}{
+		{"nothing", func(OutlineRow) {}, 0},
+		{"its arrow", func(r OutlineRow) { r.Arrow().Size(16, 16) }, 1},
+	} {
+		few, many := frame(10, tc.prefix), frame(30, tc.prefix)
+		if perRow := (many - few) / 20; perRow > tc.perRow {
+			t.Errorf("a Prefix building %s: a row allocates %.1f times a frame, want at most %.0f", tc.name, perRow, tc.perRow)
+		}
+	}
+}

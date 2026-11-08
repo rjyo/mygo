@@ -8,6 +8,7 @@ import (
 	"maps"
 	"runtime"
 	"slices"
+	"strconv"
 	"testing"
 
 	"github.com/egoist/mygo/internal/platform"
@@ -608,5 +609,54 @@ func TestMenuIconBitmapTemplate(t *testing.T) {
 	}
 	if menuIconBitmap(&platform.MenuIcon{PNG: []byte("not a png")}, Color{}) != nil {
 		t.Error("a bitmap of what is not an image")
+	}
+}
+
+// A context menu, or a menu button's menu, costs no allocation in a frame
+// where it does not show, the system's or drawn in the window: the
+// function filling it stays on the stack of the view that gives it.
+func TestMenuAllocs(t *testing.T) {
+	if testing.Short() {
+		t.Skip("measures")
+	}
+	const none, contextMenu, menuButton = 0, 1, 2
+	for _, p := range []MenuPresentation{SystemMenus, PopoverMenus} {
+		frame := func(kind int) float64 {
+			chosen := -1
+			tt := coreNewTester(func(c *context) {
+				c.SetMenuPresentation(p)
+				coreColumn(c).Children(func() {
+					for i := range 30 {
+						e := coreText(c, "row "+strconv.Itoa(i)).Key(i)
+						switch kind {
+						case contextMenu:
+							e.ContextMenu(func(m *Menu) {
+								if m.Item("Pick").Chosen() {
+									chosen = i
+								}
+							})
+						case menuButton:
+							e.Menu(func(m *Menu) {
+								if m.Item("Pick").Chosen() {
+									chosen = i
+								}
+							})
+						}
+					}
+				})
+			}, 300, 800)
+			defer tt.rt.close()
+			tt.Frame()
+			if chosen != -1 {
+				t.Fatalf("row %d chosen from a menu not shown", chosen)
+			}
+			return testing.AllocsPerRun(50, tt.Frame)
+		}
+		without := frame(none)
+		for kind, name := range map[int]string{contextMenu: "ContextMenu", menuButton: "Menu"} {
+			if with := frame(kind); with > without {
+				t.Errorf("presentation %d: 30 elements with a %s allocate %.0f times a frame, %.0f without", p, name, with, without)
+			}
+		}
 	}
 }
