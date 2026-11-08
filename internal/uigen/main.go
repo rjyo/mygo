@@ -379,14 +379,15 @@ var special = map[string]bool{"Element.Children": true, "Element.Key": true, "El
 // Keep this at the facade: private widget queries can run in constructors,
 // before callers finish configuring the widget's input options.
 var inputQueries = map[string]bool{
-	"Element.Clicked":         true,
-	"Element.Clicks":          true,
-	"Element.DoubleClicked":   true,
-	"Element.RightClicked":    true,
-	"Element.Shortcut":        true,
-	"Element.OverlayShortcut": true,
-	"Context.Shortcut":        true,
-	"ListState.Shortcut":      true,
+	"Element.Clicked":             true,
+	"Element.Clicks":              true,
+	"Element.DoubleClicked":       true,
+	"Element.RightClicked":        true,
+	"Element.WindowDoubleClicked": true,
+	"Element.Shortcut":            true,
+	"Element.OverlayShortcut":     true,
+	"Context.Shortcut":            true,
+	"ListState.Shortcut":          true,
 }
 
 func generate(out *bytes.Buffer, fs *token.FileSet, fn *ast.FuncDecl) {

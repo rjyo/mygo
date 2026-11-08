@@ -479,9 +479,12 @@ func (rt *engine) pointerDown(x, y float32, button int, mods Modifiers, clicks i
 		return
 	}
 	if button == 0 && target.flags&flagDragWindow != 0 && target.flags&(interactive&^flagDragWindow) == 0 {
-		if clicks == 2 {
+		switch {
+		case clicks == 2 && target.handleDoubleClick:
+			target.doubleClicks++
+		case clicks == 2:
 			rt.host.titleBarDoubleClicked()
-		} else {
+		default:
 			rt.host.startDrag()
 		}
 		return

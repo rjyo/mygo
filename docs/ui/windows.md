@@ -40,6 +40,17 @@ ui.Row(c).Height(max(bar.Height, 32)).Padding(0, bar.Right+12, 0, bar.Left+12).D
 In a `Frameless` window, `DragWindow` makes an element move the window, and
 a double click on it maximizes the window.
 
+A handle that means something else when double-clicked, as the empty part
+of a sidebar starting something new, takes the double click with
+`WindowDoubleClicked`, and still moves the window:
+
+```go
+side := ui.Scroll(c.Key("sidebar")).Grow(1).DragWindow()
+if side.WindowDoubleClicked() {
+	app.newItem()
+}
+```
+
 To draw the window controls too, where the view wants them, add
 `HideWindowButtons: true` to the hidden title bar: the system's controls go,
 `c.TitleBar()` is zero, and the window keeps its title bar's edges, which

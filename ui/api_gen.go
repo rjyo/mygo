@@ -3093,10 +3093,11 @@ func TreeItem(c *Context, label string, open *bool, children func()) Element {
 //
 // The video moves on only while the view builds it and some of the window
 // shows: one that went out of the view, or a window out of sight, goes on
-// from where it stood. Each frame of the video is a frame of the window,
-// which After asks for as it comes due. While the desktop asks for less
-// motion (Preferences.ReduceMotion), it shows its first frame and does
-// not play.
+// from where it stood; a system's video with sound plays on, unseen, as a
+// browser's does. Each frame of the video is a frame of the window, which
+// After asks for as it comes due. While the desktop asks for less motion
+// (Preferences.ReduceMotion), a decoder's video, and a system's muted one,
+// shows its first frame and does not play.
 func Video(c *Context, p *VideoPlayer) Element {
 	_ctx := c.build()
 	if _ctx == nil {
@@ -8236,6 +8237,21 @@ func (_handle Element) WidthPercent(p float32) Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.WidthPercent(p))
+}
+
+// WindowDoubleClicked reports a double click on a DragWindow handle,
+// which then no longer maximizes the window: the view does what a double
+// click there means to it, as a sidebar starting something new. The
+// handle still moves the window, which DoubleClicked would stop.
+func (_handle Element) WindowDoubleClicked() bool {
+	_node := _handle.node()
+	if _node == nil {
+		return false
+	}
+	_ctx := _node.c
+	_ = _ctx
+	_ctx.rt.applyInputs()
+	return _node.WindowDoubleClicked()
 }
 
 // WindowToLocal maps a window point into the previous frame's border box.

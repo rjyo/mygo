@@ -1395,6 +1395,7 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 		s.flags |= flagDisabled
 	}
 	s.ignoreInput = e.ignoreInput || e.parent != nil && e.parent.st.ignoreInput
+	s.handleDoubleClick = e.handleDoubleClick
 	s.accessHidden = e.accessHidden || e.flags&flagInert != 0 || e.parent != nil && e.parent.st.accessHidden
 	s.accessDisabled = e.accessDisabled || e.parent != nil && e.parent.st.accessDisabled
 	s.activeDescendant = 0

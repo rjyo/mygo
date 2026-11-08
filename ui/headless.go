@@ -39,7 +39,10 @@ type headless struct {
 	opened        []string
 	// escapes counts the Escapes nothing handled.
 	escapes int
-	openErr error
+	// titleDoubles counts the double clicks a DragWindow handle left to
+	// the window.
+	titleDoubles int
+	openErr      error
 	// clipboardErr fails the writes of text to the clipboard
 	// (FailClipboard).
 	clipboardErr error
@@ -166,7 +169,7 @@ func (h *headless) finishDataDrag(r transfer.Result) {
 		done(r)
 	}
 }
-func (h *headless) titleBarDoubleClicked()            {}
+func (h *headless) titleBarDoubleClicked()            { h.titleDoubles++ }
 func (h *headless) setMaximizeButton(r Rect)          { h.maxButton = r }
 func (h *headless) escape()                           { h.escapes++ }
 func (h *headless) isDark() bool                      { return h.dark }

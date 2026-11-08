@@ -722,6 +722,9 @@ type state struct {
 	// accessDisabled, that assistive technology reads it as unavailable
 	// (AccessDisabled).
 	ignoreInput, accessHidden, accessDisabled bool
+	// handleDoubleClick tells that the element, a DragWindow handle,
+	// takes its double click (WindowDoubleClicked).
+	handleDoubleClick bool
 	// activeDescendant is the element that has the keyboard focus while
 	// this one does (ActiveDescendant), 0 for none.
 	activeDescendant uint64
