@@ -101,7 +101,9 @@ type Options struct {
 	Reveal *Reveal
 	// ShareSelection leaves the selection to a Selectable container around
 	// the view, as one across a chat's messages, rather than giving the
-	// view one of its own.
+	// view one of its own. Within another view, as a block Block builds,
+	// it shares that view's, whose Copy as Markdown copies its text as
+	// the Markdown of its own source.
 	ShareSelection bool
 
 	images sync.Map // url → *imageEntry
@@ -203,6 +205,51 @@ type viewState struct {
 	notes         map[string]int
 	sb            spanBuilder
 	fade          func(src int) float32
+	// nested are the views with ShareSelection built within this one's
+	// blocks, whose text this one's selection holds, for copying it as
+	// Markdown; cur is the block being built, which a nested view is
+	// noted in.
+	nested []nestedView
+	cur    int
+}
+
+// nestedView is a view sharing the selection of the view around it,
+// built in its block.
+type nestedView struct {
+	st    *viewState
+	block int
+}
+
+// building maps a window's context to the view whose blocks are being
+// built in it, for the views within it that share its selection to note
+// themselves in it.
+// A plain map under a lock rather than a sync.Map, whose stores
+// allocate, so a steady frame stays free of allocations.
+var building struct {
+	sync.Mutex
+	m map[*ui.Context]*viewState
+}
+
+// outerView returns the view whose blocks are being built in c.
+func outerView(c *ui.Context) *viewState {
+	building.Lock()
+	defer building.Unlock()
+	return building.m[c]
+}
+
+// setBuilding notes st as the view whose blocks are being built in c,
+// or that none is when st is nil.
+func setBuilding(c *ui.Context, st *viewState) {
+	building.Lock()
+	defer building.Unlock()
+	if st == nil {
+		delete(building.m, c)
+		return
+	}
+	if building.m == nil {
+		building.m = map[*ui.Context]*viewState{}
+	}
+	building.m[c] = st
 }
 
 type paraCache struct {
@@ -260,7 +307,11 @@ func build(c *ui.Context, src string, o *Options, streaming bool) ui.Element {
 	if th.Font != "" {
 		root.Font(th.Font)
 	}
-	if !o.ShareSelection {
+	if o.ShareSelection {
+		if outer := outerView(c); outer != nil {
+			outer.nested = append(outer.nested, nestedView{st, outer.cur})
+		}
+	} else {
 		root.Selectable()
 		root.CopyData(st.copyData)
 		root.ContextMenu(func(m *ui.Menu) {
@@ -274,8 +325,13 @@ func build(c *ui.Context, src string, o *Options, streaming bool) ui.Element {
 		}
 	}
 	st.elems = st.elems[:0]
+	clear(st.nested)
+	st.nested, st.cur = st.nested[:0], 0
 	st.numberNotes()
 	root.Children(func() {
+		prev := outerView(c)
+		setBuilding(c, st)
+		defer setBuilding(c, prev)
 		st.blocks(c, 0, false, spanStyle{})
 		st.footnotes(c)
 	})
@@ -365,6 +421,8 @@ func (st *viewState) block(c *ui.Context, i int, tight bool, base spanStyle) ui.
 	o := st.o
 	th := &st.th
 	b := d.Block(i)
+	defer func(prev int) { st.cur = prev }(st.cur)
+	st.cur = i
 	if o.Block != nil {
 		box := ui.Column(c)
 		done := false

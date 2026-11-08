@@ -194,12 +194,87 @@ func (st *viewState) srcAt(inf elemInfo, r int, end bool) int {
 }
 
 // copyMarkdown returns the Markdown of the selected parts, or of the
-// whole document when none is selected.
+// whole document when none is selected. The parts of views sharing the
+// selection (Options.ShareSelection) built within this one's blocks copy
+// as those views copy them, each as the Markdown of its own source,
+// between this one's.
 func (st *viewState) copyMarkdown(parts []ui.SelectedText) string {
-	d := st.doc
 	if len(parts) == 0 {
-		return d.Source()
+		return st.doc.Source()
 	}
+	runs := st.runs(parts)
+	if len(runs) == 1 && runs[0].st == st {
+		// This view's alone, with what it does not know at its ends.
+		return st.ownMarkdown(parts)
+	}
+	if len(runs) == 0 {
+		return st.copyText(parts)
+	}
+	var b strings.Builder
+	for k, r := range runs {
+		if k > 0 {
+			b.WriteString(st.separator(runs[k-1].last, r.first))
+		}
+		b.WriteString(r.st.copyMarkdown(parts[r.from:r.to]))
+	}
+	return b.String()
+}
+
+// mdRun is a run of selected parts that one view copies as Markdown:
+// this one, or a view sharing its selection within it. first and last
+// are where the run starts and ends among this view's blocks.
+type mdRun struct {
+	st          *viewState
+	from, to    int
+	first, last elemInfo
+}
+
+// runs splits the selected parts into runs of the views that know them.
+// Parts no view knows within a run (the text of blocks built by
+// Options.Block, Math or HTML) stay in it, and those between runs or at
+// the ends go.
+func (st *viewState) runs(parts []ui.SelectedText) []mdRun {
+	var runs []mdRun
+	for k, p := range parts {
+		owner, at, ok := st.owner(p.ID)
+		if !ok {
+			continue
+		}
+		if n := len(runs); n > 0 && runs[n-1].st == owner {
+			runs[n-1].to, runs[n-1].last = k+1, at
+			continue
+		}
+		runs = append(runs, mdRun{st: owner, from: k, to: k + 1, first: at, last: at})
+	}
+	return runs
+}
+
+// owner returns the view that copies element id, this one or a view
+// sharing its selection within it, and where the element is among this
+// view's blocks.
+func (st *viewState) owner(id uint64) (*viewState, elemInfo, bool) {
+	if inf, ok := st.elem(id); ok {
+		return st, inf, true
+	}
+	for _, n := range st.nested {
+		if n.st.knows(id) {
+			return n.st, elemInfo{id: id, block: n.block, line: -1}, true
+		}
+	}
+	return nil, elemInfo{}, false
+}
+
+// knows reports whether the view, or a view sharing its selection within
+// it, built element id.
+func (st *viewState) knows(id uint64) bool {
+	_, _, ok := st.owner(id)
+	return ok
+}
+
+// ownMarkdown returns the Markdown of the selected parts of this view's
+// own text.
+func (st *viewState) ownMarkdown(parts []ui.SelectedText) string {
+	d := st.doc
 	first, last := parts[0], parts[len(parts)-1]
 	fi, ok1 := st.elem(first.ID)
 	li, ok2 := st.elem(last.ID)
