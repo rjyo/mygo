@@ -1,6 +1,9 @@
 package terminal
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestURLAt(t *testing.T) {
 	row := "see https://example.com/a_(b)?q=1. and (http://x.org/y), mailto:me@x.org!"
@@ -19,6 +22,29 @@ func TestURLAt(t *testing.T) {
 	} {
 		if got, _, _ := urlAt(text, cols, col); got != want {
 			t.Errorf("urlAt(%d) = %q, want %q", col, got, want)
+		}
+	}
+}
+
+// TestURLAtNotASCII: a URL ends where text that is not ASCII starts, as
+// CJK or full-width punctuation after it with no space.
+func TestURLAtNotASCII(t *testing.T) {
+	for row, want := range map[string]string{
+		"https://example.com/a的说明":      "https://example.com/a",
+		"https://example.com/a，然后":      "https://example.com/a",
+		"见https://example.com/a。":       "https://example.com/a",
+		"（https://example.com/a）":       "https://example.com/a",
+		"https://example.com/%E4%BD%A0": "https://example.com/%E4%BD%A0",
+		"mailto:me@x.org，谢谢":            "mailto:me@x.org",
+	} {
+		text := []rune(row)
+		cols := make([]int, len(text))
+		for i := range cols {
+			cols[i] = i
+		}
+		col := len([]rune(row[:strings.Index(row, ":")]))
+		if got, _, _ := urlAt(text, cols, col); got != want {
+			t.Errorf("urlAt(%q) = %q, want %q", row, got, want)
 		}
 	}
 }
