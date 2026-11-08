@@ -40,3 +40,46 @@ func CornerClipScene() *scene.Scene {
 		pop, pop)
 	return s
 }
+
+// ContinuousCornerClipScene has clips with square corners against the
+// sides of a clip with continuous corners, whose curves must cut what they
+// hold (#1511), as package ui draws an app's rounded frame on macOS: first
+// a frame holding a sidebar that clips, against its left side, a toolbar
+// that clips, in its top right corner, and content that does not clip;
+// then a card holding a pane whose edge is between pixels, and a rounded
+// clip in its corner, which a mask cuts.
+func ContinuousCornerClipScene() *scene.Scene {
+	s := &scene.Scene{Width: 640, Height: 420, Clear: scene.Color{R: 246, G: 247, B: 249, A: 255}}
+	add := func(ops ...scene.Op) {
+		for _, op := range ops {
+			op.Continuous = op.Radii != [4]float32{}
+			s.Ops = append(s.Ops, op)
+		}
+	}
+	white := scene.Color{R: 255, G: 255, B: 255, A: 255}
+	pop := scene.Op{Kind: scene.OpPopClip}
+
+	frame := scene.Rect{X: 16, Y: 16, W: 608, H: 240}
+	add(scene.Op{Kind: scene.OpFill, Rect: frame, Radii: scene.Uniform(14), Color: white},
+		scene.Op{Kind: scene.OpPushClip, Rect: scene.Rect{X: 18, Y: 18, W: 604, H: 236}, Radii: scene.Uniform(12)},
+		scene.Op{Kind: scene.OpPushClip, Rect: scene.Rect{X: 18, Y: 18, W: 180, H: 236}},
+		scene.Op{Kind: scene.OpFill, Rect: scene.Rect{X: 0, Y: 0, W: 200, H: 280}, Color: scene.Color{R: 210, G: 214, B: 224, A: 255}},
+		scene.Op{Kind: scene.OpFill, Rect: scene.Rect{X: 10, Y: 200, W: 60, H: 70}, Color: scene.Color{R: 220, G: 40, B: 40, A: 255}},
+		pop,
+		scene.Op{Kind: scene.OpFill, Rect: scene.Rect{X: 190, Y: 10, W: 450, H: 260}, Color: scene.Color{G: 122, B: 255, A: 255}},
+		scene.Op{Kind: scene.OpPushClip, Rect: scene.Rect{X: 198, Y: 18, W: 424, H: 40}},
+		scene.Op{Kind: scene.OpFill, Rect: scene.Rect{X: 190, Y: 10, W: 450, H: 60}, Color: scene.Color{R: 30, G: 160, B: 90, A: 255}},
+		pop, pop,
+		scene.Op{Kind: scene.OpFill, Rect: frame, Radii: scene.Uniform(14), Border: scene.Uniform(2), BorderColor: scene.Color{R: 180, G: 180, B: 180, A: 255}})
+
+	card := scene.Rect{X: 16, Y: 280, W: 608, H: 124}
+	add(scene.Op{Kind: scene.OpFill, Rect: card, Radii: scene.Uniform(16), Color: white},
+		scene.Op{Kind: scene.OpPushClip, Rect: card, Radii: scene.Uniform(16)},
+		scene.Op{Kind: scene.OpPushClip, Rect: scene.Rect{X: 16, Y: 280, W: 120.5, H: 124}},
+		scene.Op{Kind: scene.OpFill, Rect: scene.Rect{X: 0, Y: 270, W: 160, H: 150}, Color: scene.Color{R: 250, G: 204, B: 21, A: 255}},
+		pop,
+		scene.Op{Kind: scene.OpPushClip, Rect: scene.Rect{X: 488, Y: 344, W: 136, H: 60}, Radii: scene.Uniform(8)},
+		scene.Op{Kind: scene.OpFill, Rect: scene.Rect{X: 480, Y: 330, W: 160, H: 90}, Color: scene.Color{R: 30, G: 160, B: 90, A: 255}},
+		pop, pop)
+	return s
+}

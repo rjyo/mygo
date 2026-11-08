@@ -3177,11 +3177,13 @@ either.
   corners (`scene.ClipCorners`, which the scissor rectangles of outer
   clips would not cut); hard clips in the drawing's coordinates,
   and clips around content only moved, evaluate on the GPU. Stationary
-  clips reducible to one ordinary rounded rectangle also evaluate on the
-  GPU, even around scaled, rotated or perspective content. A fractional
+  clips reducible to one rounded rectangle also evaluate on the
+  GPU, even around scaled, rotated or perspective content, as a sidebar
+  against the side of a rounded frame does (#1511). A fractional
   hard edge can remove whole corners; overlapping antialiased edges,
-  continuous corners, transformed clips and image/gradient masks retain
-  their existing mask path. Backdrop
+  transformed clips and image/gradient masks retain their existing mask
+  path, as do continuous corners on the renderers whose shaders don't
+  draw them (all but Metal's, `gpu.Builder.SplitCorners`). Backdrop
   effects map local samples into the frame. With a GPU, every frame draws
   there, including resting changes to transformed content.
   Metal retains wide colors under transforms. See

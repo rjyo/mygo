@@ -256,6 +256,10 @@ type Builder struct {
 	// instance (see addCorners), for tests that compare the two.
 	NoCornerSplit bool
 	cutCorners    func(b *Builder, in Instance, image uintptr, m scene.Affine)
+	// contClips tells that the renderer's shader cuts a clip with
+	// continuous corners (SplitCorners), which analyticClip may then
+	// leave to it rather than to a mask.
+	contClips bool
 	// bands are the bands planBands planned last, and bandsTry its scratch.
 	bands, bandsTry []band
 	// NoClasses puts every batch in ClassGeneral, for tests and
