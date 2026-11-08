@@ -247,6 +247,80 @@ func TestLocaleSavedAndEnvironment(t *testing.T) {
 	}
 }
 
+// TestChosenLocale checks that ChosenLocale reports what SetLocale chose
+// and keeps, "" while the app follows the user's languages, which Locale
+// can't tell from the language they resolve to.
+func TestChosenLocale(t *testing.T) {
+	localeTest(t, []string{"en", "de", "zh-Hans"}, "zh-CN")
+	if got, shown := App.ChosenLocale(), App.Locale(); got != "" || shown != "zh-Hans" {
+		t.Fatalf("following the system, ChosenLocale() = %q, Locale() = %q", got, shown)
+	}
+	for _, c := range []struct{ tag, chosen, shown string }{
+		// The language the system resolves to, chosen.
+		{"zh-Hans", "zh-Hans", "zh-Hans"},
+		// Normalized, as kept, with the language shown.
+		{"de_AT", "de-AT", "de"},
+		// A language the app is not written in: kept, the user's shown.
+		{"ko", "ko", "zh-Hans"},
+		{"en-XA", "en-XA", "en-XA"},
+		{"", "", "zh-Hans"},
+	} {
+		App.SetLocale(c.tag)
+		// Off the main thread, without waiting for SetLocale's work: it
+		// is queued before ChosenLocale's.
+		if got := App.ChosenLocale(); got != c.chosen {
+			t.Errorf("after SetLocale(%q), ChosenLocale() = %q, want %q", c.tag, got, c.chosen)
+		}
+		if got := App.Locale(); got != c.shown {
+			t.Errorf("after SetLocale(%q), Locale() = %q, want %q", c.tag, got, c.shown)
+		}
+	}
+	// On the main thread, at once.
+	onMain(func() {
+		App.SetLocale("de")
+		if got := App.ChosenLocale(); got != "de" {
+			t.Errorf("on the main thread, ChosenLocale() = %q, want de", got)
+		}
+	})
+}
+
+// TestChosenLocaleSavedAndEnvironment checks that ChosenLocale reports
+// the language saved in an earlier run, and the one of MYGO_LOCALE.
+func TestChosenLocaleSavedAndEnvironment(t *testing.T) {
+	dir := localeTest(t, []string{"en", "de", "ja"}, "en")
+	restart := func() {
+		locales.mu.Lock()
+		locales.loaded, locales.override, locales.fromEnv = false, "", false
+		locales.mu.Unlock()
+	}
+	t.Cleanup(func() {
+		locales.mu.Lock()
+		locales.fromEnv = false
+		locales.mu.Unlock()
+	})
+	if err := os.WriteFile(filepath.Join(dir, localeFile), []byte("de-CH\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	restart()
+	// Read on the first call, as the app starts.
+	if got := App.ChosenLocale(); got != "de-CH" {
+		t.Errorf("ChosenLocale() = %q, saved de-CH", got)
+	}
+	t.Setenv("MYGO_LOCALE", "ja_JP")
+	restart()
+	if got := App.ChosenLocale(); got != "ja-JP" {
+		t.Errorf("ChosenLocale() = %q, MYGO_LOCALE ja_JP", got)
+	}
+	// While the app runs, SetLocale chooses another for the run.
+	App.SetLocale("")
+	if got := App.ChosenLocale(); got != "" {
+		t.Errorf("ChosenLocale() = %q after SetLocale(\"\") under MYGO_LOCALE", got)
+	}
+	if data, _ := os.ReadFile(filepath.Join(dir, localeFile)); strings.TrimSpace(string(data)) != "de-CH" {
+		t.Errorf("the file has %q, want de-CH", data)
+	}
+}
+
 func TestRegion(t *testing.T) {
 	localeTest(t, []string{"en"}, "en-US")
 	var heard heardList[Region]

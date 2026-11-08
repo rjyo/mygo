@@ -1524,7 +1524,9 @@ pages loaded later), menus (`relabelMenus`: items whose label is still
 their role's take `internal/l10n`'s), the backend (`SetLanguages`: the app's
 language, then the user's others) and the listeners. `SetLocale` calls the
 main thread may not have reached yet show the last tag only (a
-generation counter). A backend's `LocaleChanged` reports changes of the
+generation counter). `ChosenLocale` reads the choice (`override`, after
+`loadLocale`) on the main thread, behind the `SetLocale` calls queued
+before it. A backend's `LocaleChanged` reports changes of the
 system's languages or formats, which `updateLocale` compares.
 
 The text engine takes a language per style and span (`text.Style.Lang`),
