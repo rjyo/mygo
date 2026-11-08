@@ -289,6 +289,7 @@ var elementChains = map[string]bool{
 	"MinWidthPercent":      true,
 	"Mixed":                true,
 	"Modal":                true,
+	"Multiline":            true,
 	"Multiselectable":      true,
 	"NoShadow":             true,
 	"NoWrap":               true,

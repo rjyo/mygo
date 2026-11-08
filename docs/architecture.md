@@ -2761,7 +2761,9 @@ either.
   `get_minimum_increment`, as purego's callbacks return no floats for
   `get_increment`; AppKit has none, and its increments go through the
   keys. A read-only text input is
-  `AccessReadOnly`, without `ActionSetValue`. AppKit finds an element's
+  `AccessReadOnly`, without `ActionSetValue`; a text box of your own (`Role(RoleTextField)`
+  with no editor of MyGo's) says so through `ReadOnly` and `Multiline`
+  (aria-readonly, aria-multiline), which other roles ignore. AppKit finds an element's
   value settable when its class overrides the setter, whatever
   `isAccessibilitySelectorAllowed:` says, so elements answer the older
   `accessibilityIsAttributeSettable:` themselves, as AppKit would but for

@@ -1003,9 +1003,19 @@ func (rt *engine) accessDetails(e *node, n *platform.AccessNode) {
 			n.SelStart, n.SelEnd = ed.selection()
 		}
 	}
+	// A text box of your own, with no editor of MyGo's, says what it is
+	// (Role, ReadOnly, Multiline).
+	if n.Role == platform.RoleTextField && (e.st.editor == nil || e.flags&flagEditable == 0) {
+		if e.readOnly {
+			n.States |= platform.AccessReadOnly
+		}
+		if e.multiline {
+			n.States |= platform.AccessMultiline
+		}
+	}
 	// Custom text clients without an editor take set-value here; inputs and
 	// text areas with an editor follow the editor branch above.
-	if e.textClient != nil && (e.st == nil || e.st.editor == nil || e.flags&flagEditable == 0) {
+	if e.textClient != nil && (e.st == nil || e.st.editor == nil || e.flags&flagEditable == 0) && n.States&platform.AccessReadOnly == 0 {
 		n.Actions |= platform.ActionSetValue
 	}
 	if e.accFill != nil {

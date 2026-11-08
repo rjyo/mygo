@@ -608,10 +608,13 @@ type node struct {
 	// Invalid). describedBy are the elements whose text describes it too
 	// (DescribedBy), and errorMessage those holding its error, read while
 	// it is invalid (ErrorMessage).
-	description  string
-	invalid      bool
-	describedBy  []*node
-	errorMessage []*node
+	description string
+	invalid     bool
+	// readOnly and multiline are what a text box with no editor of
+	// MyGo's reports (ReadOnly, Multiline).
+	readOnly, multiline bool
+	describedBy         []*node
+	errorMessage        []*node
 	// field is set on a Field, form on a Form, whose layout makes its
 	// labels as wide as the widest.
 	field *fieldParts

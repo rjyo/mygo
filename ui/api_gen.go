@@ -6324,6 +6324,20 @@ func (_handle Element) Modal() Element {
 	return wrapElement(_node.Modal())
 }
 
+// Multiline tells assistive technology that an element of the text box
+// role (Role(RoleTextField)) that MyGo does not edit takes several lines,
+// as ARIA's aria-multiline. Text inputs and text areas know it
+// themselves, from the control they are, and other roles ignore it.
+func (_handle Element) Multiline(on bool) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.Multiline(on))
+}
+
 // Multiselectable tells assistive technology whether the user chooses
 // several of the items of the element, a list, grid, tree or tree grid
 // of your own, as ARIA's aria-multiselectable: screen readers offer to
@@ -6981,6 +6995,11 @@ func (_handle Element) Range(lo float64, hi float64, value float64) Element {
 // change it: the text can still be selected and copied, from the keyboard
 // too, as it takes the focus, without a caret; assistive technology reads
 // it as read-only.
+//
+// On an element of the text box role (Role(RoleTextField)) that MyGo does
+// not edit, a widget that draws its text and handles its keys itself, it
+// only tells assistive technology that the text box is read-only, as
+// ARIA's aria-readonly. Other roles ignore it.
 func (_handle Element) ReadOnly(on bool) Element {
 	_node := _handle.node()
 	if _node == nil {
