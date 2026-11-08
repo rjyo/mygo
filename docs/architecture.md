@@ -80,6 +80,7 @@ framework safely. Read it before changing anything under `internal/`.
 │   ├── linux/          Linux: GTK 3 + WebKitGTK through dlopen
 │   ├── windows/        Windows: Win32 + WebView2 through syscall and COM
 │   ├── schemehost/     maps custom scheme URLs to the http://*.localhost URLs WebView2 serves them at
+│   ├── schemestream/   the bounded pipe custom scheme bodies stream to WebView2 through, and media ranges narrowed
 │   ├── web/            browsers (js/wasm): native UI on canvases, through syscall/js
 │   ├── unsupported/    stub for other platforms
 │   ├── fake/           in-memory backend for unit tests
@@ -611,8 +612,8 @@ features GTK 4 lacks become X11-only code beside it.
   mixed content, so pages reach `ws://` and `http://` URLs as with the
   custom schemes of the other backends. The backend maps URLs both ways, so
   the core only sees `<scheme>://<host>/`.
-  Responses are buffered: WebView2 takes a whole stream. `LoadHTML` with a
-  base URL serves the document from that URL the same way.
+  See "Custom protocols" for how responses reach WebView2. `LoadHTML`
+  with a base URL serves the document from that URL the same way.
 - **Eval** goes through the DevTools protocol (`Runtime.evaluate` with
   `awaitPromise`), which reports syntax errors and ignores the page's CSP.
   Edit roles run `document.execCommand` with a user gesture, except Paste:
@@ -1729,6 +1730,24 @@ Backends turn responses into native ones:
   pipe (`WriteBody`), waiting while it is full, so the main loop never
   blocks and a response WebKit reads slowly does not pile up in memory.
   Custom schemes are registered as secure and CORS-enabled.
+- Windows: the handler's goroutine writes the body into a pipe
+  (`internal/schemestream`, `WriteBody`) that holds at most 1 MiB not
+  read. A body that ends within it is answered whole at `Finish`
+  (`SHCreateMemStream`), as WebView2's documentation asks of a response
+  whose deferral completes. A larger one is answered as the pipe fills,
+  with an `IStream` of Go's (`bodyStream`, `scheme_stream.go`) whose
+  `Read` waits for the handler: WebView2 reads response streams on a
+  background thread of its own (one for all of them, as reported in
+  WebView2Feedback#3519), and the stream is agile (`IAgileObject`, and
+  the free-threaded marshaler aggregated for `IMarshal`) so that it is
+  called there, not through a proxy on the UI thread. A `Read` that comes
+  on the UI thread anyway waits at most a second, then breaks the response
+  off. The final `Release` cancels the request's context; the window's
+  closing cancels those of handlers still running. WebView2 seems to give
+  a response to the page only once it read all of it, and asks open
+  ranges for media, so the backend narrows `Range: bytes=X-` of media
+  requests to 4 MiB (`schemestream.ClampRange`): the element asks for
+  what follows (#1502).
 
 Schemes are registered per webview at creation time, so call
 `Protocol.Handle` before creating windows. `FileServer(fsys)` serves an

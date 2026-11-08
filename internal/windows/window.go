@@ -40,6 +40,9 @@ type window struct {
 	scriptGen  int
 	closed     bool
 	destroying bool
+	// schemes are the custom scheme responses whose handlers run, which
+	// end when the page's webview closes (webview.go).
+	schemes map[*schemeResponse]struct{}
 
 	// contentFilter applies the content rules of SetContentRules to a
 	// request (content_rules.go), and reports whether it answered it; nil

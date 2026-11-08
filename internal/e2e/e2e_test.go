@@ -168,6 +168,7 @@ func TestMain(m *testing.M) {
 	})
 	usePlugins(mux)
 	useBench(mux)
+	useSchemeStreams(mux)
 	if err := mygo.Protocol.Handle("app", mux); err != nil {
 		panic(err)
 	}
