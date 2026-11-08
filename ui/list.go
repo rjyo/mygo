@@ -454,13 +454,16 @@ type listRow struct {
 
 // rowBuild is the row of a list being built, for what is inside it: its
 // list, element, index and key, whether it was chosen before a click on it
-// in this frame, and whether it was double-clicked.
+// in this frame, whether it was double-clicked, and whether it was clicked
+// once, not as the later click of a double click (RowClicked), and an
+// element took that click not given by the pointer.
 type rowBuild struct {
 	f                       *listFrame
 	e                       *node
 	i                       int
 	key                     any
 	clicked, chosen, double bool
+	single, singleTaken     bool
 }
 
 // List creates a vertical scroll container of n rows, built with row(i),
@@ -731,10 +734,11 @@ func (f *listFrame) build(i int) *node {
 	}
 	if d := &s.dragSel; d.on && d.id == w.id && !w.st.pressed {
 		// The drag ended on its own row: not a click on it.
-		d.on, w.st.clicks, w.st.doubleClicks = false, 0, 0
+		d.on, w.st.clicks, w.st.quietClicks, w.st.doubleClicks = false, 0, 0, 0
 	}
 	prev := f.rb
-	f.rb = rowBuild{f: f, e: w, i: i, key: key, clicked: w.st.clicks > 0 && w.st.clickMods == 0, double: w.st.doubleClicks > 0}
+	f.rb = rowBuild{f: f, e: w, i: i, key: key, clicked: w.st.clicks > 0 && w.st.clickMods == 0, double: w.st.doubleClicks > 0,
+		single: w.st.clicks > w.st.quietClicks && w.st.clickMods == 0}
 	rb := &f.rb
 	if sel := s.cursor(); sel != nil && !f.isHeader(i) {
 		t := c.theme

@@ -199,6 +199,26 @@ ui.List(c, &app.list, len(app.files), func(i int) {
 })
 ```
 
+`RowClicked` reports a single click the same way, for rows that act on one,
+as a file list opening a file or a sidebar its page, with no button inside
+the row taking the click: the row takes it, so its `Label` names what takes
+the click, for typing its first letters, screen readers and `Tester.Click`
+alike. It reports each click of the primary button without modifiers, on the
+row already chosen too, where `Changed` reports nothing new. The keys moving
+the choice report none, nor does a Shift- or Cmd-click extending it. A double
+click reports its first click with `RowClicked` and its second with
+`RowDoubleClicked`, as the systems' lists do. Assistive technology pressing
+the row reports it to the first element of the row asking, and in a list
+that does not choose its rows, asking makes the row take the click.
+
+```go
+ui.List(c, &app.sidebar, len(app.pages), func(i int) {
+	if ui.Text(c, app.pages[i].Title).Padding(6, 12).FillWidth().RowClicked() {
+		app.show(i)
+	}
+})
+```
+
 Rows that draw their own hover and press, as a chat list's, ask the row
 built with `Rows` rather than an element of their own: `ListRow`'s
 `Hovered`, `Pressed` and `PointerPosition` report the row's, as the

@@ -72,8 +72,8 @@ block's column IDs in the order shown, and `SelectColumns` chooses every row
 and a range of columns, for the app's own commands. `CellSelected(row, col)`
 tells a cell builder whether its cell is chosen, for text of its own color
 to show on the accent. A cell that reads its
-row's double click with `RowDoubleClicked` leaves the click to the row, so
-the block follows it.
+row's click with `RowClicked`, or its double click with `RowDoubleClicked`,
+leaves the click to the row, so the block follows it.
 
 `CellsStyle` paints the block in colors of its own rather than the accent,
 as a spreadsheet's two levels and stripes: `Cell` fills the block's cells,

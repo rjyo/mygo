@@ -1171,8 +1171,9 @@ func (rt *engine) accessAction(ev platform.SurfaceEvent) {
 		}
 		if s.flags&flagChoosable != 0 {
 			// A row of a list choosing rows: its list takes the focus for
-			// it, choosing it.
-			s.click(0)
+			// it, choosing it, as the keys would, which no RowClicked
+			// reports.
+			s.quietClick(0)
 			break
 		}
 		rt.focusOn(s)

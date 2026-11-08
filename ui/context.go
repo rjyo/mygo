@@ -756,6 +756,10 @@ type state struct {
 	webView NativeWebView
 
 	clicks, rightClicks, doubleClicks int
+	// quietClicks counts those of clicks that a row does not report as a
+	// click of its own (RowClicked): the later clicks of a double or
+	// triple click, and assistive technology's focus choosing a row.
+	quietClicks int
 	// pressMods are the modifiers held as the pointer went down on the
 	// element, and clickMods those of its last click.
 	pressMods, clickMods Modifiers
@@ -797,6 +801,7 @@ type state struct {
 		canceled            bool
 		x, y                float32
 		clicks, rightClicks int
+		quietClicks         int
 		clickMods           Modifiers
 	}
 	// dragRec is what Draggable keeps of the element from frame to frame.
