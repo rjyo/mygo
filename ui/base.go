@@ -657,6 +657,7 @@ func popover(c *context, anchor *node, open *bool, modal bool, fn func(panel *no
 	if !*open {
 		return nil
 	}
+	anchor.popupShows()
 	var panel *node
 	dismissed := false
 	coreOverlay(c, func() {

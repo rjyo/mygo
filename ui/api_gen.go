@@ -2956,9 +2956,10 @@ func Toolbar(c *Context, fn func()) Element {
 // keyboard, and at once too within 0.4 seconds of another tip going, as
 // the pointer moves along a toolbar; the theme's TooltipDelay changes
 // both. It goes as the pointer leaves anchor
-// or presses it, and with Escape, until the pointer comes back or the
-// focus does. Over elements inside one another, the innermost one's tip
-// shows; one shows at a time.
+// or presses it, as a menu or popover of anchor opens, and with Escape,
+// until the pointer comes back or the focus does; it does not show while
+// that menu or popover shows. Over elements inside one another, the
+// innermost one's tip shows; one shows at a time.
 //
 // The tip goes above anchor, centered, or below it where there is no room
 // above; fn may place it elsewhere with AttachTo, as after it:

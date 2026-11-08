@@ -243,7 +243,11 @@ func TestThemedOverlays(t *testing.T) {
 	if got := outside.resolvedText().color; got != dark.Text {
 		t.Errorf("an overlay built outside the scope has text %v, want the window's %v", got, dark.Text)
 	}
-	// The tooltip is the scope's theme turned over: light's dark text.
+	// The tooltip is the scope's theme turned over: light's dark text. It
+	// shows once the popover of its button has closed.
+	open = false
+	tt.Frame()
+	tt.Frame()
 	b, _ := tt.Find("Open")
 	tt.Move(b.X+b.W/2, b.Y+b.H/2)
 	tt.rt.tips.hoverSince = tt.now.Add(-time.Second)

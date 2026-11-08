@@ -641,6 +641,7 @@ func (rt *engine) textAround(chain []uint64, s *state) *state {
 func (rt *engine) askMenu(s *state, x, y float32, button bool) {
 	mr := &rt.menu
 	mr.asked, mr.x, mr.y, mr.button, mr.text, mr.key, mr.last, mr.below = s.id, x, y, button, 0, false, false, false
+	rt.hideTip(s)
 	// The menu takes the press: the release goes to it.
 	if rt.pressed != nil {
 		rt.pressed.pressed = false

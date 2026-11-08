@@ -377,6 +377,7 @@ func (m *menuParts) Popup(fn func(panel *node)) *node {
 		return nil
 	}
 	c, rt := m.c, m.c.rt
+	m.Trigger.popupShows()
 	m.moved = [2]float32{rt.pointerX, rt.pointerY} != s.pointer
 	m.built = m.built[:0]
 	var root *node

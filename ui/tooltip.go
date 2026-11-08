@@ -40,9 +40,10 @@ type tooltips struct {
 // keyboard, and at once too within 0.4 seconds of another tip going, as
 // the pointer moves along a toolbar; the theme's TooltipDelay changes
 // both. It goes as the pointer leaves anchor
-// or presses it, and with Escape, until the pointer comes back or the
-// focus does. Over elements inside one another, the innermost one's tip
-// shows; one shows at a time.
+// or presses it, as a menu or popover of anchor opens, and with Escape,
+// until the pointer comes back or the focus does; it does not show while
+// that menu or popover shows. Over elements inside one another, the
+// innermost one's tip shows; one shows at a time.
 //
 // The tip goes above anchor, centered, or below it where there is no room
 // above; fn may place it elsewhere with AttachTo, as after it:
@@ -92,6 +93,23 @@ func tooltipBase(c *context, anchor *node, fn func(tip *node)) (*node, bool) {
 		}
 	})
 	return tip, rt.tips.byFocus
+}
+
+// popupShows notes that a popup attached to e shows in the frame: its
+// menu, its popover or its options, while which its tip does not show.
+func (e *node) popupShows() {
+	if e.hasState() {
+		e.st.popped = e.c.rt.frame
+	}
+}
+
+// hideTip hides the tip of the element of s as its menu opens, by the
+// pointer, the keys or assistive technology, until neither the pointer
+// nor the focus is on it, as a press on it does.
+func (rt *engine) hideTip(s *state) {
+	if s.tip {
+		rt.tips.dismissed = s.id
+	}
 }
 
 // Tooltip shows s by the element when the pointer rests on it, or the
@@ -169,6 +187,15 @@ func (rt *engine) showTooltip(c *context) uint64 {
 	}
 	if rt.pressed != nil && hover != 0 {
 		t.dismissed = hover
+	}
+	// An element whose menu or popover shows, in this frame or the last
+	// one, shows no tip: the pointer coming back to a menu button while
+	// its menu shows, or the focus coming back to it as the menu closes,
+	// leaves it hidden until they leave it.
+	for _, id := range [2]uint64{hover, focus} {
+		if s := rt.states[id]; id != 0 && s != nil && s.popped != 0 && s.popped+1 >= rt.frame {
+			t.dismissed = id
+		}
 	}
 	if hover == t.dismissed {
 		hover = 0
