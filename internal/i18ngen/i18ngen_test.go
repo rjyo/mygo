@@ -109,7 +109,7 @@ func TestApp(t *testing.T) {
 		"Place(n:int:n:n)",
 		"Guests(host:String:host:host, n:num:n:n)",
 		"Positional(0:String:arg0:arg0, 1:String:arg1:arg1)",
-		"Keyword(type:String:type_:type, default:String:default_:default_, string:String:string_:string, any:String:any_:any)",
+		"Keyword(type:String:type_:type, default:String:default_:default_, string:String:string_:string, any:String:any_:any, __proto__:String:__proto__:__proto__)",
 		"Untyped(value:String:value:value)",
 		"Object(item:Object:item:item)",
 		"SaveAs()",

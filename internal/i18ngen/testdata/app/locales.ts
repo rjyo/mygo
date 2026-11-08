@@ -40,9 +40,9 @@ export interface Messages {
    */
   positional(arg0: string, arg1: string): string;
   /**
-   * `{type} {default} {string} {any}`
+   * `{type} {default} {string} {any} {__proto__}`
    */
-  keyword(type: string, default_: string, string: string, any: string): string;
+  keyword(type: string, default_: string, string: string, any: string, __proto__: string): string;
   /**
    * `Value: {value}`
    */
@@ -75,7 +75,7 @@ const catalog = createCatalog<Messages>({
     "place": ["n"],
     "guests": ["host", "n"],
     "positional": ["0", "1"],
-    "keyword": ["type", "default", "string", "any"],
+    "keyword": ["type", "default", "string", "any", "__proto__"],
     "untyped": ["value"],
     "object": ["item"],
     "save_as": [],
@@ -90,7 +90,7 @@ const catalog = createCatalog<Messages>({
       "place": "You came {n, selectordinal, one {#st} two {#nd} few {#rd} other {#th}}",
       "guests": "{n, plural, offset:1 =0 {Nobody} =1 {{host}} one {{host} and # other} other {{host} and # others}}",
       "positional": "{0} of {1}",
-      "keyword": "{type} {default} {string} {any}",
+      "keyword": "{type} {default} {string} {any} {__proto__}",
       "untyped": "Value: {value}",
       "object": "Item {item}",
       "save_as": "Save As…",

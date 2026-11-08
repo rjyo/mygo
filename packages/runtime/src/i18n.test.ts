@@ -207,12 +207,13 @@ describe("the module mygo generate writes", () => {
     expect(locales.messagesIn("en").guests("Ada", 3)).toBe("Ada and 2 others");
     expect(locales.messagesIn("en").place(22)).toBe("You came 22nd");
     expect(locales.messagesIn("en").positional("a", "b")).toBe("a of b");
-    expect(locales.messagesIn("en").keyword("x", "y", "z", "w")).toBe("x y z w");
+    expect(locales.messagesIn("en").keyword("x", "y", "z", "w", "p")).toBe("x y z w p");
     expect(locales.messagesIn("en-XA").title()).toBe("[Ñöţéš one]");
     const g = globalThis as { mygo?: unknown };
     g.mygo = { locale: "de" };
     try {
       expect(locales.messages.greeting("Ada")).toBe("Hallo, Ada!");
+      expect(locales.messages.keyword("x", "y", "z", "w", "p")).toBe("x y z w p");
     } finally {
       delete g.mygo;
     }

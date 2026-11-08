@@ -33,7 +33,7 @@
     }
   },
   "positional": "{0} of {1}",
-  "keyword": "{type} {default} {string} {any}",
+  "keyword": "{type} {default} {string} {any} {__proto__}",
   "untyped": "Value: {value}",
   "@untyped": {
     "placeholders": {
