@@ -128,3 +128,40 @@ func TestPainterVisibleTransformed(t *testing.T) {
 		t.Errorf("zoomed out then in by the painter, visible %+v, want %+v", drawn, want)
 	}
 }
+
+// An op painted outside any Transform carries none, and one painted inside
+// carries the transform in device pixels: Painter.add leaves the first
+// alone and multiplies the second.
+func TestPainterOpsCarryTheTransformInPixels(t *testing.T) {
+	plain, moved := RGB(10, 20, 30), RGB(40, 50, 60)
+	tt := coreNewTester(func(c *context) {
+		coreBox(c).Size(100, 100).Draw(func(p *Painter, r Rect) {
+			p.Fill(Rect{X: r.X, Y: r.Y, W: 10, H: 10}, plain, 0)
+			p.Transform(Translation(7, 3), 0, 0, func() {
+				p.Fill(Rect{X: r.X, Y: r.Y, W: 10, H: 10}, moved, 0)
+			})
+		})
+	}, 100, 100)
+	tt.SetScale(2)
+	seen := 0
+	for _, op := range tt.h.last.Ops {
+		if op.Kind != scene.OpFill {
+			continue
+		}
+		switch op.Color {
+		case plain.scene():
+			seen++
+			if op.Transform.Set {
+				t.Errorf("a fill outside a transform carries %+v", op.Transform)
+			}
+		case moved.scene():
+			seen++
+			if m := op.Transform; !m.Set || m.A != 1 || m.D != 1 || m.X != 14 || m.Y != 6 {
+				t.Errorf("a fill moved by (7, 3) DIPs at scale 2 carries %+v, want a move of (14, 6) pixels", m)
+			}
+		}
+	}
+	if seen != 2 {
+		t.Errorf("%d of the test's fills in the frame, want 2", seen)
+	}
+}
