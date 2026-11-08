@@ -14,11 +14,13 @@ import (
 // chart and the month clicked, the point chosen on the live line, how the
 // areas stack, and the points of the scatter plot.
 type galleryCharts struct {
-	sales    []float64
-	month    int
-	selected int
-	stacking int
-	scatter  [3][]scatterPoint
+	sales     []float64
+	month     int
+	selected  int
+	stacking  int
+	logScale  bool
+	symRegion int
+	scatter   [3][]scatterPoint
 }
 
 // scatterPoint is a point of the scatter plot: a car's weight and fuel use.
@@ -44,7 +46,7 @@ var (
 // newCharts returns the Charts page's data, the same at every start.
 func newCharts() galleryCharts {
 	r := rand.New(rand.NewPCG(1, 2))
-	g := galleryCharts{month: -1, selected: -1}
+	g := galleryCharts{month: -1, selected: -1, logScale: true}
 	g.sales = make([]float64, len(chartMonths))
 	for i := range g.sales {
 		g.sales[i] = 40 + 50*math.Sin(float64(i)/3.5) + 20*r.Float64()
@@ -100,6 +102,8 @@ func (g *gallery) charts(c *ui.Context) {
 		card(c, "Visits by source", func() { g.stackedChart(c) }).Basis(320).Grow(1).MinWidth(0)
 		card(c, "Weight and fuel use", func() { g.scatterChart(c) }).Basis(320).Grow(1).MinWidth(0)
 		card(c, "Users by platform", func() { g.donutChart(c) }).Basis(320).Grow(1).MinWidth(0)
+		card(c, "Latency across orders of magnitude", func() { g.latencyChart(c) }).Basis(320).Grow(1).MinWidth(0)
+		card(c, "Signed changes around zero", func() { g.signedChart(c) }).Basis(320).Grow(1).MinWidth(0)
 	})
 }
 
@@ -320,4 +324,52 @@ func (g *gallery) donutChart(c *ui.Context) {
 			}
 		})
 	})
+}
+
+// latencyChart keeps the same data and domain while switching scales,
+// so the small samples become visible on the logarithmic axis.
+func (g *gallery) latencyChart(c *ui.Context) {
+	t := c.Theme()
+	ui.Checkbox(c, &g.chart.logScale, "Logarithmic scale")
+	ui.Text(c, "Same samples and domain, in milliseconds.").FontSize(12).TextColor(t.TextMuted)
+	labels := []string{"Local", "Cache", "Read", "API", "Job", "Batch"}
+	values := []float64{.02, .2, 2, 20, 200, 800}
+	x := chart.NewBand(labels...).Padding(.2, .1)
+	linear, logarithmic := chart.NewLinear(.01, 1000), chart.NewLog(.01, 1000)
+	at, yt := linear.At, linear.Ticks(4)
+	if g.chart.logScale {
+		at, yt = logarithmic.At, logarithmic.Ticks(4)
+	}
+	xs, ys := make([]float32, len(values)), make([]float32, len(values))
+	chart.Plot(c, chart.Axes{Left: yt, Bottom: x.Ticks(), Label: axisLabel(c)}, func(area ui.Element) {
+		gridLines(area, nil, yt, t.Border)
+		for i, v := range values {
+			xs[i], ys[i] = x.At(i), at(v)
+			chart.Point(c, xs[i], ys[i], 8, 8).Radius(4).Background(t.Accent).
+				Label(labels[i] + " latency").Tooltip(fmt.Sprintf("%s: %g ms", labels[i], v))
+		}
+		area.Draw(func(p *ui.Painter, r ui.Rect) { p.StrokePath(chart.Line(r, xs, ys, chart.CurveLinear), 2, t.Accent) })
+	}).Height(200).GapX(8).GapY(6).Label("Latency in milliseconds")
+}
+
+func (g *gallery) signedChart(c *ui.Context) {
+	t := c.Theme()
+	ui.Segmented(c, &g.chart.symRegion, "c=1", "c=10", "c=100")
+	ui.Text(c, "SymLog keeps zero and both signs; c sets the linear region.").FontSize(12).TextColor(t.TextMuted)
+	y := chart.NewSymLog(-1000, 1000)
+	y.Constant = []float64{1, 10, 100}[g.chart.symRegion]
+	yt := y.Ticks(2)
+	values := []float64{-800, -100, -10, -1, -.1, 0, .1, 1, 10, 100, 800}
+	xs, ys := make([]float32, len(values)), make([]float32, len(values))
+	chart.Plot(c, chart.Axes{Left: yt, Label: axisLabel(c)}, func(area ui.Element) {
+		gridLines(area, nil, yt, t.Border)
+		for i, v := range values {
+			xs[i], ys[i] = float32(i)/float32(len(values)-1), y.At(v)
+			chart.Point(c, xs[i], ys[i], 8, 8).Radius(4).Background(chartColors[1]).
+				Label(fmt.Sprintf("Change %+g", v)).Tooltip(fmt.Sprintf("Change: %+g", v))
+		}
+		area.Draw(func(p *ui.Painter, r ui.Rect) {
+			p.StrokePath(chart.Line(r, xs, ys, chart.CurveLinear), 2, chartColors[1])
+		})
+	}).Height(200).Gap(8).Label("Signed changes")
 }

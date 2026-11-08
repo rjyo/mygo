@@ -3755,6 +3755,14 @@ either.
   absolute offsets. Paragraph layout and height caches remain with the
   widget; newline-count changes update those indexes. Full text is produced
   for explicit export/value queries, never as a binding update per edit.
+- **Charts** (`ui/chart`) use ui's public API alone: scales return
+  fractions, the plot places marks in percentages, and paths turn those
+  into DIPs while drawing. Log and SymLog (`nonlinear.go`) add only
+  standard-library math: log domains stay on one side of zero, symlog's
+  `log1p`/`expm1` keep a linear region around it. Reversed domains and
+  clamping share the same normalized-coordinate contract. A separately
+  generated D3 fixture checks mappings, inverses, ticks and nice domains;
+  constant log domains intentionally keep one tick even where D3 omits it.
 - **Code editor and diff viewer** (`ui/editor`, `internal/diff`). Package
   `editor` is built on ui's public API, as `ui/chart` is, with four hooks
   for it: `Painter.TextLine` paints a shaped line with a color per

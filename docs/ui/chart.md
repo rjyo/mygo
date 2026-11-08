@@ -47,6 +47,20 @@ resizes; `Draw` functions get the plot's box, and `chart.X(r, f)` and
   to its value, and `Invert(f)` the value at a fraction, as under the
   pointer. `Clamp` keeps values outside the domain at its ends;
   `chart.Extent(values...)` returns the smallest and the largest.
+- `chart.NewLog(lo, hi)` gives equal ratios equal distances: 1, 10 and
+  100 are equally spaced. Both ends must be positive or both negative;
+  reversed domains work too. `Base` defaults to 10 (2 and `math.E` work
+  too); it changes ticks and `Nice()`, not the positions. `Nice()` extends
+  to whole powers of the base. `Ticks(n)` is a density hint: short domains
+  with integer bases include minor multiples, whose labels are omitted
+  when crowded. `Format` labels every tick when set. Constant domains get
+  one tick at their value, including noninteger bases.
+- `chart.NewSymLog(lo, hi)` includes negative values and zero, using
+  `sign(v) * log1p(abs(v)/c)`. `Constant` is c, 1 when zero: the size of the
+  nearly linear region around zero; larger magnitudes are logarithmic.
+  `Ticks(n)` and `Nice(n)` choose round numbers in the original units,
+  placed nonlinearly. A nonpositive count, or a nice request that does not
+  settle on a stable domain, leaves the original domain unchanged.
 - `chart.NewBand(labels...)` gives each label a band, as the bars of a bar
   chart: `Band(i)` is the i-th's stretch, `At(i)` its middle, `Width()`
   their width, and `Index(f)` the band at a fraction. `Padding(inner,
@@ -60,6 +74,36 @@ resizes; `Draw` functions get the plot's box, and `chart.X(r, f)` and
 
 Ticks are `chart.Tick` values, `At` a fraction, `Value` and `Label`: make
 your own for axes a scale does not mark.
+
+### Wide ranges and signed data
+
+```go
+latency := chart.NewLog(0.01, 1000) // milliseconds, five orders of magnitude
+position := latency.At(0.1)       // 0.2 of the plot
+value := latency.Invert(0.5)      // about 3.162 ms
+
+changes := chart.NewSymLog(-1000, 1000)
+changes.Constant = 10
+baseline := changes.At(0)        // 0.5; zero is valid
+bar := changes.Span(0, -100)     // a signed bar around that baseline
+```
+
+Both scales have `At`, `Invert`, `Span`, `Clamp` and `Format`, as `Linear`
+does. Keep the domain in data units; apply `At` to each sample, then use
+normal marks and paths. A logarithmic bar needs a nonzero baseline: use
+`SymLog` for bars around zero. NaN samples propagate as missing values,
+which line and area paths leave as gaps. Without clamping, values of the
+wrong sign give NaN on a log scale and zero maps to infinity off its plot.
+With `Clamp`, out-of-domain values, including zero, stay at the ends.
+
+Domains must be finite. A log domain cannot touch or cross zero, its
+nonzero base must be finite and greater than 1, and a symlog scale's
+nonzero constant must be finite and positive. Invalid scales give NaN
+positions and no ticks; `Nice` leaves them unchanged. At the float64
+limits, log `Nice` retains an edge if the next power is unrepresentable.
+The scales are values with no mutable caches or timers; they add no
+runtime dependency. The gallery's Charts page compares linear and log
+latencies, and lets you change the symlog linear region.
 
 ## The plot and its axes
 
@@ -256,5 +300,5 @@ bar's month and value. `Select` tells it about the chosen point: what
 `describe` returns is the area's value, which screen readers read out as
 the arrows come to a point.
 
-What the package leaves out: logarithmic scales, zooming and panning,
+What the package leaves out: zooming and panning,
 legends (rows of your own, as above) and labels that avoid each other.
