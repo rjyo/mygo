@@ -136,7 +136,7 @@ func (c clipboard) ReadText() string {
 	return string(utf16Decode(u))
 }
 
-func (c clipboard) WriteText(text string) { _ = c.WriteData(transfer.TextData(text), nil) }
+func (c clipboard) WriteText(text string) { _ = c.WriteData(transfer.TextData(text), false, nil) }
 
 // CF_HTML wraps a fragment in a header of byte offsets.
 func (c clipboard) ReadHTML() string {
@@ -170,7 +170,7 @@ func htmlOffset(data, key string) int {
 }
 
 func (c clipboard) WriteHTML(markup string) {
-	_ = c.WriteData(transfer.New(transfer.NewItem(transfer.Bytes(transfer.HTML, []byte(markup)), transfer.Bytes(transfer.Text, []byte(markup)))), nil)
+	_ = c.WriteData(transfer.New(transfer.NewItem(transfer.Bytes(transfer.HTML, []byte(markup)), transfer.Bytes(transfer.Text, []byte(markup)))), false, nil)
 }
 
 // htmlData is shared by clipboard and drag representations.
@@ -208,7 +208,7 @@ func (c clipboard) WriteImage(data []byte) error {
 	if _, err := png.Decode(bytes.NewReader(data)); err != nil {
 		return err
 	}
-	return c.WriteData(transfer.New(transfer.NewItem(transfer.Bytes(transfer.PNG, data))), nil)
+	return c.WriteData(transfer.New(transfer.NewItem(transfer.Bytes(transfer.PNG, data))), false, nil)
 }
 
 // dibToImage decodes an uncompressed 24 or 32-bit device independent
@@ -287,7 +287,7 @@ func imageToDIB(img image.Image) []byte {
 	return out
 }
 
-func (c clipboard) Clear() { _ = c.WriteData(transfer.Data{}, nil) }
+func (c clipboard) Clear() { _ = c.WriteData(transfer.Data{}, false, nil) }
 func (c clipboard) AvailableFormats() []string {
 	var out []string
 	for _, f := range c.Formats() {

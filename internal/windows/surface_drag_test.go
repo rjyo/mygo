@@ -27,7 +27,7 @@ func TestTransferDataStreamPosition(t *testing.T) {
 func checkTransferDataStream(t *testing.T, format uint16, clipboard bool, payload []byte) {
 	t.Helper()
 	data := transfer.New(transfer.NewItem(transfer.Bytes("application/vnd.mygo.stream-test", payload)))
-	object := newTransferData(data, "", clipboard)
+	object := newTransferData(data, "", clipboard, false)
 	defer release(object)
 	f := nativeFormat(format)
 	f.Tymed = tymedStream

@@ -82,3 +82,23 @@ func TestClipboardReadDataSkipsUnreadable(t *testing.T) {
 		t.Fatal("reading the unreadable representation by name succeeded")
 	}
 }
+
+func TestClipboardConcealedFormat(t *testing.T) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	dropOnce.Do(initDropTarget)
+	mark := uint16(registerClipboardFormat(winConcealedFormat))
+	data := transfer.TextData("hunter2")
+	for _, c := range []struct{ clipboard, concealed, marked bool }{{false, false, false}, {true, false, false}, {true, true, true}} {
+		object := newTransferData(data, "", c.clipboard, c.concealed)
+		if got := slices.Contains(dragObjects[object].formats, mark); got != c.marked {
+			t.Fatalf("clipboard %t, concealed %t: marked %t", c.clipboard, c.concealed, got)
+		}
+		if c.marked {
+			if _, err := oleDataBytes(object, mark); err != nil {
+				t.Fatalf("mark data: %v", err)
+			}
+		}
+		release(object)
+	}
+}

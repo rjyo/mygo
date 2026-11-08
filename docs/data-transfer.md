@@ -23,6 +23,19 @@ err := mygo.Clipboard.Write(data, mygo.ClipboardOptions{
 row.DragData(data) // the same model, with an independent provider cache
 ```
 
+`ClipboardOptions.Concealed` marks a write as confidential, such as a
+password, for the clipboard managers that read the platform's mark; what they
+do with it, such as leaving it out of their histories or showing it as a
+password, is theirs. macOS gets nspasteboard.org's
+`org.nspasteboard.ConcealedType` on every item and a write for the current
+host only, which keeps the content off Universal Clipboard; Windows gets
+`ExcludeClipboardContentFromMonitorProcessing`, which keeps it out of the
+clipboard history and off the user's other devices; Linux offers KDE's
+`x-kde-passwordManagerHint` target, `secret`, which Klipper, CopyQ and GPaste
+read. Browsers have no such mark. `Flush` keeps the marks. The content stays
+on the clipboard until the app replaces or clears it: clearing a password
+after a while is the app's own policy.
+
 `Bytes` copies its input. `Data.Items` and format lists return independent
 slices, and reads return independent bytes. Empty bytes are valid. `Text`,
 `HTML`, `PNG`, `URIList`, and `FileList` name the common representations.

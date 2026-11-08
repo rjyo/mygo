@@ -34,6 +34,7 @@ type clipboardPeerResult struct {
 	Text, HTML string
 	Image      []byte
 	Files      []string
+	Native     []string // AvailableFormats, the platform's own names
 }
 
 func clipboardTestData(provider func() ([]byte, error)) transfer.Data {
@@ -68,7 +69,7 @@ func clipboardPeer(mode string) {
 					fmt.Fprintln(os.Stderr, "clipboard peer read:", err)
 					os.Exit(1)
 				}
-				r := clipboardPeerResult{Items: len(d.Items()), Values: map[transfer.Format][]byte{}, Text: mygo.Clipboard.ReadText(), HTML: mygo.Clipboard.ReadHTML(), Image: mygo.Clipboard.ReadImage()}
+				r := clipboardPeerResult{Items: len(d.Items()), Values: map[transfer.Format][]byte{}, Text: mygo.Clipboard.ReadText(), HTML: mygo.Clipboard.ReadHTML(), Image: mygo.Clipboard.ReadImage(), Native: mygo.Clipboard.AvailableFormats()}
 				r.Files, _ = d.Files()
 				for _, f := range d.Formats() {
 					r.Values[f], _ = d.Read(f)
@@ -187,6 +188,39 @@ func TestUnifiedClipboardNativeRoundTrip(t *testing.T) {
 	}
 	if b, err := local.Read(transfer.Text); err != nil || string(b) != "hello 日本語\nsecond" {
 		t.Fatal("read snapshot depended on a closed window/clipboard owner")
+	}
+}
+
+func TestUnifiedClipboardConcealed(t *testing.T) {
+	preserveClipboard(t)
+	mark := map[string]string{"darwin": "org.nspasteboard.ConcealedType", "linux": "x-kde-passwordManagerHint", "windows": "ExcludeClipboardContentFromMonitorProcessing"}[runtime.GOOS]
+	formats := []transfer.Format{transfer.Text}
+	if runtime.GOOS == "linux" {
+		// Klipper and CopyQ compare the hint's value.
+		formats = append(formats, transfer.Format(mark))
+	}
+	if err := mygo.Clipboard.Write(transfer.TextData("hunter2"), mygo.ClipboardOptions{Concealed: true}); err != nil {
+		t.Fatal(err)
+	}
+	for _, flushed := range []bool{false, true} {
+		if flushed {
+			if err := mygo.Clipboard.Flush(); err != nil && !errors.Is(err, mygo.ErrClipboardPersistence) {
+				t.Fatal(err)
+			}
+		}
+		r := readClipboardPeer(t, formats...)
+		if r.Text != "hunter2" || !slices.Contains(r.Native, mark) {
+			t.Fatalf("flushed %t: text %q, native formats %q lack %q", flushed, r.Text, r.Native, mark)
+		}
+		if runtime.GOOS == "linux" && string(r.Values[transfer.Format(mark)]) != "secret" {
+			t.Fatalf("flushed %t: hint %q", flushed, r.Values[transfer.Format(mark)])
+		}
+	}
+	if err := mygo.Clipboard.Write(transfer.TextData("plain")); err != nil {
+		t.Fatal(err)
+	}
+	if r := readClipboardPeer(t, transfer.Text); slices.Contains(r.Native, mark) {
+		t.Fatalf("an ordinary write kept the mark: %q", r.Native)
 	}
 }
 

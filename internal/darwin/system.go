@@ -31,7 +31,7 @@ func (clipboard) ReadText() string {
 	return s
 }
 
-func (c clipboard) WriteText(text string) { _ = c.WriteData(transfer.TextData(text), nil) }
+func (c clipboard) WriteText(text string) { _ = c.WriteData(transfer.TextData(text), false, nil) }
 
 func (clipboard) ReadHTML() string {
 	var s string
@@ -40,7 +40,7 @@ func (clipboard) ReadHTML() string {
 }
 
 func (c clipboard) WriteHTML(markup string) {
-	_ = c.WriteData(transfer.New(transfer.NewItem(transfer.Bytes(transfer.HTML, []byte(markup)), transfer.Bytes(transfer.Text, []byte(markup)))), nil)
+	_ = c.WriteData(transfer.New(transfer.NewItem(transfer.Bytes(transfer.HTML, []byte(markup)), transfer.Bytes(transfer.Text, []byte(markup)))), false, nil)
 }
 
 func (clipboard) ReadImage() []byte {
@@ -72,7 +72,7 @@ func (c clipboard) WriteImage(png []byte) error {
 	if err != nil {
 		return err
 	}
-	return c.WriteData(transfer.New(transfer.NewItem(transfer.Bytes(transfer.PNG, png))), nil)
+	return c.WriteData(transfer.New(transfer.NewItem(transfer.Bytes(transfer.PNG, png))), false, nil)
 }
 func (clipboard) Clear() {
 	withPool(func() {

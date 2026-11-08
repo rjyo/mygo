@@ -846,7 +846,7 @@ func (h *windowHost) writeClipboardThen(s string, done func(error)) {
 	}
 	err := errNoClipboard
 	if c != nil {
-		err = c.WriteData(transfer.TextData(s), nil)
+		err = c.WriteData(transfer.TextData(s), false, nil)
 	}
 	h.post(func() { done(err) })
 }
@@ -868,7 +868,7 @@ func (h *windowHost) readClipboardData(formats []transfer.Format) transfer.Data 
 
 func (h *windowHost) writeClipboardData(d transfer.Data) {
 	if h.conn.Clipboard != nil {
-		h.conn.Clipboard.WriteData(d, nil)
+		h.conn.Clipboard.WriteData(d, false, nil)
 	}
 }
 

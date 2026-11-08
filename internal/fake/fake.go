@@ -48,6 +48,9 @@ type Backend struct {
 	hotkeys          map[int]string
 	clipboard        transfer.Data
 	clipboardRelease func()
+	// ClipboardConcealed is whether the last write marked its content
+	// confidential.
+	ClipboardConcealed bool
 	// ClipboardError injects a failed write while preserving existing ownership.
 	ClipboardError error
 	// ClipboardDuringFlush simulates a toolkit pumping a nested event loop
@@ -1100,16 +1103,16 @@ func (d dialogs) ShowMessageBox(_ platform.Window, o *platform.MessageBoxOptions
 type clipboard struct{ b *Backend }
 
 func (c clipboard) ReadText() string   { b, _ := c.b.clipboard.Read(transfer.Text); return string(b) }
-func (c clipboard) WriteText(s string) { _ = c.WriteData(transfer.TextData(s), nil) }
+func (c clipboard) WriteText(s string) { _ = c.WriteData(transfer.TextData(s), false, nil) }
 func (c clipboard) ReadHTML() string   { b, _ := c.b.clipboard.Read(transfer.HTML); return string(b) }
 func (c clipboard) WriteHTML(s string) {
-	_ = c.WriteData(transfer.New(transfer.NewItem(transfer.Bytes(transfer.HTML, []byte(s)))), nil)
+	_ = c.WriteData(transfer.New(transfer.NewItem(transfer.Bytes(transfer.HTML, []byte(s)))), false, nil)
 }
 func (c clipboard) ReadImage() []byte { b, _ := c.b.clipboard.Read(transfer.PNG); return b }
 func (c clipboard) WriteImage(b []byte) error {
-	return c.WriteData(transfer.New(transfer.NewItem(transfer.Bytes(transfer.PNG, b))), nil)
+	return c.WriteData(transfer.New(transfer.NewItem(transfer.Bytes(transfer.PNG, b))), false, nil)
 }
-func (c clipboard) Clear() { _ = c.WriteData(transfer.Data{}, nil) }
+func (c clipboard) Clear() { _ = c.WriteData(transfer.Data{}, false, nil) }
 func (c clipboard) AvailableFormats() []string {
 	var out []string
 	for _, f := range c.Formats() {
@@ -1127,12 +1130,12 @@ func (c clipboard) ReadData(formats []transfer.Format) (transfer.Data, error) {
 	}
 	return c.b.clipboard.Materialize(formats)
 }
-func (c clipboard) WriteData(d transfer.Data, released func()) error {
+func (c clipboard) WriteData(d transfer.Data, concealed bool, released func()) error {
 	if c.b.ClipboardError != nil {
 		return c.b.ClipboardError
 	}
 	previous := c.b.clipboardRelease
-	c.b.clipboard, c.b.clipboardRelease = d, released
+	c.b.clipboard, c.b.ClipboardConcealed, c.b.clipboardRelease = d, concealed, released
 	if previous != nil {
 		previous()
 	}

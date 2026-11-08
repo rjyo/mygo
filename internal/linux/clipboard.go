@@ -28,10 +28,16 @@ var (
 )
 
 type gtkClipboardSource struct {
-	id       ptr
-	data     transfer.Data
-	released func()
+	id        ptr
+	data      transfer.Data
+	concealed bool
+	released  func()
 }
+
+// gtkPasswordManagerHint is KDE's target of confidential content, offered
+// next to the content with the value "secret", which Klipper and other
+// clipboard managers leave out of their histories.
+const gtkPasswordManagerHint = "x-kde-passwordManagerHint"
 
 func initClipboardCallbacks() {
 	// Clipboard-only apps may never create a surface or initialize its drag
@@ -48,7 +54,13 @@ func initClipboardCallbacks() {
 			return
 		}
 		atom := gtkSelectionDataTarget(sel)
-		f := gtkFormat(takeStr(gdkAtomName(atom)))
+		name := takeStr(gdkAtomName(atom))
+		if name == gtkPasswordManagerHint && s.concealed {
+			secret := []byte("secret")
+			gtkSelectionDataSet(sel, atom, 8, &secret[0], int32(len(secret)))
+			return
+		}
+		f := gtkFormat(name)
 		b, err := s.data.Read(f)
 		if errors.Is(err, transfer.ErrFormat) && f == transfer.URIList {
 			b, err = s.data.Read(transfer.FileList)
@@ -83,7 +95,7 @@ func (s *gtkClipboardSource) release() {
 	}
 }
 
-func (c clipboard) WriteData(data transfer.Data, released func()) error {
+func (c clipboard) WriteData(data transfer.Data, concealed bool, released func()) error {
 	if len(data.Formats()) == 0 {
 		c.Clear()
 		if released != nil {
@@ -92,9 +104,12 @@ func (c clipboard) WriteData(data transfer.Data, released func()) error {
 		return nil
 	}
 	clipboardID++
-	s := &gtkClipboardSource{id: clipboardID, data: data, released: released}
+	s := &gtkClipboardSource{id: clipboardID, data: data, concealed: concealed, released: released}
 	gtkClipboardSources[s.id] = s
 	targets := gtkTargets(data.Formats())
+	if concealed {
+		targets = append(targets, gtkTargetEntry{target: cs(gtkPasswordManagerHint), info: uint32(len(targets))})
+	}
 	if !gtkClipboardSetWithData(clip(), unsafe.Pointer(&targets[0]), uint32(len(targets)), cbClipboardGet, cbClipboardClear, s.id) {
 		delete(gtkClipboardSources, s.id)
 		return errors.New("mygo: cannot own the clipboard selection")

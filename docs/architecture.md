@@ -2152,7 +2152,10 @@ token is rejected by clipboard writes.
 `clipboard.go` owns validation, main-thread dispatch, provider reentry guards,
 and deferred, exactly-once release hooks. `platform.Clipboard` accepts a
 snapshot, returns materialized reads, discovers formats without rendering,
-and flushes/closes native ownership. Clipboard providers belong to the app,
+and flushes/closes native ownership. A concealed write
+(`ClipboardOptions.Concealed`) carries each platform's mark for clipboard
+managers next to its data, on write and on flush, and macOS writes it for
+the current host only. Clipboard providers belong to the app,
 not a source window. Quit flushes them before stopping the loop, and finish
 releases remaining providers. Linux requires a clipboard manager for data
 to remain after exit; a failed provider prevents flushing its offer.
@@ -6046,6 +6049,7 @@ which npm allows only for packages that exist: the first release uses an
 | keys held (`Context.KeyDown`) | `keyDown:` and `keyUp:`; a local monitor of key ups hands the surface those let go of while Command is held, which `sendEvent:` keeps from the key window; resigning first responder or key window lets go of all | key presses and releases, and a release the input method filters (`HeldKeys.Lift`): IBus and Fcitx hand back those they leave, which `HeldKeys` keeps from the content | `WM_KEYUP` and `WM_SYSKEYUP`; a `VK_PROCESSKEY` release lets go of the key at its scancode; `WM_ENTERMENULOOP` lets go of all (`HeldKeys.LiftAll`), whose releases the menu's loop takes; `WM_KILLFOCUS` all |
 | native UI surface | layer-backed NSView, frames from `CADisplayLink` (a timer at the display's rate before macOS 14), input methods through NSTextInputClient | GtkGLArea (GtkDrawingArea without a GPU), GtkIMMulticontext | `MyGoSurface` child window, IMM32 |
 | native UI data drags | NSDraggingSession, NSPasteboardItemDataProvider, NSDraggingDestination | GTK drag contexts, MIME selections, text/uri-list | OLE IDataObject, IDropSource, IDropTarget, Shell drag images |
+| concealed clipboard writes (`ClipboardOptions.Concealed`) | `org.nspasteboard.ConcealedType` on every item, `prepareForNewContentsWithOptions:` with `NSPasteboardContentsCurrentHostOnly` | the `x-kde-passwordManagerHint` target, `secret` | the `ExcludeClipboardContentFromMonitorProcessing` format |
 | native UI accessibility | `NSAccessibilityElement` subclasses | ATK objects (GObject types registered through purego), bridged to AT-SPI by GTK | UI Automation fragments (COM objects; assembly thunks for the methods taking doubles) |
 | native UI rendering | Metal, into a CAMetalLayer presenting as soon as drawn, or with the Core Animation transaction for frames that resize it or show web views | OpenGL 3.3 or ES 3.0 in the GtkGLArea's render signal; on the CPU, painted with cairo, where OpenGL runs on the CPU | Direct3D 11 (WARP without a GPU), flip-model swap chain presenting dirty rectangles |
 | web views in native UI | WKWebView in a clip view under the surface; `hitTest:` lets the pointer through | WebKitWebView in a `GtkLayout` under the area in a `GtkOverlay`; an input shape lets the pointer through | WebView2 composition controller in a DirectComposition target under the frames'; the surface sends it the mouse |

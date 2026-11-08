@@ -1146,10 +1146,12 @@ type Clipboard interface {
 	// Data reads copy accepted representations, so returned data outlives
 	// native ownership. Nil formats reads all; a missing explicit match is
 	// transfer.ErrFormat. WriteData takes an application-owned snapshot;
-	// released runs once when native providers are no longer needed, never
-	// after a failed write. Neither operation depends on a source window.
+	// concealed marks it as confidential for the clipboard managers that
+	// read the platform's mark; released runs once when native providers
+	// are no longer needed, never after a failed write. Neither operation
+	// depends on a source window.
 	ReadData(formats []transfer.Format) (transfer.Data, error)
-	WriteData(data transfer.Data, released func()) error
+	WriteData(data transfer.Data, concealed bool, released func()) error
 	Formats() []transfer.Format
 	// Flush materializes owned providers and asks the system to persist the
 	// data. Close drops any remaining owned providers at app shutdown.

@@ -271,3 +271,18 @@ func TestClipboardReleaseWaitsForNestedStorage(t *testing.T) {
 		t.Fatal("release hook did not run safely after flush")
 	}
 }
+
+func TestClipboardConcealed(t *testing.T) {
+	t.Cleanup(Clipboard.Clear)
+	concealed := func() bool { return onMainValue(func() bool { return fb.ClipboardConcealed }) }
+	if err := Clipboard.Write(transfer.TextData("hunter2"), ClipboardOptions{Concealed: true}); err != nil {
+		t.Fatal(err)
+	}
+	if !concealed() || Clipboard.ReadText() != "hunter2" {
+		t.Fatal("the mark did not reach the backend with the text")
+	}
+	Clipboard.WriteText("plain")
+	if concealed() {
+		t.Fatal("an ordinary write kept the mark")
+	}
+}
