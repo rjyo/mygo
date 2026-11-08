@@ -312,4 +312,11 @@ export const showcase: ShowcaseApp[] = [
     mode: "native",
     image: "/showcase/gorequest.jpg",
   },
+  {
+    name: "Ferry",
+    description: "基于 ProxyBridge 的 Windows 按进程代理分流工具，支持有序规则、SOCKS5/HTTP 节点、实时连接和日志。",
+    url: "https://github.com/ayuayue/ferry",
+    author: "ayuayue",
+    mode: "web",
+  },
 ]
