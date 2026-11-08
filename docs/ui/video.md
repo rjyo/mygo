@@ -136,7 +136,10 @@ A `ui.VideoDecoder` of your own plays another format: `Next` returns the
 next frame, a picture of any image type and how long it shows, or `io.EOF`
 after the last, and `Rewind` goes back to before the first. The player
 copies each picture, so a decoder may draw every frame into the same one,
-and calls the decoder from one goroutine at a time.
+and calls the decoder from one goroutine at a time. A live stream that an
+app decodes itself, as with FFmpeg, reaches the screen through a bitmap's
+[`UpdateYUV`](image.md#bitmaps) instead, its frames in Y′CbCr as the
+decoder gives them, which the GPU converts.
 
 ```go
 type frames struct {

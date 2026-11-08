@@ -76,6 +76,34 @@ shown as it comes due, with animated GIFs and PNGs out of the box; video
 files and streams play with the system's media engine (`ui/video`), their
 frames staying on the GPU.
 
+`UpdateYUV` shows a frame of video in Y′CbCr, as decoders give it, without
+converting it to RGBA. A `ui.YUVImage` holds its planes, each in rows of
+its stride: NV12's luma, then its chroma with Cb and Cr interleaved, as
+hardware decoders leave them, or I420's luma, Cb and Cr, as software
+decoders do; with the matrix that converts them (`ui.BT601`, `ui.BT709` or
+`ui.BT2020`) and whether they take the full range. The GPU uploads the
+planes, 1.5 bytes a pixel against RGBA's 4, and converts them as it
+samples them, which leaves the CPU nothing to convert, most of what
+showing a frame otherwise costs it. The planes are taken without a copy,
+but for I420's chroma, which the bitmap interleaves into a plane of its
+own: leave them as they are until the next update.
+
+```go
+win.Update(func() {
+	app.video.UpdateYUV(&ui.YUVImage{
+		Format: ui.NV12, Width: 1920, Height: 1080,
+		Planes:  [3][]byte{luma, chroma},
+		Strides: [3]int{lumaStride, chromaStride},
+		Matrix:  ui.BT709,
+	})
+})
+```
+
+Such a frame shows at its size, which the GPU scales as it samples it,
+without the halved copies a bitmap shown much smaller than its size gets:
+have the decoder give the size the frame shows at, where it can. The CPU
+renderer, and captures, convert the frame as they draw it.
+
 `Pixelated` draws a bitmap shown larger than its pixels as squares of
 their colors, as pixel art and game sprites are drawn, where it would
 blend neighbors smoothly. At whole multiples of its size each pixel is a

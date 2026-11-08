@@ -3049,7 +3049,12 @@ either.
   GL uploads NV12 planes, 1.5 bytes a pixel, or in browsers the element,
   GPU to GPU. NV12 is converted in the shaders' YUV image class (the
   matrix in the instance's params, the chroma in texture slot 10 or 11),
-  which the CPU renderer samples the same way (`raster.sampleNV12`). The
+  which the CPU renderer samples the same way (`raster.sampleNV12`).
+  `Bitmap.UpdateYUV` shows an app's own frames so (`YUVImage.surface`):
+  NV12's planes as they are, and I420's with its Cb and Cr interleaved
+  into a plane of NV12's chroma that the bitmap keeps, a quarter of the
+  frame's bytes, so that the renderers and their shaders know one layout
+  of planes. The
   window asks for the next picture with `After` at the engine's interval,
   or an engine that knows when one comes (GStreamer's appsink, the
   element's `requestVideoFrameCallback`) wakes it (`Engine.SetWake`),
