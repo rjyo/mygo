@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 	"unicode"
+	"unicode/utf16"
 )
 
 // The language of a text decides the glyphs of the scripts it writes,
@@ -25,7 +26,13 @@ import (
 // a user of English Windows who reads Chinese lists it among their
 // preferred languages. Han characters in no language that writes them take
 // the first of those that does (userHanLanguage), as Chromium takes the
-// first of its accepted languages.
+// first of its accepted languages. Windows keeps two such lists: the
+// display languages (GetUserPreferredUILanguages), only those whose
+// language pack is installed, and the languages of Settings > Time &
+// language > Language & region, which may list Chinese below English
+// without its pack (#1479). The first is read first, the second where it
+// has none (resolveUserHanLanguage), and both only once a text has Han
+// characters in no language that writes them, which most apps' never do.
 
 // writesHan reports whether a language writes Han characters: Chinese,
 // with its languages of other codes, Japanese and Korean.
@@ -168,6 +175,42 @@ func userHanLanguage(locale string, preferred []string) string {
 		}
 	}
 	return ""
+}
+
+// resolveUserHanLanguage returns userHanLanguage of the user's locale and
+// the first of the lists of their preferred languages that has one that
+// writes Han characters, reading each list only when those before it have
+// none, and reading none when the locale writes them.
+func resolveUserHanLanguage(locale string, lists ...func() []string) string {
+	if writesHan(locale) {
+		return ""
+	}
+	for _, list := range lists {
+		if lang := userHanLanguage(locale, list()); lang != "" {
+			return lang
+		}
+	}
+	return ""
+}
+
+// splitMultiString returns the strings of a list in UTF-16, each ending
+// in a NUL and the list in another (REG_MULTI_SZ, and the MUI's lists of
+// languages), skipping empty ones; a last string without its NUL counts.
+func splitMultiString(buf []uint16) []string {
+	var out []string
+	start := 0
+	for i, c := range buf {
+		if c == 0 {
+			if i > start {
+				out = append(out, string(utf16.Decode(buf[start:i])))
+			}
+			start = i + 1
+		}
+	}
+	if start < len(buf) {
+		out = append(out, string(utf16.Decode(buf[start:])))
+	}
+	return out
 }
 
 func spansHaveLang(spans []Span) bool {

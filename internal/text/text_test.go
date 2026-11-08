@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 	"unicode"
+	"unicode/utf16"
 
 	"github.com/egoist/mygo/internal/scene"
 	"github.com/egoist/mygo/internal/wait"
@@ -1389,10 +1390,73 @@ func TestLangRuns(t *testing.T) {
 		{"en-US", []string{"en-US"}, ""},
 		{"en-US", nil, ""},
 		{"zh-CN", []string{"en-US", "ja-JP"}, ""},
+		{"en-US", []string{"en-US", "zh-Hant-TW", "zh-Hans-CN"}, "zh-Hant-TW"},
+		{"en-GB", []string{"en-GB", "ko-KR", "ja-JP"}, "ko-KR"},
+		{"de-DE", []string{"fr-FR", "ja", "zh-Hans"}, "ja"},
+		{"ja-JP", []string{"en-US", "zh-Hans-CN"}, ""},
 	} {
 		if got := userHanLanguage(c.locale, c.preferred); got != c.want {
 			t.Errorf("userHanLanguage(%q, %q) = %q, want %q", c.locale, c.preferred, got, c.want)
 		}
+	}
+	for _, s := range [][]uint16{nil, {0}, {0, 0}} {
+		if got := splitMultiString(s); got != nil {
+			t.Errorf("splitMultiString(%v) = %q", s, got)
+		}
+	}
+	for _, c := range []struct {
+		list string
+		want []string
+	}{
+		{"en-US\x00zh-Hans-CN\x00\x00", []string{"en-US", "zh-Hans-CN"}},
+		{"en-US\x00\x00\x00\x00", []string{"en-US"}},
+		{"ja-JP\x00ko", []string{"ja-JP", "ko"}},
+	} {
+		if got := splitMultiString(utf16.Encode([]rune(c.list))); !slices.Equal(got, c.want) {
+			t.Errorf("splitMultiString(%q) = %q, want %q", c.list, got, c.want)
+		}
+	}
+}
+
+// Windows lists the user's display languages apart from the languages of
+// their profile: English Windows with Simplified Chinese second among the
+// languages of Settings, without its language pack, has en-US alone for
+// the first and en-US and zh-Hans-CN for the second (#1479). Han
+// characters take the first list's first language that writes them, else
+// the second's, and a list is read only when needed.
+func TestResolveUserHanLanguage(t *testing.T) {
+	for _, c := range []struct {
+		locale       string
+		ui, profile  []string
+		want         string
+		readsUI      bool
+		readsProfile bool
+	}{
+		// #1479: the display languages have no Chinese, the profile has.
+		{"en-US", []string{"en-US"}, []string{"en-US", "zh-Hans-CN"}, "zh-Hans-CN", true, true},
+		// #1454: the display languages have Chinese already.
+		{"en-US", []string{"en-US", "zh-Hans-CN"}, []string{"en-US", "ja-JP", "zh-Hans-CN"}, "zh-Hans-CN", true, false},
+		{"en-US", nil, []string{"en-GB", "zh-Hant-TW", "zh-Hans-CN"}, "zh-Hant-TW", true, true},
+		{"en-US", []string{"en-US"}, []string{"en-US", "ja-JP", "zh-Hans-CN"}, "ja-JP", true, true},
+		{"en-US", []string{"en-US"}, []string{"en-US", "ko-KR", "ja-JP"}, "ko-KR", true, true},
+		// No list has a language writing Han characters, or none is read.
+		{"en-US", []string{"en-US"}, []string{"en-US", "fr-FR"}, "", true, true},
+		{"en-US", nil, nil, "", true, true},
+		// A locale writing Han characters reads no list.
+		{"zh-CN", []string{"en-US"}, []string{"en-US", "ja-JP"}, "", false, false},
+		{"ja-JP", nil, []string{"en-US", "zh-Hans-CN"}, "", false, false},
+	} {
+		var readUI, readProfile bool
+		got := resolveUserHanLanguage(c.locale,
+			func() []string { readUI = true; return c.ui },
+			func() []string { readProfile = true; return c.profile })
+		if got != c.want || readUI != c.readsUI || readProfile != c.readsProfile {
+			t.Errorf("resolveUserHanLanguage(%q, %q, %q) = %q, reading the display languages %v and the profile's %v; want %q, %v and %v",
+				c.locale, c.ui, c.profile, got, readUI, readProfile, c.want, c.readsUI, c.readsProfile)
+		}
+	}
+	if got := resolveUserHanLanguage("en-US"); got != "" {
+		t.Errorf("resolveUserHanLanguage without lists = %q", got)
 	}
 	for lang, want := range map[string]bool{"zh-Hant": true, "ja_JP": true, "ko": true, "yue": true, "en": false, "vi": false, "": false} {
 		if writesHan(lang) != want {

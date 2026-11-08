@@ -5,6 +5,7 @@ package text
 import (
 	"maps"
 	"slices"
+	"strings"
 	"syscall"
 	"testing"
 	"unsafe"
@@ -72,8 +73,9 @@ func TestDWriteUserHanLanguage(t *testing.T) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	e := s.engine().(*dwrite)
-	saved := e.han
-	defer func() { e.han = saved }()
+	saved, savedRead := e.han, e.hanRead
+	defer func() { e.han, e.hanRead = saved, savedRead }()
+	e.hanRead = true // e.han as set below, not as the user's settings say
 	texts := []string{"我们的音乐播放器正在播放周杰伦的歌曲", "这是一个中文标签，看看字重是否一致。", "Hello 世界 说话 东西"}
 	// hanFamilies returns the families of the runs of Han characters of
 	// text in a style and spans.
@@ -123,6 +125,39 @@ func TestDWriteUserHanLanguage(t *testing.T) {
 		}
 		if got := hanFamilies(text, Style{Size: 13, Lang: "en"}, []Span{{End: 100, Lang: "ja"}}); !maps.Equal(got, wantSpan) {
 			t.Errorf("a Japanese span %q is drawn in %v, %v without the user's Chinese", text, slices.Sorted(maps.Keys(got)), slices.Sorted(maps.Keys(wantSpan)))
+		}
+	}
+}
+
+// The user's language for Han characters is read the first time a text
+// has Han characters in no language that writes them, never for others'
+// (#1479), and the languages of the user's profile read as Windows lists
+// them.
+func TestDWriteUserHanLazy(t *testing.T) {
+	s := newSystem()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e := s.engine().(*dwrite)
+	for _, p := range []struct {
+		text  string
+		style Style
+	}{{"Hello, world", Style{Size: 13}}, {"日本語", Style{Size: 13, Lang: "ja"}}, {"中文", Style{Size: 13, Lang: "zh-Hans"}}} {
+		e.resetScratch()
+		e.shapeText([]rune(p.text), p.style, nil, 0, false, false)
+		if e.hanRead {
+			t.Fatalf("%q in %+v read the user's language for Han characters", p.text, p.style)
+		}
+	}
+	e.resetScratch()
+	e.shapeText([]rune("Hello 世界"), Style{Size: 13, Lang: "en"}, nil, 0, false, false)
+	if !e.hanRead {
+		t.Errorf("Han characters in English did not read the user's language for them")
+	}
+	profile := userProfileLanguages()
+	t.Logf("locale %s, display languages %q, profile languages %q: Han characters in %q", syscall.UTF16ToString(e.locale), preferredLanguages(), profile, syscall.UTF16ToString(e.han))
+	for _, lang := range profile {
+		if lang == "" || strings.ContainsRune(lang, 0) {
+			t.Errorf("profile languages %q have %q", profile, lang)
 		}
 	}
 }

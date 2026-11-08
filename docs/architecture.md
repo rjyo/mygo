@@ -1538,8 +1538,16 @@ by itself. DirectWrite's choice goes by the locale of the user's regional
 formats (`GetUserDefaultLocaleName`), whose fallback for English mixes Yu
 Gothic UI and Microsoft JhengHei UI in one Chinese text: where that locale
 writes no Han characters, they take the first of the user's preferred
-languages that does (`userHanRuns`, `userHanLanguage`), read once with
-`GetUserPreferredUILanguages`.
+languages that does (`userHanRuns`, `userHanLanguage`), read once, the
+first time a text has Han characters in no language that writes them
+(`dwrite.userHan`), so that apps without them read nothing: the display
+languages (`GetUserPreferredUILanguages`), else the languages of the
+user's profile, which list languages without their language pack too, as
+Chinese below English on English Windows (`resolveUserHanLanguage`). The
+profile's are read from the registry (`HKCU\Control Panel\International\User
+Profile`, value `Languages`), where Windows keeps what
+`GlobalizationPreferences.Languages` returns, in microseconds and on any
+thread, rather than through the Windows Runtime.
 
 WebView2's environment takes the language through
 `ICoreWebView2EnvironmentOptions`, a COM object of ours
