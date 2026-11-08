@@ -131,6 +131,8 @@ your own tells it with these, as ARIA's states do on the web:
 | `Orientation(o)` | which way a slider, separator, splitter, toolbar, tab list or menu of your own runs: `ui.Vertical` or `ui.Horizontal` ([below](#orientation)) |
 | `DescribedBy(e)`, `Invalid(on)`, `ErrorMessage(e)` | the element `e` whose text describes it, that its value is not valid, and the element holding its error ([below](#descriptions-and-errors)) |
 | `Multiselectable(on)` | that the user chooses several of the items of a list, grid, tree or tree grid of your own |
+| `ReadOnly(on)` | that an element of your own shows a value the user cannot change, as `aria-readonly`: a text box, combo box, check box, switch, slider, stepper, radio group, list box, grid or tree grid, and the cells and headers of a grid or tree grid (not of a table); assistive technology then neither sets nor steps its value. It is `AXValue` not settable on macOS, ATK's `read-only` state and UI Automation's `IsReadOnly` |
+| `Multiline(on)` | that a text box of your own (`RoleTextField`) takes several lines, as `aria-multiline` |
 | `RowCount(n)`, `ColumnCount(n)` | how many rows and columns a table or grid has, built or not |
 | `RowIndex(i)`, `ColumnIndex(i)` | which of all the rows a row or a cell is in, and which of all the columns a cell is in, from 1 |
 

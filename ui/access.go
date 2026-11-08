@@ -965,6 +965,12 @@ func (rt *engine) accessDetails(e *node, n *platform.AccessNode) {
 	if st := e.st; (st.vw <= 0 || st.vh <= 0) && e.w > 0 && e.h > 0 {
 		n.States |= platform.AccessOffscreen
 	}
+	// An element of your own that shows a value it does not let the user
+	// change says so (ReadOnly), also while it is disabled.
+	readOnly := e.readOnly && e.reportsReadOnly(n.Role)
+	if readOnly {
+		n.States |= platform.AccessReadOnly
+	}
 	if disabled {
 		return
 	}
@@ -1003,20 +1009,20 @@ func (rt *engine) accessDetails(e *node, n *platform.AccessNode) {
 			n.SelStart, n.SelEnd = ed.selection()
 		}
 	}
-	// A text box of your own, with no editor of MyGo's, says what it is
-	// (Role, ReadOnly, Multiline).
-	if n.Role == platform.RoleTextField && (e.st.editor == nil || e.flags&flagEditable == 0) {
-		if e.readOnly {
-			n.States |= platform.AccessReadOnly
-		}
-		if e.multiline {
-			n.States |= platform.AccessMultiline
-		}
+	// A text box of your own, with no editor of MyGo's, says it takes
+	// several lines (Multiline).
+	if n.Role == platform.RoleTextField && e.multiline && (e.st.editor == nil || e.flags&flagEditable == 0) {
+		n.States |= platform.AccessMultiline
 	}
 	// Custom text clients without an editor take set-value here; inputs and
 	// text areas with an editor follow the editor branch above.
 	if e.textClient != nil && (e.st == nil || e.st.editor == nil || e.flags&flagEditable == 0) && n.States&platform.AccessReadOnly == 0 {
 		n.Actions |= platform.ActionSetValue
+	}
+	if readOnly {
+		// Its value is not settable (Core-AAM's aria-readonly): not by
+		// assistive technology's set-value, increment and decrement.
+		n.Actions &^= platform.ActionSetValue | platform.ActionIncrement | platform.ActionDecrement
 	}
 	if e.accFill != nil {
 		e.accFill(n)
@@ -1026,6 +1032,36 @@ func (rt *engine) accessDetails(e *node, n *platform.AccessNode) {
 	if e.st.accessDisabled {
 		n.Actions &= platform.ActionFocus | platform.ActionScrollIntoView
 	}
+}
+
+// reportsReadOnly reports whether an element that shows a role of
+// platform r tells assistive technology that it is read-only (ReadOnly),
+// the roles ARIA's aria-readonly is supported on, with the cells, row
+// headers and column headers of a grid or a tree grid, which a table's do
+// not have. A control of MyGo's own, with its behavior, decides for itself,
+// as a text box with an editor of MyGo's does.
+func (e *node) reportsReadOnly(r platform.AccessRole) bool {
+	if r == platform.RoleTextField {
+		return e.st.editor == nil || e.flags&flagEditable == 0
+	}
+	if e.widget != "" {
+		return false
+	}
+	switch r {
+	case platform.RoleComboBox, platform.RoleCheckBox, platform.RoleSwitch, platform.RoleSlider, platform.RoleStepper,
+		platform.RoleRadioGroup, platform.RoleGrid, platform.RoleTreeGrid:
+		return true
+	case platform.RoleList:
+		return e.role == RoleListBox
+	case platform.RoleCell, platform.RoleColumnHeader, platform.RoleRowHeader:
+		// A cell of a table is only a cell; of a grid, a grid cell.
+		for p := e.parent; p != nil; p = p.parent {
+			if tabular(p.role) {
+				return p.role != RoleTable
+			}
+		}
+	}
+	return false
 }
 
 // accessRelations fills in what describes a node: the elements whose

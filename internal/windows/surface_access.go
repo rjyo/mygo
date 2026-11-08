@@ -1097,7 +1097,8 @@ func initUIA() {
 		setValue,
 		rangeOf(rangeValue),
 		cb(func(this, p uintptr) uintptr { // get_IsReadOnly
-			setBool(p, uiaOf(this).n.Actions&platform.ActionIncrement == 0)
+			n := uiaOf(this).n
+			setBool(p, n.Actions&platform.ActionIncrement == 0 || n.States&platform.AccessReadOnly != 0)
 			return sOK
 		}),
 		rangeOf(func(n platform.AccessNode) float64 { return n.Max }),
@@ -1122,7 +1123,8 @@ func initUIA() {
 			return sOK
 		}),
 		cb(func(this, p uintptr) uintptr { // get_IsReadOnly
-			setBool(p, uiaOf(this).n.Actions&platform.ActionSetValue == 0)
+			n := uiaOf(this).n
+			setBool(p, n.Actions&platform.ActionSetValue == 0 || n.States&platform.AccessReadOnly != 0)
 			return sOK
 		}),
 	)

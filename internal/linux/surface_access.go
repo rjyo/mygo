@@ -767,6 +767,12 @@ func stateList(n platform.AccessNode, focused bool) []int32 {
 			list = append(list, st.singleLine)
 		}
 	}
+	// Read-only is a state of the other roles aria-readonly is for too;
+	// Core-AAM maps it to STATE_READ_ONLY alone. The text roles above
+	// have it.
+	if n.States&platform.AccessReadOnly != 0 && n.Role != platform.RoleTextField && n.Role != platform.RoleComboBox {
+		list = append(list, st.readOnly)
+	}
 	// A toggle button is checked while pressed, as GTK's are.
 	if n.States&platform.AccessChecked != 0 && n.Role != platform.RoleTab && n.Role != platform.RoleTreeItem && n.Role != platform.RoleRow && n.Role != platform.RoleListItem &&
 		(!cellRole(n.Role) || n.States&platform.AccessSelectable == 0) {

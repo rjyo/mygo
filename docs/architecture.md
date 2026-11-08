@@ -2801,7 +2801,16 @@ either.
   keys. A read-only text input is
   `AccessReadOnly`, without `ActionSetValue`; a text box of your own (`Role(RoleTextField)`
   with no editor of MyGo's) says so through `ReadOnly` and `Multiline`
-  (aria-readonly, aria-multiline), which other roles ignore. AppKit finds an element's
+  (aria-readonly, aria-multiline). `ReadOnly` is reported by the roles
+  aria-readonly is for, on elements without a widget of MyGo's behind them:
+  text box, combo box, check box, switch, slider, stepper, radio group,
+  list box, grid and tree grid, and the cells and headers inside a grid or
+  tree grid (`reportsReadOnly`, the nearest `tabular` ancestor decides; a
+  table's cells do not have it). Such a node has no `ActionSetValue`,
+  `ActionIncrement`, `ActionDecrement` (nor `ActionPress` on a check box
+  or switch); ATK adds `read-only` to the states of any role with
+  `AccessReadOnly`, UI Automation's `IsReadOnly` follows the state, and
+  AppKit's `AXValue` is not settable. AppKit finds an element's
   value settable when its class overrides the setter, whatever
   `isAccessibilitySelectorAllowed:` says, so elements answer the older
   `accessibilityIsAttributeSettable:` themselves, as AppKit would but for

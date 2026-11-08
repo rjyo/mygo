@@ -1136,7 +1136,7 @@ func registerAccessClass() {
 		// NSAccessibilityElement does not answer (calling super throws):
 		// AppKit's answer without it is the attributes of the setters the
 		// class overrides, AXValue, AXFocused and a row's AXDisclosing,
-		// kept but for the value of a read-only text field, which is not
+		// kept but for the value of a read-only element, which is not
 		// settable, as WebKit's.
 		method("accessibilityIsAttributeSettable:", func(self id, _ objc.SEL, attr id) bool {
 			el := b().accessElementOf(self)
@@ -1145,6 +1145,11 @@ func registerAccessClass() {
 			}
 			switch stringOf(attr) {
 			case "AXValue":
+				// Nor is the value of anything read-only (aria-readonly),
+				// as Core-AAM maps it.
+				if el.node.States&platform.AccessReadOnly != 0 {
+					return false
+				}
 				return !textual(el.node.Role) || el.node.Actions&platform.ActionSetValue != 0
 			case "AXSelectedText":
 				return textual(el.node.Role) && el.node.Actions&platform.ActionSetValue != 0

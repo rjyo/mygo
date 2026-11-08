@@ -103,10 +103,16 @@ func (e *node) CaretWidth(width float32) *node {
 // too, as it takes the focus, without a caret; assistive technology reads
 // it as read-only.
 //
-// On an element of the text box role (Role(RoleTextField)) that MyGo does
-// not edit, a widget that draws its text and handles its keys itself, it
-// only tells assistive technology that the text box is read-only, as
-// ARIA's aria-readonly. Other roles ignore it.
+// On an element of your own that MyGo does not edit or operate, a widget
+// that draws its value and handles its keys itself, it only tells
+// assistive technology that the element is read-only, as ARIA's
+// aria-readonly, and takes set-value, increment and decrement from it:
+// for a text box
+// (RoleTextField), combo box, check box, switch, slider, stepper, radio
+// group, list box, grid or tree grid, and for the cells and headers
+// (RoleCell, RoleColumnHeader, RoleRowHeader) of a grid or a tree grid,
+// not of a table. Other roles, and MyGo's own controls but for the text
+// inputs and text areas it is meant for, ignore it.
 func (e *node) ReadOnly(on bool) *node {
 	if ed := e.st.editor; ed != nil && e.flags&flagEditable != 0 {
 		ed.readOnly = on
