@@ -573,16 +573,30 @@ func (t *Tester) HasText(s string) bool {
 // targetCenter checks the named element before sending any input. Labels
 // include clipped boxes, and a visible box may be covered by another control.
 func (t *Tester) targetCenter(s string, button int) (float32, float32, error) {
-	var n *labelNode
+	var firstErr error
 	for i := range t.rt.labels {
-		if t.rt.labels[i].text == s {
-			n = &t.rt.labels[i]
-			break
+		n := &t.rt.labels[i]
+		if n.text != s {
+			continue
+		}
+		// A rich paragraph can have the same text as its only inline link.
+		// Check each named candidate against the actual input target.
+		x, y, err := t.targetLabelCenter(n, button)
+		if err == nil {
+			return x, y, nil
+		}
+		if firstErr == nil {
+			firstErr = err
 		}
 	}
-	if n == nil {
-		return 0, 0, fmt.Errorf("ui: no element shows %q", s)
+	if firstErr != nil {
+		return 0, 0, firstErr
 	}
+	return 0, 0, fmt.Errorf("ui: no element shows %q", s)
+}
+
+func (t *Tester) targetLabelCenter(n *labelNode, button int) (float32, float32, error) {
+	s := n.text
 	r, z := n.r, t.rt.zoomFactor()
 	cx, cy := r.X+r.W/2, r.Y+r.H/2
 	x, y := cx*z, cy*z
