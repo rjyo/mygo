@@ -1301,6 +1301,10 @@ type Power interface {
 	// KeepAwake keeps the system, and with display the display, from
 	// sleeping while idle until release is called.
 	KeepAwake(display bool, reason string) (release func())
+	// KeepRunning keeps the system from slowing the app down while none
+	// of its windows shows, as macOS's App Nap does, until release is
+	// called; it leaves the system free to sleep when idle.
+	KeepRunning(reason string) (release func())
 	OnBattery() bool
 	IdleTime() time.Duration
 }

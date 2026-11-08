@@ -2225,6 +2225,14 @@ func TestPower(t *testing.T) {
 	if runtime.GOOS == "darwin" {
 		eventually(t, "the assertion to go", func() bool { return !strings.Contains(assertions(), reason) })
 	}
+	// KeepRunning keeps App Nap off, and the computer free to sleep: no
+	// assertion keeps it awake.
+	const running = "MyGo e2e keeps running"
+	release = mygo.Power.KeepRunning(running)
+	if runtime.GOOS == "darwin" && strings.Contains(assertions(), running) {
+		t.Error("KeepRunning keeps the computer awake")
+	}
+	release()
 	t.Logf("on battery: %v, idle: %v", mygo.Power.IsOnBattery(), mygo.Power.IdleTime())
 	if idle := mygo.Power.IdleTime(); idle < 0 || runtime.GOOS == "darwin" && idle == 0 {
 		t.Errorf("idle time = %v", idle)

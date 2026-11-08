@@ -42,6 +42,19 @@ func TestPower(t *testing.T) {
 	if n := onMainValue(func() int { return fb.Awake }); n != 0 {
 		t.Errorf("awake after release = %d", n)
 	}
+
+	release = Power.KeepRunning("serving")
+	if n := onMainValue(func() int { return fb.Running }); n != 1 {
+		t.Errorf("running = %d", n)
+	}
+	if n := onMainValue(func() int { return fb.Awake }); n != 0 {
+		t.Errorf("KeepRunning kept the computer awake (%d)", n)
+	}
+	release()
+	release() // once
+	if n := onMainValue(func() int { return fb.Running }); n != 0 {
+		t.Errorf("running after release = %d", n)
+	}
 	if Power.IsOnBattery() || Power.IdleTime() != 42*time.Second {
 		t.Error("IsOnBattery or IdleTime")
 	}

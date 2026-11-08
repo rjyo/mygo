@@ -69,9 +69,10 @@ type Backend struct {
 	UILanguages   []string
 	UIRightToLeft bool
 	// Watching reports whether power events were asked for, Awake counts the
-	// KeepAwake calls not released yet.
+	// KeepAwake calls not released yet, and Running the KeepRunning calls.
 	Watching bool
 	Awake    int
+	Running  int
 	// Playing is what NowPlaying.Set showed last, nil once removed, and
 	// NowPlayingSets counts the calls.
 	Playing        *platform.NowPlayingInfo
@@ -1221,6 +1222,12 @@ func (p power) KeepAwake(display bool, reason string) func() {
 	p.b.Awake++
 	p.b.mu.Unlock()
 	return func() { p.b.mu.Lock(); p.b.Awake--; p.b.mu.Unlock() }
+}
+func (p power) KeepRunning(reason string) func() {
+	p.b.mu.Lock()
+	p.b.Running++
+	p.b.mu.Unlock()
+	return func() { p.b.mu.Lock(); p.b.Running--; p.b.mu.Unlock() }
 }
 func (power) OnBattery() bool         { return false }
 func (power) IdleTime() time.Duration { return 42 * time.Second }

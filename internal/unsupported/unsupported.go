@@ -172,6 +172,7 @@ type power struct{}
 
 func (power) Watch()                        {}
 func (power) KeepAwake(bool, string) func() { return func() {} }
+func (power) KeepRunning(string) func()     { return func() {} }
 func (power) OnBattery() bool               { return false }
 func (power) IdleTime() time.Duration       { return 0 }
 

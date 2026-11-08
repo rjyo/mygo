@@ -391,6 +391,10 @@ is that same JSON, and the generated client types it with mygo-runtime's
 release := mygo.Power.KeepAwake("Exporting the video", false)
 defer release()
 
+// Keep the app at full speed while none of its windows shows.
+stop := mygo.Power.KeepRunning("Serving the phones")
+defer stop()
+
 mygo.Power.OnSuspend(func() { pauseSync() })
 mygo.Power.OnResume(func() { resumeSync() })
 mygo.Power.OnLockScreen(func() { hideSecrets() })
@@ -401,7 +405,19 @@ idle := mygo.Power.IdleTime() // since the last keyboard or mouse input
 ```
 
 The reason given to `KeepAwake` shows where the system lists what keeps it
-awake. On Linux, `OnLockScreen` is called when the screen saver starts,
+awake.
+
+macOS puts an app none of whose windows shows, hidden, minimized, covered
+or behind the locked screen, into App Nap within a minute: it lowers the
+app's priority, coalesces its timers and throttles its I/O, which slows an
+app that serves the network, streams or syncs in the background. A tray
+icon counts as a window that shows while the menu bar shows it.
+`KeepRunning` keeps App Nap off until its release, and lets the computer
+sleep when idle, as an app that stays in the menu bar all day should;
+`KeepAwake` keeps App Nap off too, but the computer awake as well. Other
+systems do nothing for `KeepRunning`.
+
+On Linux, `OnLockScreen` is called when the screen saver starts,
 which usually locks the screen, and `IdleTime` is 0 on desktops that do not
 report it.
 

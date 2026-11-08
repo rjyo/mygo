@@ -615,3 +615,6 @@ func (power) Watch()                        {}
 func (power) KeepAwake(bool, string) func() { return func() {} }
 func (power) OnBattery() bool               { return false }
 func (power) IdleTime() time.Duration       { return 0 }
+
+// KeepRunning does nothing: a page's timers are the browser's to throttle.
+func (power) KeepRunning(string) func() { return func() {} }
