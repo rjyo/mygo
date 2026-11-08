@@ -320,4 +320,13 @@ export const showcase: ShowcaseApp[] = [
     author: "ayuayue",
     mode: "web",
   },
+  {
+    name: "MyVNC",
+    description:
+      "A VNC and Microsoft Remote Desktop viewer for Windows and macOS, rebuilt from TigerVNC. Connecting to a Mac uses its built-in Screen Sharing, so the Mac installs nothing, with a high-performance mode streaming HEVC or H.264 at the source frame rate and file transfer both ways.",
+    url: "https://github.com/si-mods/MyVNC",
+    author: "si-mods",
+    mode: "native",
+    image: "/showcase/myvnc.jpg",
+  },
 ]
