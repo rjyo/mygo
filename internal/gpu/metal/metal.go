@@ -99,8 +99,11 @@ const (
 	blendOneMinusSrc1A     = 18
 	filterLinear           = 1
 	statusError            = 5
-	layerWidthSizable      = 1 << 1
-	layerHeightSizable     = 1 << 4
+	// commandBufferErrorTimeout is MTLCommandBufferErrorTimeout, the code
+	// of a frame the watchdog killed because the GPU never finished it.
+	commandBufferErrorTimeout = 2
+	layerWidthSizable         = 1 << 1
+	layerHeightSizable        = 1 << 4
 )
 
 var (
@@ -474,7 +477,10 @@ type Renderer struct {
 	inflight    [ringSize]id
 	slot, inUse int
 	err         error
-	checked     bool
+	// timeout tells that err is a frame the GPU did not finish in time:
+	// the device is still there, but it cannot draw now.
+	timeout bool
+	checked bool
 
 	// lastRender is when the last frame drew; trimTimer trims the
 	// drawables once none has for a while, armed until it fires, and
@@ -1068,7 +1074,11 @@ func (r *Renderer) waitSlot(slot int) {
 	}
 	send(cb, "waitUntilCompleted")
 	if int(send(cb, "status")) == statusError && r.err == nil {
-		r.err = fmt.Errorf("metal: a frame failed: %s", describe(send(cb, "error")))
+		e := send(cb, "error")
+		r.err = fmt.Errorf("metal: a frame failed: %s", describe(e))
+		// A frame the watchdog killed leaves the device wedged rather than
+		// gone: another one submitted now waits the same timeout through.
+		r.timeout = e != 0 && int(send(e, "code")) == commandBufferErrorTimeout
 	}
 	release(&r.inflight[slot])
 	r.releaseHeld(slot)
@@ -1654,6 +1664,12 @@ func or(a, b id) id {
 	}
 	return b
 }
+
+// TimedOut reports whether the frame that failed did so because the GPU did
+// not finish it in time, rather than the device going away: the driver is
+// wedged, so a frame submitted now would wait the timeout through again,
+// while the device may draw again a moment later.
+func (r *Renderer) TimedOut() bool { return r.timeout }
 
 // Render draws s into the layer and presents it.
 func (r *Renderer) Render(s *scene.Scene) (err error) {

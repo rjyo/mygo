@@ -581,16 +581,28 @@ func (h *windowHost) screenWide() bool {
 // render draws s with the GPU renderer and reports whether it did. One
 // that fails gives way to another made at once, in case the GPU is back
 // already, or another, or Windows' software rasterizer, can draw; when
-// that fails too, frames are drawn in memory until a later try.
+// that fails too, frames are drawn in memory until a later try. A frame
+// the GPU did not finish in time is the exception: the driver is wedged,
+// so it is drawn in memory and the GPU left alone until the wait is over.
 func (h *windowHost) render(s *scene.Scene) bool {
 	for try := 0; h.gpu != nil; try++ {
-		err := h.gpu.Render(s)
+		g := h.gpu
+		err := g.Render(s)
 		if err == nil {
 			return true
 		}
 		log.Printf("mygo: drawing without the GPU: %v", err)
-		h.gpu.Release()
+		g.Release()
 		h.gpu = nil
+		if t, ok := g.(interface{ TimedOut() bool }); ok && t.TimedOut() {
+			// A frame submitted now would wait the same timeout through,
+			// and the window would show nothing all the while.
+			if time.Since(h.gpuSince) > time.Minute {
+				h.backoff = 0
+			}
+			h.retryLater()
+			return false
+		}
 		if try > 0 {
 			h.retryLater()
 			return false

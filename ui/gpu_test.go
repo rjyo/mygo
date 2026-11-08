@@ -115,6 +115,54 @@ func TestGPUComesBack(t *testing.T) {
 	}
 }
 
+// timingOutGPU is a GPU renderer whose frames the GPU does not finish in
+// time: the device is not gone, it is wedged.
+type timingOutGPU struct{ testGPU }
+
+func (g *timingOutGPU) TimedOut() bool { return g.fail }
+
+func TestFrameTimeoutDrawsInMemory(t *testing.T) {
+	var made []*timingOutGPU
+	h, s, frame := gpuHost(t, func() (gpuRenderer, error) {
+		g := &timingOutGPU{}
+		made = append(made, g)
+		return g, nil
+	})
+	frame()
+	if len(made) != 1 || made[0].frames != 1 || s.pixels != 0 {
+		t.Fatalf("first frame: %d renderers, %d frames in memory", len(made), s.pixels)
+	}
+
+	// The GPU does not finish the frame in time. It draws in memory, and
+	// no other renderer is made in the same frame: a frame submitted to a
+	// wedged driver waits the timeout through again.
+	made[0].fail = true
+	frame()
+	if made[0].released != 1 || len(made) != 1 {
+		t.Fatalf("after a timeout: released %d, %d renderers", made[0].released, len(made))
+	}
+	if s.pixels != 1 {
+		t.Fatalf("after a timeout: %d frames in memory, want 1", s.pixels)
+	}
+	if h.backoff != time.Second || h.retryAt.IsZero() {
+		t.Fatalf("after a timeout: wait %v, retry at %v", h.backoff, h.retryAt)
+	}
+
+	// Frames before the wait is over draw in memory, and the GPU is left
+	// alone.
+	frame()
+	if len(made) != 1 || s.pixels != 2 {
+		t.Fatalf("during the wait: %d renderers, %d frames in memory", len(made), s.pixels)
+	}
+
+	// Once the wait is over, a frame tries the GPU again.
+	h.retryAt = time.Now()
+	frame()
+	if len(made) != 2 || made[1].frames != 1 || s.pixels != 2 {
+		t.Fatalf("once the wait is over: %d renderers, %d frames in memory", len(made), s.pixels)
+	}
+}
+
 func TestSoftwareUntilTheGPUIsBack(t *testing.T) {
 	onGPU := true
 	var gpus []*testGPU
