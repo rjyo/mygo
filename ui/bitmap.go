@@ -13,6 +13,7 @@ import (
 	_ "golang.org/x/image/bmp"  // DecodeBitmap
 	_ "golang.org/x/image/webp" // DecodeBitmap
 
+	"github.com/egoist/mygo/internal/media"
 	"github.com/egoist/mygo/internal/scene"
 )
 
@@ -46,6 +47,9 @@ type Bitmap struct {
 	// nothing, for ReleasePixels to convert it again from (#1281). nil for
 	// an image of a type of its own, and other bitmaps.
 	source func() image.Image
+	// videoPix are the pixels a frame of video was converted into, for
+	// the next (showPicture).
+	videoPix []byte
 }
 
 // Pixelated draws the bitmap's pixels as squares of their colors where it
@@ -164,7 +168,7 @@ func (b *Bitmap) Update(img image.Image) {
 		}
 	}
 	s := scene.NewImage(img)
-	if s.W == b.img.W && s.H == b.img.H {
+	if s.W == b.img.W && s.H == b.img.H && b.img.Surface == nil {
 		b.img.Pix = s.Pix
 		b.img.Changed()
 	} else {
@@ -172,6 +176,34 @@ func (b *Bitmap) Update(img image.Image) {
 		b.w, b.h = s.W, s.H
 		b.levels = nil
 	}
+	b.fresh = 0
+}
+
+// showPicture shows a frame of video where a system's decoder left it, in
+// place of the bitmap's picture: renderers sample its surface, and those
+// that need pixels convert it (Picture.RGBA), into a buffer the bitmap
+// keeps for the next frame.
+func (b *Bitmap) showPicture(pic media.Picture) {
+	b.remake, b.source, b.released = nil, nil, false
+	img := b.img
+	if img.W != pic.W || img.H != pic.H || img.Surface == nil {
+		img = scene.NewImageRGBA(pic.W, pic.H, nil)
+		b.img, b.w, b.h, b.levels = img, pic.W, pic.H, nil
+	}
+	img.Surface = pic.Surface
+	if img.Pix != nil {
+		b.videoPix = img.Pix
+	}
+	img.Pix, img.Dropped = nil, nil
+	convert := pic.RGBA
+	img.Restore = func() []byte {
+		if convert == nil {
+			return nil
+		}
+		b.videoPix = convert(b.videoPix)
+		return b.videoPix
+	}
+	img.Changed()
 	b.fresh = 0
 }
 
@@ -256,6 +288,9 @@ func (b *Bitmap) imageSize() (float32, float32) {
 func (b *Bitmap) smaller(shrink float32) *scene.Image {
 	if b.img.Scene != nil {
 		return b.img // a canvas, whose pixels the GPU keeps
+	}
+	if b.img.Surface != nil {
+		return b.img // a frame of video, where its decoder left it
 	}
 	if shrink < 2 {
 		return b.img

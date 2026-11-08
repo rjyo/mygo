@@ -475,6 +475,10 @@ type Image struct {
 	// nil for images that keep their pixels.
 	Restore func() []byte
 	Dropped func()
+	// Surface, unless nil, is a frame of video that renderers sample where
+	// a decoder left it, rather than upload Pix (see Surface); Restore
+	// converts it for those that need Pix.
+	Surface *Surface
 }
 
 // NewCanvas returns a w×h image that renderers draw from a scene of its

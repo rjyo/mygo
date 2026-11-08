@@ -153,3 +153,36 @@ func TestPresentsFramesDrawnInMemory(t *testing.T) {
 		})
 	}
 }
+
+// TestDrawsVideoAsTheCPURenderer draws frames of video in NV12 from their
+// planes, which the shader converts as the CPU renderer does.
+func TestDrawsVideoAsTheCPURenderer(t *testing.T) {
+	for _, api := range apis {
+		t.Run(api.name, func(t *testing.T) {
+			s := gputest.VideoScene()
+			read := offscreen(t, api.es, s.Width, s.Height)
+			r, err := New()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer r.Release()
+			// Twice: the second frame updates the planes in place.
+			for i := range 2 {
+				for _, op := range s.Ops {
+					op.Image.Changed()
+				}
+				if err := r.Render(s); err != nil {
+					t.Fatal(err)
+				}
+				gputest.Compare(t, "gl-video", read(), s.Width*4, s)
+				if i == 0 {
+					for _, op := range s.Ops {
+						if t := r.images[op.Image.ID()]; t == nil || t.chroma == 0 {
+							panic("a frame of video drew from RGBA, not its planes")
+						}
+					}
+				}
+			}
+		})
+	}
+}

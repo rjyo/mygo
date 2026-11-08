@@ -38,3 +38,49 @@ func benchRender(b *testing.B, s *scene.Scene) {
 		}
 	}
 }
+
+// BenchmarkVideoFrameRGBA draws a new 1920×1080 frame of video each
+// frame the way video drew before frames had surfaces: converted to RGBA
+// on the CPU (as a decoder in Go would, or the CPU renderer does) and
+// uploaded, 8 MB a frame.
+func BenchmarkVideoFrameRGBA(b *testing.B) {
+	img := gputest.NV12Frame(1920, 1080, scene.BT709)
+	rgb := scene.NewImageRGBA(1920, 1080, nil)
+	s := videoBenchScene(rgb)
+	benchVideo(b, s, func() {
+		rgb.Pix = img.Surface.RGBA(rgb.Pix, 1920, 1080)
+		rgb.Changed()
+	})
+}
+
+// BenchmarkVideoFrameNV12 draws a new 1920×1080 frame of video each frame
+// from its NV12 planes, as GStreamer leaves them: 3 MB uploaded, and
+// converted in the shader.
+func BenchmarkVideoFrameNV12(b *testing.B) {
+	img := gputest.NV12Frame(1920, 1080, scene.BT709)
+	s := videoBenchScene(img)
+	benchVideo(b, s, img.Changed)
+}
+
+func videoBenchScene(img *scene.Image) *scene.Scene {
+	return &scene.Scene{Width: 1280, Height: 720, Clear: scene.Color{A: 255}, Ops: []scene.Op{{
+		Kind: scene.OpImage, Rect: scene.Rect{W: 1280, H: 720}, Image: img, Src: scene.Rect{W: 1920, H: 1080},
+	}}}
+}
+
+func benchVideo(b *testing.B, s *scene.Scene, next func()) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	o, err := NewOffscreen(false, s.Width, s.Height)
+	if err != nil {
+		b.Skip(err)
+	}
+	defer o.Release()
+	b.SetBytes(1920 * 1080 * 4)
+	for b.Loop() {
+		next()
+		if _, err := o.Render(s); err != nil {
+			b.Fatal(err)
+		}
+	}
+}

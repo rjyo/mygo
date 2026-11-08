@@ -189,6 +189,11 @@ type engine struct {
 	noLayoutCache   bool
 
 	states map[uint64]*state
+	// videos are the videos of system engines the frame being built
+	// shows, shownVideos those the last one showed, and videoSweep the
+	// frame that last compared them (sweepVideos).
+	videos, shownVideos []*videoEngine
+	videoSweep          uint64
 	// free are states pruned, which new elements take: rows coming into
 	// a list's view take those of rows that went out of it.
 	free  []*state
@@ -1260,6 +1265,7 @@ func (rt *engine) close() {
 	}
 	rt.host.afterTimer(time.Time{})
 	rt.host.repaintTimer(time.Time{})
+	rt.releaseVideos()
 	// Last, with the engine closed: a Close that asks for a frame, or reads
 	// the window, finds it closed rather than half so.
 	rt.closeLocals()
@@ -1289,6 +1295,9 @@ func (rt *engine) dropFrame() {
 // during it.
 func (rt *engine) endFrame() {
 	rt.inFrame = false
+	if !rt.closing && !rt.closed {
+		rt.sweepVideos()
+	}
 	if rt.closing {
 		rt.close() // which closes the Locals the frame dropped too
 	} else if len(rt.dropped) > 0 {

@@ -30,6 +30,21 @@ func SystemDir() string {
 // or, when there is none, with Windows' software rasterizer (WARP), which
 // software reports. The caller releases the device and the context.
 func New() (device, context uintptr, software bool, err error) {
+	return create(0)
+}
+
+// NewForVideo is New for a device that decodes and converts video, as
+// Media Foundation's: one that supports Direct3D's video API where the
+// GPU has it, else as New.
+func NewForVideo() (device, context uintptr, software bool, err error) {
+	const videoSupport = 0x800
+	if d, c, sw, err := create(videoSupport); err == nil {
+		return d, c, sw, nil
+	}
+	return create(0)
+}
+
+func create(flags uintptr) (device, context uintptr, software bool, err error) {
 	if err := procD3D11CreateDevice.Find(); err != nil {
 		return 0, 0, false, err
 	}
@@ -39,7 +54,7 @@ func New() (device, context uintptr, software bool, err error) {
 	var hr uintptr
 	for _, driver := range []uintptr{hardware, warp} {
 		var level uint32
-		hr, _, _ = procD3D11CreateDevice.Call(0, driver, 0, bgraSupport,
+		hr, _, _ = procD3D11CreateDevice.Call(0, driver, 0, bgraSupport|flags,
 			uintptr(unsafe.Pointer(&levels[0])), uintptr(len(levels)), 7,
 			uintptr(unsafe.Pointer(&device)), uintptr(unsafe.Pointer(&level)), uintptr(unsafe.Pointer(&context)))
 		if int32(uint32(hr)) >= 0 {

@@ -188,9 +188,23 @@ ClassPS classps(ClassOut i) {
 	[branch] if (kind > 2.5 && kind < 3.5) {
 		res = colorTex.SampleLevel(samp, i.pt.zw, 0) * i.color.a;
 	} else if (kind > 3.5 && kind < 4.5) {
-		res = sampleImage(imageTex, i.pt.zw, i.widths, i.params.z, dtex);
-		if (i.params.y > 0.5) {
-			res.rgb = dot(res.rgb, float3(0.2126, 0.7152, 0.0722));
+		[branch] if (i.params.y > 1.5) {
+			// A frame of video: its luma and its chroma, converted.
+			float code = i.params.y - 2;
+			float gray = code > 7.5 ? 1 : 0;
+			float2 cs = chromaScale();
+			res = float4(yuvToRGB(sampleImage(imageTex, i.pt.zw, i.widths, i.params.z, dtex).r,
+								  sampleImage(chromaTex, i.pt.zw * cs, i.widths * cs.xyxy, i.params.z, dtex * cs).rg,
+								  code - 8 * gray),
+						 1);
+			if (gray > 0.5) {
+				res.rgb = dot(res.rgb, float3(0.2126, 0.7152, 0.0722));
+			}
+		} else {
+			res = sampleImage(imageTex, i.pt.zw, i.widths, i.params.z, dtex);
+			if (i.params.y > 0.5) {
+				res.rgb = dot(res.rgb, float3(0.2126, 0.7152, 0.0722));
+			}
 		}
 		res = tint(res, i.color) * rectCoverage(p, i.rect, i.radii);
 	}

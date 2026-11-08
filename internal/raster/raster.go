@@ -1532,7 +1532,12 @@ func sampleOp(op *scene.Op, u, v, du, dv float32) [4]float32 {
 	if op.Pixelated {
 		u, v = pixelated(u, du), pixelated(v, dv)
 	}
-	c := sample(op.Image, u, v, unflipped(op.Src))
+	var c [4]float32
+	if s := op.Image.Surface; s != nil && s.Format == scene.SurfaceNV12 && s.Planes[1].Pix != nil {
+		c = sampleNV12(op.Image, s, u, v, unflipped(op.Src))
+	} else {
+		c = sample(op.Image, u, v, unflipped(op.Src))
+	}
 	if op.Grayscale {
 		l := 0.2126*c[0] + 0.7152*c[1] + 0.0722*c[2]
 		c[0], c[1], c[2] = l, l, l
@@ -1572,6 +1577,34 @@ func pixelated(t, d float32) float32 {
 }
 
 func abs32(v float32) float32 { return float32(math.Abs(float64(v))) }
+
+// sampleNV12 reads a frame of video in NV12 at (u, v) as the GPU
+// renderers' shaders do: its luma and its chroma each with bilinear
+// filtering, clamped to src, the chroma covering twice its size in luma,
+// then converted to RGB (scene.YUVMatrix.YUVToRGB).
+func sampleNV12(img *scene.Image, s *scene.Surface, u, v float32, src scene.Rect) [4]float32 {
+	cw, ch := (img.W+1)/2, (img.H+1)/2
+	plane := func(p scene.Plane, w, h, bpp, k int, u, v float32, src scene.Rect) float32 {
+		// Clamped to the centers of the texels at src's edges.
+		u = min(max(u-0.5, src.X), src.X+src.W-1)
+		v = min(max(v-0.5, src.Y), src.Y+src.H-1)
+		x0, y0 := int(math.Floor(float64(u))), int(math.Floor(float64(v)))
+		tx, ty := u-float32(x0), v-float32(y0)
+		at := func(x, y int) float32 {
+			x, y = max(0, min(x, w-1)), max(0, min(y, h-1))
+			return float32(p.Pix[y*p.Stride+bpp*x+k])
+		}
+		top := at(x0, y0)*(1-tx) + at(x0+1, y0)*tx
+		bot := at(x0, y0+1)*(1-tx) + at(x0+1, y0+1)*tx
+		return (top*(1-ty) + bot*ty) / 255
+	}
+	y := plane(s.Planes[0], img.W, img.H, 1, 0, u, v, src)
+	csrc := scene.Rect{X: src.X / 2, Y: src.Y / 2, W: src.W / 2, H: src.H / 2}
+	cb := plane(s.Planes[1], cw, ch, 2, 0, u/2, v/2, csrc)
+	cr := plane(s.Planes[1], cw, ch, 2, 1, u/2, v/2, csrc)
+	r, g, b := s.Matrix.YUVToRGB(y, cb, cr)
+	return [4]float32{r, g, b, 1}
+}
 
 // sample reads a premultiplied pixel at (u, v) with bilinear filtering,
 // clamped to src.

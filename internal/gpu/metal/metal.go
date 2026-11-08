@@ -341,7 +341,12 @@ func need(obj id, what string, methods ...string) error {
 }
 
 type texture struct {
-	tex       id
+	tex id
+	// chroma is the texture of the chroma of a frame of video in NV12,
+	// whose luma tex is, and cv the CVMetalTextures tex and chroma wrap,
+	// owned, for a frame in a CVPixelBuffer (see video.go).
+	chroma    id
+	cv        [2]uintptr
 	w, h      int
 	gen, ver  uint64
 	lastFrame uint64
@@ -449,6 +454,7 @@ type Renderer struct {
 	color  texture
 	empty  id // a texture to bind where there is none
 	images map[uint64]*texture
+	video  videoState
 	// canvases are the textures canvases are drawn into.
 	canvases map[uint64]*canvasTexture
 	// blurred are the textures of the images the frame draws blurred
@@ -967,7 +973,16 @@ func (r *Renderer) imageTexture(img *scene.Image) uintptr {
 		}
 		return 0
 	}
+	if s := img.Surface; s != nil && (s.Native != 0 || s.Format == scene.SurfaceNV12 && s.Planes[1].Pix != nil) {
+		return r.surfaceTexture(img, s)
+	}
 	t := r.images[img.ID()]
+	if t != nil && (t.chroma != 0 || t.cv != [2]uintptr{}) {
+		// It showed a frame of video, and no longer does.
+		r.dropTexture(t)
+		delete(r.images, img.ID())
+		t = nil
+	}
 	if t == nil {
 		pix := img.Pixels()
 		if pix == nil {
@@ -1022,6 +1037,7 @@ func (r *Renderer) waitSlot(slot int) {
 		r.err = fmt.Errorf("metal: a frame failed: %s", describe(send(cb, "error")))
 	}
 	release(&r.inflight[slot])
+	r.releaseHeld(slot)
 }
 
 // waitLast waits for the GPU to finish the frames in flight, so that this
@@ -1160,8 +1176,9 @@ func (r *Renderer) build(cb id, s *scene.Scene, d *drawState) (*scene.Scene, err
 	d.b.ClipSkip = true
 	d.b.SplitCorners() // only Metal's shader draws continuous corners
 	d.b.BlurredImage = func(img *scene.Image, bk scene.Backdrop) uintptr { return r.blurImage(cb, img, bk) }
+	d.b.Chroma = r.chromaTexture
 	s = d.b.Build(s, r.imageTexture)
-	d.b.BlurredImage = nil
+	d.b.BlurredImage, d.b.Chroma = nil, nil
 	if err := r.syncStops(d); err != nil {
 		return nil, err
 	}
@@ -1277,6 +1294,9 @@ func (r *Renderer) drawBuilt(cb id, s *scene.Scene, target id, d *drawState, par
 		if b.Image != 0 && b.Image != st.image {
 			st.image = b.Image
 			msg2(enc, selSetFragmentTexture, st.image, 2)
+			if b.Chroma != 0 {
+				msg2(enc, selSetFragmentTexture, b.Chroma, 10)
+			}
 		}
 		if clip := or(id(b.ClipMask), r.empty); clip != st.clip {
 			st.clip = clip
@@ -1394,6 +1414,7 @@ func (r *Renderer) begin(cb, target id, load uintptr, s *scene.Scene, b *gpu.Bui
 	send(enc, "setFragmentTexture:atIndex:", r.empty, 2)
 	send(enc, "setFragmentTexture:atIndex:", r.empty, 3)
 	send(enc, "setFragmentTexture:atIndex:", or(r.stopsTex, r.empty), 9)
+	send(enc, "setFragmentTexture:atIndex:", r.empty, 10) // chroma (gpu.Batch.Chroma)
 	return enc, nil
 }
 
@@ -1837,7 +1858,7 @@ func (r *Renderer) releaseTextures() {
 	release(&r.mask.tex)
 	release(&r.color.tex)
 	for key, t := range r.images {
-		release(&t.tex)
+		r.dropTexture(t)
 		delete(r.images, key)
 	}
 	for key, t := range r.canvases {
@@ -1982,6 +2003,7 @@ func (r *Renderer) Release() {
 			release(&r.layer)
 		}
 		r.releaseTextures()
+		r.releaseVideo()
 		r.ages.Reset()
 		release(&r.empty)
 		release(&r.sampler)
@@ -2038,7 +2060,7 @@ func (r *Renderer) sweepIfDue() {
 func (r *Renderer) sweep() {
 	for key, t := range r.images {
 		if r.frame-t.lastFrame > 240 {
-			release(&t.tex)
+			r.dropTexture(t)
 			delete(r.images, key)
 		}
 	}

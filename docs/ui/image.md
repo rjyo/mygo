@@ -72,7 +72,9 @@ go func() {
 ```
 
 [`ui.Video`](video.md) plays a video's frames so, decoded ahead and each
-shown as it comes due, with animated GIFs out of the box.
+shown as it comes due, with animated GIFs and PNGs out of the box; video
+files and streams play with the system's media engine (`ui/video`), their
+frames staying on the GPU.
 
 `Pixelated` draws a bitmap shown larger than its pixels as squares of
 their colors, as pixel art and game sprites are drawn, where it would

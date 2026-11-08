@@ -409,6 +409,24 @@ float textCoverage(float a, float3 c, float contrast, float boost, float4 g) {
 // above.
 #ifndef EFFECT
 
+// yuvToRGB converts the samples of a frame of video in YCbCr to RGB, as
+// scene.YUVMatrix.YUVToRGB does: m is the matrix, 0 to 2 for BT.601, 709
+// and 2020 in the limited range, plus 3 for the full range.
+float3 yuvToRGB(float y, float2 c, float m) {
+	float full = m > 2.5f ? 1.0f : 0.0f;
+	float std = m - 3.0f * full;
+	float2 k = std < 0.5f ? float2(0.299f, 0.114f) : std < 1.5f ? float2(0.2126f, 0.0722f) : float2(0.2627f, 0.0593f);
+	c -= 128.0f / 255.0f;
+	if (full < 0.5f) {
+		y = (y - 16.0f / 255.0f) * (255.0f / 219.0f);
+		c *= 255.0f / 224.0f;
+	}
+	float r = y + 2.0f * (1.0f - k.x) * c.y;
+	float b = y + 2.0f * (1.0f - k.y) * c.x;
+	float g = (y - k.x * r - k.y * b) / (1.0f - k.x - k.y);
+	return saturate(float3(r, g, b));
+}
+
 // subpixelCoverage does the same for each subpixel of a subpixel glyph.
 float3 subpixelCoverage(float3 a, float3 c, float contrast, float boost, float4 g) {
 	float k = contrast * saturate(3.0f - 4.0f * dot(c, float3(0.30f, 0.59f, 0.11f))) + boost;
@@ -633,7 +651,7 @@ fragment PSOut ps(VSOut v [[stage_in]], const device Inst *insts [[buffer(0)]],
 				  constant float4 &globals [[buffer(1)]], texture2d<float> maskTex [[texture(0)]],
 				  texture2d<float> colorTex [[texture(1)]], texture2d<float> imageTex [[texture(2)]],
 				  texture2d<float> clipTex [[texture(4)]], texture2d<float> stopsTex [[texture(9)]],
-				  sampler samp [[sampler(0)]]) {
+				  texture2d<float> chromaTex [[texture(10)]], sampler samp [[sampler(0)]]) {
 	Inst i = insts[v.inst];
 	float2 dtex = fwidth(v.tex);
 	float kind = i.params.x;
@@ -692,9 +710,27 @@ fragment PSOut ps(VSOut v [[stage_in]], const device Inst *insts [[buffer(0)]],
 		} else if (kImage && kind < 3.5f) {
 			res = sampleLocal(colorTex, samp, v.tex, i.uv, i.transform0.w) * i.color.a * glyphCov;
 		} else if (kImage && kind < 4.5f) {
-			res = sampleImage(imageTex, samp, v.tex, i.uv, i.params.z, dtex);
-			if (i.params.y > 0.5f) {
-				res.rgb = float3(dot(res.rgb, float3(0.2126f, 0.7152f, 0.0722f)));
+			if (i.params.y > 1.5f) {
+				// A frame of video: its luma and its chroma (texture 10),
+				// converted.
+				float code = i.params.y - 2.0f;
+				float gray = code > 7.5f ? 1.0f : 0.0f;
+				// The chroma covers twice its size in luma, a column or
+				// row more than an odd size has.
+				float2 cs = float2(imageTex.get_width(), imageTex.get_height()) /
+							(2.0f * float2(chromaTex.get_width(), chromaTex.get_height()));
+				res = float4(yuvToRGB(sampleImage(imageTex, samp, v.tex, i.uv, i.params.z, dtex).r,
+									  sampleImage(chromaTex, samp, v.tex * cs, i.uv * cs.xyxy, i.params.z, dtex * cs).rg,
+									  code - 8.0f * gray),
+							 1.0f);
+				if (gray > 0.5f) {
+					res.rgb = float3(dot(res.rgb, float3(0.2126f, 0.7152f, 0.0722f)));
+				}
+			} else {
+				res = sampleImage(imageTex, samp, v.tex, i.uv, i.params.z, dtex);
+				if (i.params.y > 0.5f) {
+					res.rgb = float3(dot(res.rgb, float3(0.2126f, 0.7152f, 0.0722f)));
+				}
 			}
 			res = tint(res, i.color) * localCoverage(v.p, i.rect, i.radii, i.transform0.w, fr);
 		} else if (kSubpixel) {

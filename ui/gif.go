@@ -57,11 +57,24 @@ func (d *gifDecoder) Next() (VideoFrame, error) {
 	}
 	d.draw(g.Image[i])
 	d.next++
-	delay := 100 * time.Millisecond
+	return VideoFrame{Image: d.pic, Duration: gifDelay(g, i)}, nil
+}
+
+// gifDelay is how long frame i shows: 100 ms for 10 ms or less.
+func gifDelay(g *gif.GIF, i int) time.Duration {
 	if i < len(g.Delay) && g.Delay[i] > 1 {
-		delay = time.Duration(g.Delay[i]) * 10 * time.Millisecond
+		return time.Duration(g.Delay[i]) * 10 * time.Millisecond
 	}
-	return VideoFrame{Image: d.pic, Duration: delay}, nil
+	return 100 * time.Millisecond
+}
+
+// Duration is the length of the animation, for the player's Duration.
+func (d *gifDecoder) Duration() time.Duration {
+	var t time.Duration
+	for i := range d.g.Image {
+		t += gifDelay(d.g, i)
+	}
+	return t
 }
 
 func (d *gifDecoder) Rewind() error {

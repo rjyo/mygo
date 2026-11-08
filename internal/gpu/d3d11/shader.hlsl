@@ -261,6 +261,38 @@ float textCoverage(float a, float3 c, float contrast, float boost, float4 g) {
 // above.
 #ifndef EFFECT
 
+// The chroma of an image that is a frame of video in NV12, whose luma
+// imageTex holds (gpu.ImageYUV).
+Texture2D chromaTex : register(t11);
+
+// chromaScale is what scales coordinates of the luma to those of the
+// chroma, which covers twice its size in luma: a column or row more than
+// an odd size has.
+float2 chromaScale() {
+	uint lw, lh, cw, ch;
+	imageTex.GetDimensions(lw, lh);
+	chromaTex.GetDimensions(cw, ch);
+	return float2(lw, lh) / (2 * float2(cw, ch));
+}
+
+// yuvToRGB converts the samples of a frame of video in YCbCr to RGB, as
+// scene.YUVMatrix.YUVToRGB does: m is the matrix, 0 to 2 for BT.601, 709
+// and 2020 in the limited range, plus 3 for the full range.
+float3 yuvToRGB(float y, float2 c, float m) {
+	float full = m > 2.5 ? 1 : 0;
+	float std = m - 3 * full;
+	float2 k = std < 0.5 ? float2(0.299, 0.114) : std < 1.5 ? float2(0.2126, 0.0722) : float2(0.2627, 0.0593);
+	c -= 128.0 / 255.0;
+	if (full < 0.5) {
+		y = (y - 16.0 / 255.0) * (255.0 / 219.0);
+		c *= 255.0 / 224.0;
+	}
+	float r = y + 2 * (1 - k.x) * c.y;
+	float b = y + 2 * (1 - k.y) * c.x;
+	float g = (y - k.x * r - k.y * b) / (1 - k.x - k.y);
+	return saturate(float3(r, g, b));
+}
+
 // subpixelCoverage does the same for each subpixel of a subpixel glyph.
 float3 subpixelCoverage(float3 a, float3 c, float contrast, float boost, float4 g) {
 	float k = contrast * saturate(3 - 4 * dot(c, float3(0.30, 0.59, 0.11))) + boost;
@@ -515,9 +547,23 @@ PSOut ps(VSOut i) {
 	} else if (kind < 3.5) {
 		res = sampleLocal(colorTex, i.pt.zw, i.widths, i.transform0.w) * i.color.a * glyphCov;
 	} else if (kind < 4.5) {
-		res = sampleImage(imageTex, i.pt.zw, i.widths, i.params.z, dtex);
-		if (i.params.y > 0.5) {
-			res.rgb = dot(res.rgb, float3(0.2126, 0.7152, 0.0722));
+		if (i.params.y > 1.5) {
+			// A frame of video: its luma and its chroma, converted.
+			float code = i.params.y - 2;
+			float gray = code > 7.5 ? 1 : 0;
+			float2 cs = chromaScale();
+			res = float4(yuvToRGB(sampleImage(imageTex, i.pt.zw, i.widths, i.params.z, dtex).r,
+								  sampleImage(chromaTex, i.pt.zw * cs, i.widths * cs.xyxy, i.params.z, dtex * cs).rg,
+								  code - 8 * gray),
+						 1);
+			if (gray > 0.5) {
+				res.rgb = dot(res.rgb, float3(0.2126, 0.7152, 0.0722));
+			}
+		} else {
+			res = sampleImage(imageTex, i.pt.zw, i.widths, i.params.z, dtex);
+			if (i.params.y > 0.5) {
+				res.rgb = dot(res.rgb, float3(0.2126, 0.7152, 0.0722));
+			}
 		}
 		res = tint(res, i.color) * localCoverage(i.pt.xy, i.rect, i.radii, i.transform0.w, fr);
 	} else {
