@@ -314,7 +314,8 @@ export const showcase: ShowcaseApp[] = [
   },
   {
     name: "Ferry",
-    description: "基于 ProxyBridge 的 Windows 按进程代理分流工具，支持有序规则、SOCKS5/HTTP 节点、实时连接和日志。",
+    description:
+      "A per-process proxy router for Windows, built on ProxyBridge, with ordered rules, SOCKS5 and HTTP proxy nodes, and live connections and logs.",
     url: "https://github.com/ayuayue/ferry",
     author: "ayuayue",
     mode: "web",
