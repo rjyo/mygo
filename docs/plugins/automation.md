@@ -281,6 +281,17 @@ never settles, as an indicator that keeps moving, never answers: give
 {"id": 8, "method": "idle", "params": {"window": 1, "timeout": 5000}}
 ```
 
+### Windows out of sight
+
+A window none of which shows, as a hidden or minimized one, one that
+other windows cover, or any while the screen is locked, holds its frames
+until it shows, and its surface may draw none before then: macOS draws
+none for a hidden window, nor for any window while the screen is locked.
+There, requests build the frame the window waits for themselves: `act`
+and `input` take effect at once, as a press does in the frame that
+builds, and `tree`, `capture` and `idle` tell what the window shows now,
+with `idle` waiting for nothing the window would draw once it shows.
+
 ## A client
 
 Any language that opens Unix domain sockets can be a client. A test in

@@ -136,8 +136,9 @@ type windowHost struct {
 	lastFrame time.Time
 	// framing tells that the surface asked for the frame being drawn, and
 	// frameAsked that the content asked the surface for a frame that has
-	// not come yet.
-	framing, frameAsked bool
+	// not come yet; unshown that it asked for it only to show a frame built
+	// outside the surface's, as a capture's, and nothing asked since.
+	framing, frameAsked, unshown bool
 	// told is what accelerated last told the frame being painted, asked
 	// that it did.
 	told, asked bool
@@ -349,7 +350,7 @@ func (h *windowHost) event(ev platform.SurfaceEvent) bool {
 			return true
 		}
 		h.waiting, h.waitingOn = false, nil
-		h.frameAsked = false
+		h.frameAsked, h.unshown = false, false
 		h.framing = true
 		defer func() { h.framing = false }()
 	}
@@ -466,6 +467,7 @@ func (h *windowHost) present(s *scene.Scene) {
 		// A frame built outside the surface's, for a capture, is shown by
 		// the surface's next.
 		h.requestFrame()
+		h.unshown = true
 		return
 	}
 	due := !h.retryAt.IsZero() && !time.Now().Before(h.retryAt)
@@ -682,10 +684,10 @@ func (h *windowHost) retryLater() {
 }
 
 // capture renders the last frame in memory: built now where none was yet,
-// or where one waits for the window to show (holdFrame), so that a window
-// out of sight shows what it shows now.
+// or where one waits for the window to show (holdFrame, waitsOutOfSight),
+// so that a window out of sight shows what it shows now.
 func (h *windowHost) capture() (int, int, []byte) {
-	if h.last == nil || h.rt.held {
+	if h.last == nil || h.rt.held || h.waitsOutOfSight() {
 		h.rt.runFrame()
 	}
 	s := h.last
@@ -696,6 +698,15 @@ func (h *windowHost) capture() (int, int, []byte) {
 	img.Resize(s.Width, s.Height)
 	raster.Render(&img, s)
 	return img.W, img.H, img.RGBA()
+}
+
+// waitsOutOfSight reports whether nothing of the window shows while a
+// frame waits to build: one held until some of it shows (holdFrame), or one
+// asked for, after input or a change, that has not come, which the surface
+// of a window out of sight may draw only once it shows: macOS draws none
+// for a hidden window, nor for any while the screen is locked.
+func (h *windowHost) waitsOutOfSight() bool {
+	return h.occluded() && (h.rt.held || h.frameAsked && !h.unshown)
 }
 
 // fit builds the frame that waits for the window to show, if one does,
@@ -729,7 +740,7 @@ func (h *windowHost) detach() {
 }
 
 func (h *windowHost) requestFrame() {
-	h.frameAsked = true
+	h.frameAsked, h.unshown = true, false
 	h.conn.Surface.RequestFrame()
 }
 

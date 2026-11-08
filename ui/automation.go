@@ -35,4 +35,27 @@ func (a automated) AutomationTree() (*platform.AccessTree, map[uint64]any) {
 	return rt.windowAccess(rt.accessTree()), keys
 }
 
-func (a automated) FramePending() bool { return a.h.frameAsked && !a.h.detached }
+// FramePending reports whether the content asked for a frame that has not
+// come: in a window none of which shows, only one waiting to build
+// (waitsOutOfSight), which Settle builds, as the frames it built wait for
+// the window to show.
+func (a automated) FramePending() bool {
+	h := a.h
+	switch {
+	case h.detached:
+		return false
+	case h.occluded():
+		return h.waitsOutOfSight()
+	}
+	return h.frameAsked
+}
+
+// Settle builds the frame that waits to build in a window none of which
+// shows (waitsOutOfSight), whose surface may draw none before it shows: the
+// view takes the input plugins/automation gave it, as a press, and the
+// plugin reads and captures what the window shows now.
+func (a automated) Settle() {
+	if h := a.h; !h.detached && !h.rt.inFrame && h.waitsOutOfSight() {
+		h.rt.runFrame()
+	}
+}

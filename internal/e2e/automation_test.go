@@ -25,7 +25,8 @@ import (
 // automationApp is the app TestAutomation and TestAutomationCLI drive
 // from another process: a counter, a text field of native UI and a
 // greeting shown while the field has text, and a menu that resets the
-// counter and quits. MYGO_AUTOMATION names its socket.
+// counter and quits. MYGO_AUTOMATION names its socket; with
+// MYGO_E2E_AUTOMATION_HIDDEN set, the window never shows.
 func automationApp() {
 	count, name := 0, ""
 	var w *mygo.Window
@@ -50,7 +51,8 @@ func automationApp() {
 		})
 	}
 	mygo.App.WhenReady(func() {
-		w = mygo.NewWindow(mygo.WindowOptions{Title: "Automation", Width: 400, Height: 300, Content: ui.View(view)})
+		w = mygo.NewWindow(mygo.WindowOptions{Title: "Automation", Width: 400, Height: 300, Content: ui.View(view),
+			Hidden: os.Getenv("MYGO_E2E_AUTOMATION_HIDDEN") != ""})
 	})
 	if err := mygo.App.Run(); err != nil {
 		fmt.Println(err)
@@ -123,8 +125,9 @@ type automationProc struct {
 }
 
 // startAutomationApp starts automationApp listening on a socket of its
-// own, and stops it when the test ends.
-func startAutomationApp(t *testing.T) *automationProc {
+// own, with the environment variables of env too, and stops it when the
+// test ends.
+func startAutomationApp(t *testing.T, env ...string) *automationProc {
 	t.Helper()
 	dir, err := os.MkdirTemp("", "mygo-e2e")
 	if err != nil {
@@ -133,6 +136,7 @@ func startAutomationApp(t *testing.T) *automationProc {
 	p := &automationProc{path: filepath.Join(dir, "app.sock"), exited: make(chan error, 1)}
 	cmd := exec.Command(os.Args[0], "-test.run=^$")
 	cmd.Env = append(os.Environ(), "MYGO_E2E_AUTOMATION_APP=1", "MYGO_AUTOMATION="+p.path)
+	cmd.Env = append(cmd.Env, env...)
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	if err := cmd.Start(); err != nil {
@@ -299,5 +303,88 @@ func TestAutomation(t *testing.T) {
 	app.ended = true
 	if _, err := os.Lstat(path); !os.IsNotExist(err) {
 		t.Errorf("the socket stays: %v", err)
+	}
+}
+
+// TestAutomationOutOfSight drives a window that never shows, as a window
+// behind the locked screen, whose surface draws no frame until it shows
+// on macOS: a press, a click, a change the app makes and a capture build
+// the frame they wait for, so that the press is taken, and the tree, idle
+// and the capture tell what the window shows now.
+func TestAutomationOutOfSight(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("elsewhere a hidden window counts as one that shows, and only a minimized one as out of sight")
+	}
+	app := startAutomationApp(t, "MYGO_E2E_AUTOMATION_HIDDEN=1")
+	conn := app.dial(t)
+	defer conn.Close()
+	c := &automationClient{t: t, conn: conn, r: bufio.NewReader(conn)}
+	var win struct {
+		ID      int
+		Visible bool
+	}
+	wait.Until(t, "the app's window", func() bool {
+		var res struct {
+			Windows []struct {
+				ID      int
+				Visible bool
+			}
+		}
+		c.must("windows", nil, &res)
+		if len(res.Windows) == 1 {
+			win = res.Windows[0]
+		}
+		return len(res.Windows) == 1
+	})
+	if win.Visible {
+		t.Fatal("the hidden window is visible")
+	}
+	at := map[string]any{"window": win.ID}
+	find := func(role, label string) automationNode {
+		t.Helper()
+		var res struct{ Nodes []automationNode }
+		c.must("tree", at, &res)
+		for _, n := range res.Nodes {
+			if n.Role == role && n.Label == label {
+				return n
+			}
+		}
+		t.Fatalf("no %s %q in %+v", role, label, res.Nodes)
+		return automationNode{}
+	}
+	capture := func() string {
+		t.Helper()
+		var shot struct{ PNG string }
+		c.must("capture", at, &shot)
+		return shot.PNG
+	}
+	idle := map[string]any{"window": win.ID, "timeout": 5000}
+	c.must("idle", idle, nil)
+	add := find("button", "Add")
+	before := capture()
+
+	c.must("act", map[string]any{"window": win.ID, "key": "add", "action": "press"}, nil)
+	c.must("idle", idle, nil)
+	find("text", "Count: 1")
+	if capture() == before {
+		t.Error("the capture after the press shows the window as before it")
+	}
+
+	b := add.Bounds
+	c.must("input", map[string]any{"window": win.ID, "events": []any{
+		map[string]any{"type": "click", "x": b.X + b.Width/2, "y": b.Y + b.Height/2},
+	}}, nil)
+	c.must("idle", idle, nil)
+	find("text", "Count: 2")
+
+	// A change of the app's own, which asks for a frame (Window.Invalidate).
+	before = capture()
+	if _, e := c.call("menu", map[string]any{"window": win.ID, "path": []string{"Test", "Reset"}}); e != nil {
+		t.Fatalf("menu: %s: %s", e.Code, e.Message)
+	}
+	c.must("idle", idle, nil)
+	find("text", "Count: 0")
+	if capture() == before {
+		t.Error("the capture after the reset shows the window as before it")
 	}
 }

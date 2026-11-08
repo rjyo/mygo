@@ -79,6 +79,31 @@ func TestCaptureBuildsHeldFrame(t *testing.T) {
 	}
 }
 
+// TestCaptureBuildsFrameAskedOutOfSight checks that capturing a window out
+// of sight whose surface draws no frame, as macOS's of a hidden window or
+// behind the locked screen, shows what changed since its last frame, which
+// never came; and that a capture after it, with nothing changed, builds
+// nothing more.
+func TestCaptureBuildsFrameAskedOutOfSight(t *testing.T) {
+	o := newOccludedHost(t, false)
+	o.frame()
+	o.s.occluded = true
+	o.count = 1
+	o.rt.changed()
+	if w, _, _ := o.capture(); w == 0 || o.builds != 2 || o.shows() != "1" {
+		t.Fatalf("captured after %d builds, showing %q: the change not built", o.builds, o.shows())
+	}
+	o.capture()
+	if o.builds != 2 {
+		t.Errorf("a capture of what was captured built %d more", o.builds-2)
+	}
+	o.count = 2
+	o.rt.changed()
+	if o.capture(); o.builds != 3 || o.shows() != "2" {
+		t.Errorf("a change after the capture: %d builds, showing %q", o.builds, o.shows())
+	}
+}
+
 // TestHiddenWindowShowsAfterCapture checks that a window made hidden,
 // which is out of sight until shown, still draws its first frame to its
 // surface, and so becomes ready to show, though a capture built a frame

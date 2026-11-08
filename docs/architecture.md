@@ -2990,7 +2990,12 @@ either.
   its window in a video call, see that frame. A frame still builds after
   input (`input`, as keys typed into a key window another app's covers),
   as assistive technology turns on, and for `CapturePage`, which builds
-  the frame waiting; and none waits before the window's first frame
+  the frame waiting, held or asked for and not come
+  (`windowHost.waitsOutOfSight`), as the surfaces of macOS draw none for
+  a hidden window, nor for any behind the locked screen, whose display
+  link does not tick (a frame built outside the surface's asks for one
+  to show it, `unshown`, which builds nothing more); and none waits
+  before the window's first frame
   reached its surface (`windowHost.occluded`), which a window made hidden
   waits for to become ready to show. `Context.WindowHidden` reads
   `occluded`; once a view asked (`hiddenAsked`), `SurfaceHidden`, which
@@ -3297,8 +3302,12 @@ either.
   `AttachContent` (`windowHost.automate`, empty under
   `mygo_noinspector`) hands it each window's `surface.Conn` and a
   `surface.Automated`, which reads the last frame's access tree with
-  the elements' keys (`node.key`, which `rekey` sets too) and tells
-  whether a frame was asked for and has not come (`windowHost.frameAsked`).
+  the elements' keys (`node.key`, which `rekey` sets too), tells
+  whether a frame was asked for and has not come (`windowHost.frameAsked`),
+  and in a window out of sight builds the frame that waits to build there
+  (`Settle`, `windowHost.waitsOutOfSight`), which the surface may draw only
+  once the window shows: the plugin settles before it reads the tree and
+  after it acts or sends input, so that a press reaches the view.
   Only the plugin calls `Automated`'s methods through the interface, so
   apps that don't link it don't link them. Actions and input go to
   `Conn.Event` on the main thread, as the backend's events do; menu items

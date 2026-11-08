@@ -149,9 +149,12 @@ func rectOf(r mygo.Rectangle) rect {
 	return rect{float64(r.X), float64(r.Y), float64(r.Width), float64(r.Height)}
 }
 
+// tree reads the elements the window shows: in a window out of sight, of
+// the frame waiting to build (Automated.Settle), built first.
 func (a *app) tree(id int) (window int, tree *platform.AccessTree, keys map[uint64]any, err error) {
 	err = a.content(id, func(w *mygo.Window, t target) error {
 		window = w.ID()
+		t.content.Settle()
 		tree, keys = t.content.AutomationTree()
 		return nil
 	})
@@ -159,13 +162,16 @@ func (a *app) tree(id int) (window int, tree *platform.AccessTree, keys map[uint
 }
 
 // act gives the content an action of assistive technology, as the
-// backend gives it those of the system's.
+// backend gives it those of the system's. In a window out of sight, the
+// frame that takes it builds at once (Automated.Settle).
 func (a *app) act(id int, ev platform.SurfaceEvent) error {
 	return a.content(id, func(w *mygo.Window, t target) error {
+		t.content.Settle()
 		tree, _ := t.content.AutomationTree()
 		for _, n := range tree.Nodes {
 			if n.ID == ev.ID {
 				t.conn.Event(ev)
+				t.content.Settle()
 				return nil
 			}
 		}
@@ -173,12 +179,14 @@ func (a *app) act(id int, ev platform.SurfaceEvent) error {
 	})
 }
 
-// input gives the content events, as the backend gives it the system's.
+// input gives the content events, as the backend gives it the system's,
+// and in a window out of sight builds the frame that takes them.
 func (a *app) input(id int, evs []platform.SurfaceEvent) error {
 	return a.content(id, func(w *mygo.Window, t target) error {
 		for _, ev := range evs {
 			t.conn.Event(ev)
 		}
+		t.content.Settle()
 		return nil
 	})
 }
@@ -248,6 +256,7 @@ func (a *app) idle(id int, timeout time.Duration) error {
 	for {
 		pending := false
 		err := a.content(id, func(_ *mygo.Window, t target) error {
+			t.content.Settle()
 			pending = t.content.FramePending()
 			return nil
 		})
