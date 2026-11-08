@@ -70,6 +70,12 @@ func TestTrailer(t *testing.T) {
 		}
 		return s.trailer.Ready()
 	})
+	// The trailer is six seconds long, and a slow machine takes most of
+	// them to show its first picture: looping keeps it playing for the
+	// clicks below, where it would end and Pause would show Play, or a
+	// click on the last frame's Pause would play it again.
+	s.trailer.SetLoop(true)
+	tt.Frame()
 	if w, h := s.trailer.Size(); w != 480 || h != 270 {
 		t.Errorf("the trailer is %d×%d", w, h)
 	}
