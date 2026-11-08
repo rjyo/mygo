@@ -159,6 +159,25 @@ func TestUIAArticle(t *testing.T) {
 	}
 }
 
+// A tab panel is a pane that says it is one, no landmark.
+func TestUIATabPanel(t *testing.T) {
+	e := &uiaElement{n: platform.AccessNode{Role: platform.RoleTabPanel, Label: "Settings panel"}}
+	var v variant
+	if e.property(uiaControlTypeProperty, &v); v.Val != 50033 {
+		t.Errorf("control type %d, want Pane", v.Val)
+	}
+	for id, want := range map[int]string{uiaLocalizedControlProperty: "tab panel", uiaAriaRoleProperty: "tabpanel"} {
+		v = variant{}
+		if e.property(id, &v); v.VT != vtBSTR || bstrString(uintptr(v.Val)) != want {
+			t.Errorf("property %d %+v, want %q", id, v, want)
+		}
+	}
+	v = variant{}
+	if e.property(uiaLandmarkTypeProperty, &v); v.VT != vtEmpty {
+		t.Errorf("a tab panel's landmark type %+v, want none", v)
+	}
+}
+
 func TestChildChanges(t *testing.T) {
 	e := func(id uint64) *uiaElement { return &uiaElement{n: platform.AccessNode{ID: id}} }
 	a, b, c, d := e(1), e(2), e(3), e(4)

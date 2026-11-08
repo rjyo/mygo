@@ -12,7 +12,7 @@ import (
 )
 
 // landmarksAndLiveRegions shows a region, a search landmark, an article,
-// a log, a timer, an alert, a toolbar's rule and a table's row header, labelled to be found but for
+// a log, a timer, an alert, a tab panel, a toolbar's rule and a table's row header, labelled to be found but for
 // the rule, which is the toolbar's only child but its buttons.
 func landmarksAndLiveRegions(frames *atomic.Int32) func(c *ui.Context) {
 	return func(c *ui.Context) {
@@ -41,6 +41,9 @@ func landmarksAndLiveRegions(frames *atomic.Int32) func(c *ui.Context) {
 				ui.Divider(c).Role(ui.RoleSeparator)
 				ui.Button(c, "Left")
 			})
+			ui.Column(c).Role(ui.RoleTabPanel).Label("Settings panel").Children(func() {
+				ui.Text(c, "Volume")
+			})
 			ui.Column(c).Role(ui.RoleTable).Label("Prices").Children(func() {
 				ui.Row(c).Role(ui.RoleRow).Children(func() {
 					ui.Text(c, "Apples").Role(ui.RoleRowHeader)
@@ -66,11 +69,11 @@ func TestAccessLandmarksAndLiveRegions(t *testing.T) {
 	want := map[string]map[string]string{
 		"darwin": {"Activity": "AXGroup/AXLandmarkRegion", "Site search": "AXGroup/AXLandmarkSearch",
 			"Post by Ann": "AXGroup/AXDocumentArticle", "Messages": "AXGroup/AXApplicationLog", "Time left": "AXGroup/AXApplicationTimer",
-			"Error": "AXGroup/AXApplicationAlert", "": "AXSplitter", "Apples": "AXCell"},
+			"Error": "AXGroup/AXApplicationAlert", "": "AXSplitter", "Apples": "AXCell", "Settings panel": "AXGroup"},
 		"linux": {"Activity": "landmark", "Site search": "landmark", "Post by Ann": "article", "Messages": "log", "Time left": "timer", "Error": "notification", "": "separator",
-			"Apples": "row header"},
+			"Apples": "row header", "Settings panel": "scroll pane"},
 		"windows": {"Activity": "Group", "Site search": "Group", "Post by Ann": "Group", "Messages": "Group", "Time left": "Group", "Error": "Group", "": "Separator",
-			"Apples": "HeaderItem"},
+			"Apples": "HeaderItem", "Settings panel": "Pane"},
 	}[runtime.GOOS]
 	if want == nil {
 		t.Skipf("no roles to expect on %s", runtime.GOOS)

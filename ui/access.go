@@ -162,6 +162,14 @@ const (
 	//	})
 	RoleDeletion
 	RoleInsertion
+	// RoleTabPanel holds the content of a tab, as ARIA's tabpanel does in
+	// its Tabs pattern: name it after its tab with Label (or LabelledBy,
+	// a text), and have the tab point to it with Controls, so that screen
+	// readers can move between a tab and its content.
+	//
+	//	panel := ui.Column(c).Role(ui.RoleTabPanel).Label("Settings").Children(content)
+	//	tab.Controls(panel)
+	RoleTabPanel
 )
 
 // tabular reports whether elements of a role hold rows of cells: tables,
@@ -559,6 +567,8 @@ func (e *node) accessRole() (platform.AccessRole, bool) {
 		return platform.RoleDeletion, true
 	case RoleInsertion:
 		return platform.RoleInsertion, true
+	case RoleTabPanel:
+		return platform.RoleTabPanel, true
 	default:
 		return platform.AccessRole(e.role - RoleGroup), true
 	}
@@ -598,7 +608,7 @@ func leafRole(r platform.AccessRole) bool {
 		platform.RoleTabList, platform.RoleTable, platform.RoleRow, platform.RoleCell, platform.RoleColumnHeader, platform.RoleRowHeader, platform.RoleTree,
 		platform.RoleListItem, platform.RoleToolbar, platform.RoleRadioGroup, platform.RoleMenu, platform.RoleMenuBar, platform.RoleHeading, platform.RoleNavigation,
 		platform.RoleRegion, platform.RoleLog, platform.RoleTimer, platform.RoleAlert, platform.RoleSearch,
-		platform.RoleArticle, platform.RoleGrid, platform.RoleTreeGrid, platform.RoleDeletion, platform.RoleInsertion:
+		platform.RoleArticle, platform.RoleGrid, platform.RoleTreeGrid, platform.RoleDeletion, platform.RoleInsertion, platform.RoleTabPanel:
 		return false
 	}
 	return true

@@ -304,3 +304,22 @@ func TestTesterAccessAll(t *testing.T) {
 		t.Errorf("Save as Access reads it, %+v, missing", save)
 	}
 }
+
+// TestTesterAccessTabPanel checks that the content of a tab is a tab
+// panel, which its tab points to as the panel it controls.
+func TestTesterAccessTabPanel(t *testing.T) {
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Column(c).Children(func() {
+			tab := ui.ButtonBase(c.Key("tab")).Role(ui.RoleTab).Label("Settings").Children(func() { ui.Text(c, "Settings") })
+			tab.Controls(ui.Column(c).Role(ui.RoleTabPanel).Label("Settings panel").Children(func() {
+				ui.Text(c, "Volume")
+			}))
+		})
+	}, 400, 400)
+	if p := accessOf(t, tt, ui.RoleTabPanel, "Settings panel"); p.Role != ui.RoleTabPanel {
+		t.Errorf("Settings panel: %+v", p)
+	}
+	if tab := accessOf(t, tt, ui.RoleTab, "Settings"); !slices.Equal(tab.Controls, []string{"Settings panel"}) {
+		t.Errorf("Settings tab controls %q", tab.Controls)
+	}
+}

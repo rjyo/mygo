@@ -168,7 +168,7 @@ a column that lays others out has no node, keyed or not. Roles are
 `alertDialog`, `menu`, `menuBar`, `menuItem`, `menuItemCheckBox`,
 `menuItemRadio`, `heading`, `region`, `log`, `timer`, `alert`,
 `separator`, `rowHeader`, `search`, `article`, `navigation`, `grid`,
-`treeGrid`, `deletion` and `insertion`. States are `focusable`, `disabled`,
+`treeGrid`, `deletion`, `insertion` and `tabPanel`. States are `focusable`, `disabled`,
 `checked`, `mixed`, `selected`, `expanded`, `multiline`, `password`,
 `readOnly`, `selectable`, `offscreen`, `multiselectable`, `segment`,
 `search`, `invalid`, `sortAscending`, `sortDescending`, `expandable`,

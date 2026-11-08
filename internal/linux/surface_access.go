@@ -352,6 +352,8 @@ func loadAccessNames() {
 		platform.RoleGrid: {"table"}, platform.RoleTreeGrid: {"tree table", "table"},
 		// Content removed and added (ATK 2.34), as Chromium's del and ins.
 		platform.RoleDeletion: {"content deletion", "panel"}, platform.RoleInsertion: {"content insertion", "panel"},
+		// A tab panel is a scroll pane, as Core-AAM says.
+		platform.RoleTabPanel: {"scroll pane", "panel"},
 	} {
 		atkRoles[r] = role(names...)
 	}
@@ -376,7 +378,7 @@ var xmlRoles = map[platform.AccessRole]string{
 	platform.RoleNavigation: "navigation", platform.RoleRegion: "region", platform.RoleSearch: "search", platform.RoleLog: "log",
 	platform.RoleTimer: "timer", platform.RoleAlert: "alert", platform.RoleStatus: "status",
 	platform.RoleGrid: "grid", platform.RoleTreeGrid: "treegrid",
-	platform.RoleDeletion: "deletion", platform.RoleInsertion: "insertion",
+	platform.RoleDeletion: "deletion", platform.RoleInsertion: "insertion", platform.RoleTabPanel: "tabpanel",
 }
 
 // accessTree is what assistive technology sees of a surface.

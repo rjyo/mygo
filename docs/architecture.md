@@ -2734,7 +2734,11 @@ either.
   `RoleInsertion` (ARIA's deletion and insertion) are `AXGroup` with
   `AXDeleteStyleGroup` and `AXInsertStyleGroup`, ATK's content deletion
   and content insertion with `xml-roles`, and UIA's Text named
-  "deletion" and "insertion"; `HasPopup`
+  "deletion" and "insertion". `RoleTabPanel` (ARIA's tabpanel, the
+  content a tab's `Controls` points to) is `AXGroup` with the role
+  description "tab panel", ATK's scroll pane with
+  `xml-roles:tabpanel`, and UIA's Pane with "tab panel" and the
+  tabpanel AriaRole; `HasPopup`
   (`AccessNode.HasPopup`, aria-haspopup) is `AXPopupValue`, answered as
   `AXInvalid` is, with `AXShowMenu` pressing the element, ATK's
   has-popup state and `haspopup` attribute, and UIA's ExpandCollapse

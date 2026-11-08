@@ -158,6 +158,8 @@ var accessRoles = map[platform.AccessRole][2]string{
 	// Content removed and added, as WebKit's del and ins.
 	platform.RoleDeletion:  {"AXGroup", "AXDeleteStyleGroup"},
 	platform.RoleInsertion: {"AXGroup", "AXInsertStyleGroup"},
+	// A tab panel is a group, which its role description names.
+	platform.RoleTabPanel: {"AXGroup", ""},
 }
 
 // orientation returns the NSAccessibilityOrientation of a node, as
@@ -308,6 +310,19 @@ func (el *accessElement) ariaGrid(attr string) int {
 
 // ariaGridAttrs are the attributes ariaGrid answers.
 var ariaGridAttrs = [...]string{"AXARIARowCount", "AXARIAColumnCount", "AXARIARowIndex", "AXARIAColumnIndex"}
+
+// roleDescription is what the node's role is called: what the app says
+// (aria-roledescription), else, for a role AppKit has no name for, the
+// name WAI-ARIA gives it.
+func roleDescription(n platform.AccessNode) string {
+	switch {
+	case n.RoleDescription != "":
+		return n.RoleDescription
+	case n.Role == platform.RoleTabPanel:
+		return "tab panel"
+	}
+	return ""
+}
 
 func roleOf(n platform.AccessNode) (role, subrole string) {
 	r := accessRoles[n.Role]
@@ -884,8 +899,8 @@ func registerAccessClass() {
 		// What the app calls the element's role, as WebKit says
 		// aria-roledescription, else AppKit's name of it.
 		method("accessibilityRoleDescription", func(self id, cmd objc.SEL) id {
-			if el := b().accessElementOf(self); el != nil && el.node.RoleDescription != "" {
-				return nsString(el.node.RoleDescription)
+			if el := b().accessElementOf(self); el != nil && roleDescription(el.node) != "" {
+				return nsString(roleDescription(el.node))
 			}
 			return sendSuper(self, "MyGoAccessibilityElement", cmd)
 		}),
@@ -949,7 +964,7 @@ func registerAccessClass() {
 					more = append(more, "AXColumnHeaderUIElements")
 				}
 			}
-			if el.node.RoleDescription != "" {
+			if roleDescription(el.node) != "" {
 				more = append(more, "AXRoleDescription")
 			}
 			// What describes it (Description, DescribedBy, ErrorMessage),
@@ -1049,8 +1064,8 @@ func registerAccessClass() {
 				// answer here leaves out though accessibilityRoleDescription
 				// gives it.
 				case "AXRoleDescription":
-					if el.node.RoleDescription != "" {
-						return nsString(el.node.RoleDescription)
+					if roleDescription(el.node) != "" {
+						return nsString(roleDescription(el.node))
 					}
 				case "AXSelected":
 					if cell(el.node.Role) && chooses(el.node) {

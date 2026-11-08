@@ -42,6 +42,7 @@ func TestAccessLiveRegionAttributes(t *testing.T) {
 		{"Messages", map[string]string{"xml-roles": "log", "live": "polite", "container-live": "polite", "container-live-role": "log", "atomic": "false"}},
 		{"Hi", map[string]string{"container-live": "polite", "container-live-role": "log", "container-relevant": "additions text"}},
 		{"Time left", map[string]string{"xml-roles": "timer"}},
+		{"Settings panel", map[string]string{"xml-roles": "tabpanel"}},
 		{"Error", map[string]string{"xml-roles": "alert", "live": "assertive", "atomic": "true"}},
 		{"Name is required", map[string]string{"container-live": "assertive", "container-atomic": "true"}},
 	} {
