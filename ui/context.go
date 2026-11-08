@@ -832,6 +832,9 @@ type state struct {
 	// startX and startY are the offset before frame moveFrame moved it.
 	moveFrame      uint64
 	startX, startY float64
+	// laidX and laidY are the offset the last frame laid the content out
+	// at, where the hits of what is inside are (hoverScrolled).
+	laidX, laidY float64
 	// list is the ListState that placed the rows of a List last.
 	list *ListState
 	// cx, cy, cw and ch are the element's content box, inside its

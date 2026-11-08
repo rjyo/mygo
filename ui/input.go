@@ -231,10 +231,12 @@ func (rt *engine) watchHover(chain []uint64) bool {
 	return false
 }
 
-// rehover makes the elements under the pointer hover after a frame built
-// and laid them out anew, as the row taking the place of one removed: a
-// pointer standing still sends no event that would. It asks for the frame
-// that shows them hovering, which a frame being built cannot.
+// rehover makes the elements under the pointer hover once a frame built
+// and laid them out anew, as the row taking the place of one removed or a
+// row a scroll brought there: a pointer standing still sends no event
+// that would. The frame paints them hovering; it asks for the next to
+// build them so, for what read its hover as it built, which a frame being
+// built cannot.
 func (rt *engine) rehover() {
 	if rt.pressed != nil || rt.scrollDrag.st != nil {
 		// The hover holds the elements under the pointer as the press
@@ -250,8 +252,11 @@ func (rt *engine) rehover() {
 		rt.chain = chain[:0]
 		return
 	}
+	// The element the pointer left looks at its hover too: setHover's
+	// frame is dropped while one is built.
+	watch := rt.watchHover(chain) || rt.watchHover(old)
 	rt.chain = old[:0]
-	if rt.watchHover(chain) {
+	if watch {
 		rt.redraw, rt.repaintDue = false, time.Time{}
 		rt.host.requestFrame()
 	}
@@ -293,6 +298,49 @@ func (rt *engine) unhoverGone() bool {
 	}
 	rt.hover, rt.chain = chain, old[:0]
 	return rt.watchHover(chain) || rt.watchHover(old)
+}
+
+// hoverScrolled makes what a scroll since the last frame brings under the
+// pointer hover before the view builds: what is inside a container that
+// scrolled moves by as much as its offset did, so the last frame's layout,
+// moved by that, tells it, as the row a wheel or a touchpad brings under a
+// pointer standing still. What reads its hover as it builds sees the frame
+// that shows the scroll as it is, rather than as it was until the frame
+// after (rehover), which then has nothing to change and asks for none.
+func (rt *engine) hoverScrolled() {
+	if len(rt.hover) == 0 || !rt.pointerIn || rt.pressed != nil || rt.scrollDrag.st != nil {
+		return
+	}
+	moved := false
+	for _, id := range rt.hover {
+		if s := rt.states[id]; s != nil && (s.scrollX != s.laidX || s.scrollY != s.laidY) {
+			moved = true
+			break
+		}
+	}
+	if !moved {
+		return
+	}
+	chain := rt.chain[:0]
+	for i := len(rt.hits) - 1; i >= 0; i-- {
+		h := &rt.hits[i]
+		if !rt.containsScrolled(h.st, h.r, rt.pointerX, rt.pointerY, true) {
+			continue
+		}
+		for s := h.st; s != nil; s = rt.states[s.parent] {
+			chain = append(chain, s.id)
+			if s.parent == 0 {
+				break
+			}
+		}
+		break
+	}
+	old := rt.hover
+	if !rt.setHover(chain) {
+		rt.chain = chain[:0]
+		return
+	}
+	rt.chain = old[:0]
 }
 
 func (rt *engine) pointerMove(x, y float32) {

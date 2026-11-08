@@ -685,6 +685,9 @@ func (rt *engine) runFrame() {
 	if rt.listDrag != nil {
 		rt.listDrag(rt)
 	}
+	// What the scrolls since the last frame bring under the pointer
+	// hovers as the view builds.
+	rt.hoverScrolled()
 
 	if rt.exitsBuilt {
 		// The last frame's elements stay as they are while this one builds,
@@ -800,6 +803,10 @@ func (rt *engine) runFrame() {
 	if rt.insp.open {
 		rt.insp.snapshot(rt, root)
 	}
+	// What the frame moved under the pointer, as the rows a scroll brings
+	// there, hovers in the frame that shows it: elements pick the look of
+	// their hover as they paint (#1508).
+	rt.rehover()
 	rt.paint(root, w, h, scale)
 	for try := 0; try < 2 && rt.text.Full(); try++ {
 		// The glyph atlas filled up and left some out: make room, keeping
@@ -843,10 +850,10 @@ func (rt *engine) runFrame() {
 		rt.redraw, rt.repaintDue = false, time.Time{}
 		rt.host.requestFrame()
 	}
-	// What the frame moved under the pointer hovers; with the element
-	// pressed gone, as a button showing over a row the pointer left, what
-	// the pointer is over now hovers rather than what it was over as the
-	// press began.
+	// With the element pressed gone (prune), as a button showing over a
+	// row the pointer left, what the pointer is over now hovers rather
+	// than what it was over as the press began, in the frame this asks
+	// for.
 	rt.rehover()
 	rt.armTimer()
 	rt.showMenu()
@@ -1364,6 +1371,7 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 		e.world = e.parent.world.Mul(e.world)
 	}
 	s.world = e.world
+	s.laidX, s.laidY = s.scrollX, s.scrollY
 	s.clips = e.flags&(flagClipX|flagClipY|flagScrollX|flagScrollY) != 0
 	if s.clips {
 		s.clipRect, s.clipRadii = e.clipRect()

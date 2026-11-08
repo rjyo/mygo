@@ -408,11 +408,43 @@ func (s *state) vector(x, y, dx, dy float32) (float32, float32) {
 // (HitTest) and every ancestor's clip, rather than the conservative
 // rectangles used for accessibility and culling.
 func (rt *engine) contains(s *state, r Rect, x, y float32) bool {
+	return rt.containsScrolled(s, r, x, y, false)
+}
+
+// scrolled returns how far in the window the content of s moved since the
+// last frame laid it out, as its offset moved since: the other way.
+func (s *state) scrolled() (dx, dy float32) {
+	ox, oy := float32(s.scrollX-s.laidX), float32(s.scrollY-s.laidY)
+	if ox == 0 && oy == 0 {
+		return 0, 0
+	}
+	if s.rtl {
+		// Right to left, the offset counts from the right.
+		ox = -ox
+	}
+	return s.world.VectorAt(s.x, s.y, -ox, -oy)
+}
+
+// containsScrolled is contains, where scrolled has what is inside scroll
+// containers that scrolled since the last frame laid them out tested
+// where their offsets moved it, as the next frame will lay it out.
+func (rt *engine) containsScrolled(s *state, r Rect, x, y float32, scrolled bool) bool {
+	// How far the containers around s moved it.
+	var sx, sy float32
+	if scrolled && !s.lifted {
+		for p := rt.states[s.parent]; p != nil; p = rt.states[p.parent] {
+			dx, dy := p.scrolled()
+			sx, sy = sx+dx, sy+dy
+			if p.lifted || p.parent == 0 {
+				break
+			}
+		}
+	}
 	m, ok := s.world.Inverse()
 	if !ok {
 		return false
 	}
-	lx, ly := m.Point(x, y)
+	lx, ly := m.Point(x-sx, y-sy)
 	if !r.Contains(lx, ly) || s.selfClips && !roundedContains(s.selfClip, uniformRadii(s.selfRadius), lx, ly) ||
 		s.hitFn != nil && !s.hitFn(lx, ly, Rect{s.x, s.y, s.w, s.h}) {
 		return false
@@ -420,12 +452,18 @@ func (rt *engine) contains(s *state, r Rect, x, y float32) bool {
 	// The clips around an element flying stop at it, as it paints out of
 	// them.
 	for p := rt.states[s.parent]; p != nil && !s.lifted; p = rt.states[p.parent] {
+		if scrolled {
+			// A container's own box, and its clip, stay where they were
+			// as its content scrolls.
+			dx, dy := p.scrolled()
+			sx, sy = sx-dx, sy-dy
+		}
 		if p.clips || p.selfClips {
 			m, ok := p.world.Inverse()
 			if !ok {
 				return false
 			}
-			px, py := m.Point(x, y)
+			px, py := m.Point(x-sx, y-sy)
 			if p.clips && !roundedContains(p.clipRect, p.clipRadii, px, py) ||
 				p.selfClips && !roundedContains(p.selfClip, uniformRadii(p.selfRadius), px, py) {
 				return false
