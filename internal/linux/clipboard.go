@@ -148,8 +148,14 @@ func clipboardTargets() ([]transfer.Format, map[transfer.Format]ptr) {
 		if !slices.Contains(out, f) {
 			out = append(out, f)
 		}
-		// Prefer canonical MIME targets over aliases where both are offered.
-		if targets[f] == 0 || name == string(f) {
+		// Prefer canonical MIME targets over aliases where both are offered,
+		// except for text: a bare text/plain is compound text, whose encoding
+		// escapes characters outside Latin-1 as \uXXXX literals, so the UTF-8
+		// targets always win.
+		switch {
+		case f == transfer.Text && (name == "UTF8_STRING" || name == "text/plain;charset=utf-8"):
+			targets[f] = atom
+		case targets[f] == 0 || (f != transfer.Text && name == string(f)):
 			targets[f] = atom
 		}
 		if f == transfer.URIList && targets[transfer.FileList] == 0 {
