@@ -88,6 +88,7 @@ framework safely. Read it before changing anything under `internal/`.
 │   ├── watchdriver/    the goroutine that runs a backend's file watcher
 │   ├── bridge/         embeds bridge.js, built from packages/bridge
 │   ├── surface/        the connection between a window and its native UI
+│   ├── pacing/         whether frames wait for the display (MYGO_UNCAPPED)
 │   ├── scene/          display lists and glyph atlases, what renderers draw
 │   ├── media/          the contract between ui's VideoPlayer and ui/video's engines
 │   ├── text/           fonts, shaping, line breaking, editing, glyph rasterization
@@ -3189,6 +3190,60 @@ either.
   `MYGO_FRAME_STATS` set, frames slower than its threshold log how long
   each part took, which path drew them, what the process allocated and
   whether the collector ran (`ui/framestats.go`).
+  With `MYGO_UNCAPPED=1`, which `internal/pacing` reads once (`Uncapped`),
+  frames wait for no refresh, for benchmarks, profiling and the least
+  latency (#1496): the next frame asked for starts once the last was
+  presented. Only the frames asked for come sooner, so an idle window
+  still draws nothing. The host holds no frame drawn in memory to the
+  refreshes (`refreshPresented`) and counts every surface's frames as
+  coming at once (`framesAtOnce`), so `Painter.AnimationFrameRate` keeps
+  its pace with the repaint timer; the backends and renderers each skip
+  their own wait: Direct3D's swap chain has no frame latency object, three
+  buffers and, where DXGI allows it, tearing, and presents every frame
+  with sync interval 0, without `waitComposed` or `waitRefresh`
+  (`internal/gpu/d3d11/uncapped.go`); macOS draws each frame from a
+  timer firing at once (`surface.frameSoon`), not the display link, into
+  a CAMetalLayer whose `displaySyncEnabled` is off; Linux tells GTK's frame
+  clock a refresh interval of a microsecond (`paceFrameClock`) and, on X11,
+  sets the GLX swap interval of the window GDK paints to 0
+  (`gl.UnsyncGLXSwaps`); browsers keep requestAnimationFrame's pace. On
+  Windows a live resize presents paced, from the window's first change of
+  size until the swap chain settles (`presentsUncapped`): no tearing, a
+  frame of a new size waiting for DWM to show it and the others for the
+  composition that shows each, as uncapped frames queued for DWM while it
+  resized the window, and one present took 2 s. Each of those waits is
+  bounded, the frame of a new size's at two refreshes, with DwmFlush called
+  on another thread (`waitShown`): called on the main thread within
+  `SetWindowPos`, it was the one wait with no bound when a present took
+  2 s at the start or end of a resize the app made. Nor does Present wait
+  long then: with no frame latency object to tell when the swap chain has
+  room, Present waited for it on the main thread, and a frame redrawn in
+  part still took 2 s in 2 resizes of 12, most likely queued behind
+  buffers DWM held. While resizing, frames present with
+  `DXGI_PRESENT_DO_NOT_WAIT`, tried for a refresh at most (`showSoon`);
+  one Present still refuses waits, unpresented, for the next composition
+  while the main thread takes its messages, or gives way to the next frame
+  drawn (`holdFrame`, `presentHeld`). One still not taken after `maxHeld`
+  (100 ms) presents without the flag, waiting as long as DXGI has it, on
+  another goroutine (`presentAside`, `goAside`), and until DXGI takes a
+  frame at once with the swap chain settled (`gaveUp`), frames stay paced
+  with the flag and the buffers resize, to settle or to grow, on another
+  goroutine too (`resizeAside`). Meanwhile the main thread makes no call
+  to the context nor the swap chain: a frame drawn then is put off, the
+  frame after waits (`Ready`), `Release` waits for the call (2 s at
+  most), and once it returned the frame after draws, or the window is
+  asked for one (`askFrame`). A resize's last frame held for good otherwise left nothing
+  drawing; dropping it and drawing on had the settle frame take 994 ms on
+  the main thread, in `ResizeBuffers` or a plain Present; and putting such
+  frames off until DXGI took one with the flag and an event query said the
+  GPU was done, waiting on nothing (0338404), put every frame off for good
+  in 4 resizes of 70: nothing the app did without waiting ended DXGI's
+  refusal, while the call that waited did, so such a call is now made, off
+  the main thread. Uncapped, the refresh period is read from DWM on
+  another goroutine (`readPeriodAside`).
+  With `MYGO_FRAME_STATS` too, the engine logs how many frames came each
+  second (`frameStats.rate`), counted anew after a pause or a frame as long
+  (250 ms), and each frame's path says uncapped.
 - **Video of the system's media framework** (`ui/video`,
   `ui/engine_video.go`, `internal/media`, `scene.Surface`). A
   `media.Engine` plays one video: AVFoundation's `AVPlayer` with an

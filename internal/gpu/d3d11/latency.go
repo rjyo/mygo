@@ -181,17 +181,26 @@ func (c *frameCost) add(cost time.Duration) {
 // readPeriod reads the display's refresh period from the window manager; it
 // stays what it was when that fails.
 func (c *frameCost) readPeriod() {
+	if p := dwmPeriod(); p != 0 {
+		c.period = p
+	}
+}
+
+// dwmPeriod returns the display's refresh period as the window manager
+// tells it, 0 when it does not; tests replace it.
+var dwmPeriod = func() time.Duration {
 	// DWM_TIMING_INFO, packed: its size, then the refresh rate's numerator and
 	// denominator.
 	var info [292]byte
 	*(*uint32)(unsafe.Pointer(&info[0])) = uint32(len(info))
 	if hr, _, _ := procDwmGetCompositionTimingInfo.Call(0, uintptr(unsafe.Pointer(&info[0]))); failed(hr) {
-		return
+		return 0
 	}
 	num, den := *(*uint32)(unsafe.Pointer(&info[4])), *(*uint32)(unsafe.Pointer(&info[8]))
-	if num != 0 && den != 0 {
-		c.period = time.Duration(float64(time.Second) * float64(den) / float64(num))
+	if num == 0 || den == 0 {
+		return 0
 	}
+	return time.Duration(float64(time.Second) * float64(den) / float64(num))
 }
 
 var (

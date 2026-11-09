@@ -131,6 +131,34 @@ func TestRate(t *testing.T) {
 	}
 }
 
+// TestAnyFrameRate checks that the steps keep the game's rate, and alpha
+// its place between them, whatever the frames' rate: under the steps', at
+// a display's, and far over it, as frames uncapped (MYGO_UNCAPPED) come.
+// A second of frames runs 60 steps, and alpha, from 0 to 1, grows from
+// frame to frame between two steps.
+func TestAnyFrameRate(t *testing.T) {
+	for _, every := range []time.Duration{20 * time.Millisecond, 6250 * time.Microsecond, time.Millisecond, 100 * time.Microsecond} {
+		g := &stepper{}
+		now := time.Unix(1000, 0)
+		tt := gameTester(t, g, &now)
+		steps, alpha := g.steps, g.alpha
+		for range time.Second / every {
+			now = now.Add(every)
+			tt.Frame()
+			if g.alpha < 0 || g.alpha >= 1 {
+				t.Fatalf("frames every %v: alpha %v", every, g.alpha)
+			}
+			if g.steps == steps && g.alpha <= alpha {
+				t.Fatalf("frames every %v: alpha went from %v to %v within a step", every, alpha, g.alpha)
+			}
+			steps, alpha = g.steps, g.alpha
+		}
+		if g.steps != Rate {
+			t.Errorf("frames every %v: %d steps in a second, want %d", every, g.steps, Rate)
+		}
+	}
+}
+
 var red = ui.RGB(255, 0, 0)
 
 // paint renders what draw paints into a 400×300 view.

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/i18n"
+	"github.com/egoist/mygo/internal/pacing"
 	"github.com/egoist/mygo/internal/platform"
 	"github.com/egoist/mygo/internal/raster"
 	"github.com/egoist/mygo/internal/scene"
@@ -280,10 +281,10 @@ func (h *windowHost) waiter() displayWaiter {
 
 // refreshPresented has the paced frames following one drawn in memory
 // wait for the display's next refresh, where the surface shows it at once
-// (refreshWaiter).
+// (refreshWaiter); uncapped (MYGO_UNCAPPED), they follow it at once.
 func (h *windowHost) refreshPresented() {
 	s, ok := h.conn.Surface.(platform.RefreshSurface)
-	if !ok || h.conn.Post == nil {
+	if !ok || h.conn.Post == nil || pacing.Uncapped {
 		return
 	}
 	if h.refresh == nil {
@@ -756,9 +757,14 @@ func (h *windowHost) requestFrame() {
 	h.conn.Surface.RequestFrame()
 }
 
+// framesAtOnce reports whether the surface's frames come as soon as asked
+// for: Windows', and every desktop surface's uncapped (MYGO_UNCAPPED),
+// whose next frame comes once the last was presented rather than at the
+// display's next refresh. A drawing asking for fewer frames
+// (Painter.AnimationFrameRate) then has the repaint timer keep its pace.
 func (h *windowHost) framesAtOnce() bool {
 	_, ok := h.conn.Surface.(platform.ImmediateFrameSurface)
-	return ok
+	return ok || pacing.Uncapped
 }
 
 func (h *windowHost) setFrameRate(fps float32) {

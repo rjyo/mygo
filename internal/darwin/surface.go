@@ -18,6 +18,7 @@ import (
 	"github.com/ebitengine/purego"
 	"github.com/ebitengine/purego/objc"
 
+	"github.com/egoist/mygo/internal/pacing"
 	"github.com/egoist/mygo/internal/platform"
 	"github.com/egoist/mygo/transfer"
 )
@@ -397,6 +398,10 @@ func (s *surface) RequestFrame() {
 	if s.w.closed {
 		return
 	}
+	if pacing.Uncapped {
+		s.frameSoon()
+		return
+	}
 	if s.link != 0 {
 		switch {
 		case s.linkRunning:
@@ -431,6 +436,27 @@ func (s *surface) RequestFrame() {
 	s.timing = true
 	withPool(func() {
 		t := msgTimer(class("NSTimer"), sel("timerWithTimeInterval:target:selector:userInfo:repeats:"), delay.Seconds(), s.view, sel("mygoTimer:"), 0, false)
+		send(send(class("NSRunLoop"), "mainRunLoop"), "addTimer:forMode:", uintptr(t), kCFRunLoopCommonModes)
+	})
+}
+
+// frameSoon draws a frame in the run loop's next pass, from a timer that
+// fires at once, for frames uncapped (MYGO_UNCAPPED): the next frame
+// starts as soon as the last was drawn, rather than at the display link's
+// next tick, and only while frames are asked for. The pass handles the
+// input that came meanwhile first. The backend's queue (drawSoon) would
+// draw it in this pass instead, and the next in it too, as the queue runs
+// until it is empty: input would wait for the frames to stop. The frame
+// is paced, so that the content leaves it to draw while the renderer
+// fetches the drawable of the next (FrameNow), rather than wait for it on
+// the main thread, which keeps each a frame of its own.
+func (s *surface) frameSoon() {
+	if s.timing {
+		return
+	}
+	s.timing = true
+	withPool(func() {
+		t := msgTimer(class("NSTimer"), sel("timerWithTimeInterval:target:selector:userInfo:repeats:"), 0, s.view, sel("mygoTimer:"), 0, false)
 		send(send(class("NSRunLoop"), "mainRunLoop"), "addTimer:forMode:", uintptr(t), kCFRunLoopCommonModes)
 	})
 }
@@ -1229,7 +1255,9 @@ func registerSurfaceClass() {
 			// A closed window's view lives until its timer fires.
 			if s := b().surfaceOf(self); s != nil {
 				s.timing = false
-				s.frameNow(false)
+				// Uncapped, the content may leave the frame to draw
+				// once the renderer can (frameSoon).
+				s.frameNow(pacing.Uncapped)
 			}
 		}),
 		method("setFrameSize:", func(self id, cmd objc.SEL, size NSSize) {

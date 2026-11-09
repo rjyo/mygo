@@ -63,7 +63,10 @@ run games: a game plays alike on a display of 60 Hz and one of 120, and
 its physics stay stable. `Draw` runs every frame; its `alpha`, from 0 to 1,
 is how far the frame is into the next step, for drawing what moves
 between its last two places. After a pause, as a window out of sight,
-steps catch up on a quarter of a second at most.
+steps catch up on a quarter of a second at most. Frames uncapped
+(`MYGO_UNCAPPED=1`, see [Frame pacing](../ui/rendering.md#frame-pacing)),
+thousands a second, run the same steps, and `Draw` more often between
+them.
 
 ### Input
 

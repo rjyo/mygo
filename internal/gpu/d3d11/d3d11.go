@@ -25,6 +25,7 @@ import (
 
 	"github.com/egoist/mygo/internal/gpu"
 	"github.com/egoist/mygo/internal/gpu/d3d11/device"
+	"github.com/egoist/mygo/internal/pacing"
 	"github.com/egoist/mygo/internal/scene"
 )
 
@@ -328,6 +329,33 @@ type Renderer struct {
 	// the main thread, once the screen has room for the frame Ready held back.
 	cost      frameCost
 	wakeLater func()
+	// uncapped tells that frames present without waiting for the display
+	// (uncapped.go), and tearing that they present with tearing. While the
+	// window changes size, uncapped, unpresented tells that the frame drawn
+	// waits to present, as Present would have waited (holdFrame), since
+	// heldAt, refused how many times Present said so this frame, and
+	// noWaitRefused that the swap chain took no DXGI_PRESENT_DO_NOT_WAIT.
+	// gaveUp tells that a frame waited maxHeld and DXGI has taken none at
+	// once since (presentHeld), and recovering that the frame presented
+	// paced after the swap chain settled, as gaveUp. aside names the call
+	// to the swap chain that may wait, Present or ResizeBuffers, which
+	// another goroutine makes meanwhile (goAside), asideEnded closing once
+	// it returned; putOff tells that the frame was put off for it, and
+	// afterAside names the call that the frame drawn followed, asideDone
+	// the one that ended last. readingPeriod tells that a goroutine reads
+	// the refresh period.
+	uncapped, tearing  bool
+	unpresented        bool
+	heldAt             time.Time
+	refused            int
+	noWaitRefused      bool
+	gaveUp, recovering bool
+	aside              string
+	asideEnded         chan struct{}
+	putOff             bool
+	afterAside         string
+	asideDone          string
+	readingPeriod      bool
 
 	vs, ps, layout      uintptr
 	blend, raster, samp uintptr
@@ -388,12 +416,14 @@ type Renderer struct {
 	// ID3D11DeviceContext1, whose ClearView clears the rectangle; diff
 	// finds what changed, and pipelines what the ops draw with; held tells
 	// that the swap chain shows the last frame drawn. part is the part of
-	// the frame drawn, and redrew how much of it was, for FrameInfo.
+	// the frame drawn, and redrew how much of it was, for FrameInfo;
+	// params is what Present1 is given of part.
 	ctx1      uintptr
 	diff      scene.Differ
 	pipelines gpu.Pipelines
 	held      bool
 	part      gpu.Part
+	params    presentParameters
 	redrew    redrawn
 }
 
@@ -424,7 +454,7 @@ func newRenderer(hwnd uintptr, composed bool) (*Renderer, error) {
 	if hwnd == 0 {
 		return nil, errors.New("d3d11: no window")
 	}
-	r := &Renderer{hwnd: hwnd, composed: composed, images: map[uint64]*texture{}}
+	r := &Renderer{hwnd: hwnd, composed: composed, uncapped: pacing.Uncapped, images: map[uint64]*texture{}}
 	d, err := acquireDevice()
 	if err != nil {
 		return nil, err
@@ -441,6 +471,9 @@ func (r *Renderer) init() error {
 	// Quads reach a pixel out of their shapes, glyphs half a pixel more, as
 	// they draw at whole pixels.
 	r.diff.Reach = 2
+	// The window's swap chain presents with tearing, uncapped, where the
+	// system can (uncapped.go).
+	r.tearing = r.uncapped && !r.composed && tearingSupported(r.factory)
 	r.b.Classes = true
 	cd := bufferDesc{ByteWidth: 16, Usage: usageDefault, BindFlags: bindConstantBuffer}
 	if failed(call(r.device, devCreateBuffer, uintptr(unsafe.Pointer(&cd)), 0, uintptr(unsafe.Pointer(&r.cbuf)))) {
@@ -478,7 +511,7 @@ var settleDelay = time.Second
 // resize makes the swap chain show w×h pixels.
 func (r *Renderer) resize(w, h int) error {
 	if r.swapChain != 0 && w == r.w && h == r.h {
-		if r.resizing && time.Since(r.resizedAt) >= settleDelay/2 {
+		if r.settleDue() {
 			r.resizing = false
 			return r.buffers(w, h, w, h, 2)
 		}
@@ -500,14 +533,25 @@ func (r *Renderer) resize(w, h int) error {
 	return r.buffers(w, h, w+w/4+64, h+h/4+64, resizeBuffers)
 }
 
+// settleDue reports whether the next frame, of the size the swap chain
+// shows, settles it: settleDelay/2 after the window last changed size.
+func (r *Renderer) settleDue() bool {
+	return r.resizing && time.Since(r.resizedAt) >= settleDelay/2
+}
+
 // buffers makes the swap chain n buffers of bw×bh pixels, which shows w×h
 // of them.
 func (r *Renderer) buffers(w, h, bw, bh, n int) error {
 	free(&r.rtv)
 	r.held = false
+	if r.uncapped {
+		// A frame replaces the one queued rather than wait for the screen
+		// to give a buffer back (uncapped.go).
+		n = max(n, uncappedBuffers)
+	}
 	if r.swapChain == 0 {
 		desc := swapChainDesc1{Width: uint32(bw), Height: uint32(bh), Format: formatB8G8R8A8Unorm, SampleCount: 1,
-			BufferUsage: 0x20, BufferCount: uint32(n), Scaling: scalingStretch, SwapEffect: 3 /* flip sequential */, Flags: swapChainWaitable}
+			BufferUsage: 0x20, BufferCount: uint32(n), Scaling: scalingStretch, SwapEffect: 3 /* flip sequential */, Flags: r.swapChainFlags()}
 		if r.composed {
 			if err := r.composeSwapChain(desc); err != nil {
 				return err
@@ -518,12 +562,22 @@ func (r *Renderer) buffers(w, h, bw, bh, n int) error {
 			// where the window grew before the frame of its new size
 			// presents, DWM shows the content's background, not black,
 			// nor the last frame stretched.
-			desc.Scaling = scalingNone
-			hr := call(r.factory, factoryCreateSwapChainHwnd, r.device, r.hwnd, uintptr(unsafe.Pointer(&desc)), 0, 0, uintptr(unsafe.Pointer(&r.swapChain)))
-			r.unscaled = !failed(hr)
-			if failed(hr) {
-				desc.Scaling = scalingStretch
-				hr = call(r.factory, factoryCreateSwapChainHwnd, r.device, r.hwnd, uintptr(unsafe.Pointer(&desc)), 0, 0, uintptr(unsafe.Pointer(&r.swapChain)))
+			create := func() uintptr {
+				desc.Scaling = scalingNone
+				hr := call(r.factory, factoryCreateSwapChainHwnd, r.device, r.hwnd, uintptr(unsafe.Pointer(&desc)), 0, 0, uintptr(unsafe.Pointer(&r.swapChain)))
+				r.unscaled = !failed(hr)
+				if failed(hr) {
+					desc.Scaling = scalingStretch
+					hr = call(r.factory, factoryCreateSwapChainHwnd, r.device, r.hwnd, uintptr(unsafe.Pointer(&desc)), 0, 0, uintptr(unsafe.Pointer(&r.swapChain)))
+				}
+				return hr
+			}
+			hr := create()
+			if failed(hr) && r.tearing {
+				// A swap chain refused with tearing is made without.
+				r.tearing = false
+				desc.Flags = r.swapChainFlags()
+				hr = create()
 			}
 			if failed(hr) {
 				return fmt.Errorf("d3d11: cannot create the swap chain: %#x", uint32(hr))
@@ -532,15 +586,33 @@ func (r *Renderer) buffers(w, h, bw, bh, n int) error {
 			call(r.factory, factoryMakeWindowAssoc, r.hwnd, noAltEnter)
 		}
 		call(r.swapChain, 0, uintptr(unsafe.Pointer(&iidIDXGISwapChain2)), uintptr(unsafe.Pointer(&r.swapChain2)))
-		if r.swapChain2 != 0 {
+		if r.swapChain2 != 0 && desc.Flags&swapChainWaitable != 0 {
 			// One frame waits ahead of the screen, which the frame
 			// latency object tells room for.
 			call(r.swapChain2, scSetMaxLatency, 1)
 			r.lat.handle = call(r.swapChain2, scLatencyWaitable)
 		}
-	} else if hr := call(r.swapChain, scResizeBuffers, uintptr(n), uintptr(bw), uintptr(bh), 0, swapChainWaitable); failed(hr) {
-		return fmt.Errorf("d3d11: cannot resize the swap chain: %#x", uint32(hr))
+	} else {
+		if r.uncapped {
+			r.unbindBuffers()
+		}
+		if r.gaveUp {
+			// After a frame DXGI did not take, ResizeBuffers may wait for
+			// DWM: another goroutine calls it, and the frame is put off
+			// (uncapped.go).
+			r.resizeAside(w, h, bw, bh, n)
+			return errAside
+		}
+		if hr := resizeBuffersCall(r.swapChain, uintptr(n), uintptr(bw), uintptr(bh), uintptr(r.swapChainFlags())); failed(hr) {
+			return fmt.Errorf("d3d11: cannot resize the swap chain: %#x", uint32(hr))
+		}
 	}
+	return r.viewBuffers(w, h, bw, bh)
+}
+
+// viewBuffers has the swap chain, its buffers bw×bh pixels, show w×h of
+// them, and makes the view the frames draw into.
+func (r *Renderer) viewBuffers(w, h, bw, bh int) error {
 	if err := r.setSourceSize(r.shown(w, h, bw, bh)); err != nil {
 		return err
 	}
@@ -722,9 +794,31 @@ func (r *Renderer) armSettle() {
 	procSetTimer.Call(r.hwnd, settleTimer, uintptr(settleDelay/time.Millisecond), settleProc)
 }
 
+// releaseWait is how long Release waits at most for a call to the swap
+// chain that another goroutine makes (goAside).
+const releaseWait = 2 * time.Second
+
 // Release frees the renderer's GPU objects.
 func (r *Renderer) Release() {
-	r.pending, r.refreshing, r.wake = false, false, nil
+	if ended := r.asideEnded; ended != nil {
+		// The call another goroutine makes to the swap chain returns
+		// before the swap chain goes. DXGI may send the window a message
+		// meanwhile, which the main thread does not take while it waits
+		// here: past releaseWait, the GPU objects are left to the
+		// process's end rather than the main thread wait on.
+		r.asideEnded, r.aside = nil, ""
+		select {
+		case <-ended:
+		case <-time.After(releaseWait):
+			if settling[r.hwnd] {
+				delete(settling, r.hwnd)
+				procKillTimer.Call(r.hwnd, settleTimer)
+			}
+			return
+		}
+	}
+	r.pending, r.refreshing, r.wake, r.unpresented = false, false, nil, false
+	r.gaveUp = false
 	r.lat.release()
 	r.cost.release()
 	r.b.Release()
@@ -888,23 +982,57 @@ func (r *Renderer) Render(s *scene.Scene) error {
 		r.failed = nil
 		return err
 	}
+	// A frame DXGI could not present yet while the window changes size,
+	// uncapped, gives way to this one, drawn whole as it never showed
+	// (holdFrame).
+	r.unpresented, r.heldAt, r.refused = false, time.Time{}, 0
+	r.putOff = r.aside != ""
+	r.recovering = r.uncapped && !r.resizing && r.gaveUp
+	if r.putOff {
+		// Another goroutine presents or resizes the buffers, waiting on
+		// DXGI: the frame is put off until it is done, which asks for one
+		// (uncapped.go).
+		r.afterAside = ""
+		return nil
+	}
+	r.afterAside, r.asideDone = r.asideDone, ""
 	resized := r.swapChain != 0 && (s.Width != r.w || s.Height != r.h)
 	drawn, err := r.drawFrame(s)
+	r.recovering = r.uncapped && !r.resizing && r.gaveUp
+	if err == errAside {
+		// Resizing the buffers may wait on DXGI: another goroutine does,
+		// and the frame is put off (uncapped.go).
+		r.putOff = true
+		return nil
+	}
 	if err != nil {
 		return err
 	}
 	if !drawn {
-		r.waitRefresh()
+		if !r.presentsUncapped() {
+			r.waitRefresh()
+		}
 		return nil
 	}
 	// A frame of a new size is presented at once (sync interval 0), not
 	// after the frame queued before it, which would miss the next
 	// composition, and waits until the compositor shows it: the window
 	// takes its next size, as the user drags its border, with the frame of
-	// that size, rather than show older frames stretched to it.
+	// that size, rather than show older frames stretched to it (waitShown).
+	// Uncapped, every frame presents at once, and the next follows, but
+	// while the window changes size, or DXGI takes no frame at once after
+	// one it held maxHeld, when each frame waits for the composition that
+	// shows it, and the frame of a new size for DWM at most two refreshes,
+	// none of them waiting in Present long (uncapped.go).
 	sync := uintptr(1)
-	if resized {
+	if resized || r.presentsUncapped() {
 		sync = 0
+	} else if r.uncapped {
+		if err := r.present(0); err != nil {
+			return r.holdFrame(err)
+		}
+		r.waitComposed()
+		return nil
 	} else if r.presentLater != nil {
 		r.cost.read(r.ctx)
 		if r.cost.fits() && r.lat.ready() {
@@ -927,10 +1055,10 @@ func (r *Renderer) Render(s *scene.Scene) error {
 		}
 	}
 	if err := r.present(sync); err != nil {
-		return err
+		return r.holdFrame(err)
 	}
 	if resized {
-		procDwmFlush.Call()
+		r.waitShown()
 	}
 	return nil
 }
@@ -1545,7 +1673,7 @@ func (r *Renderer) newTarget(t *texture, w, h int, drawn bool) error {
 // as none waits to present (latency.go); otherwise wake runs, on the main
 // thread, once it has.
 func (r *Renderer) Ready(wake func()) bool {
-	if r.pending || r.refreshing {
+	if r.pending || r.refreshing || r.aside != "" {
 		r.wake = wake
 		return false
 	}
@@ -1635,7 +1763,7 @@ func dwmFlushed() <-chan struct{} {
 		done := make(chan struct{})
 		dwmFlush.done = done
 		go func() {
-			procDwmFlush.Call()
+			dwmFlushCall()
 			dwmFlush.Lock()
 			dwmFlush.done = nil
 			dwmFlush.Unlock()
@@ -1643,6 +1771,20 @@ func dwmFlushed() <-chan struct{} {
 		}()
 	}
 	return dwmFlush.done
+}
+
+// dwmFlushCall returns once DWM composed (DwmFlush); tests replace it.
+var dwmFlushCall = func() { procDwmFlush.Call() }
+
+// waitShown has a frame of a new size wait for DWM to show it (Render):
+// paced, on the main thread until it has; uncapped, at most two refreshes,
+// the call made on another thread (uncapped.go).
+func (r *Renderer) waitShown() {
+	if !r.uncapped {
+		dwmFlushCall()
+		return
+	}
+	awaitRefresh(0, 2*r.cost.refreshPeriod())
 }
 
 // minRefresh and maxRefresh bound awaitRefresh's wait: a 60 Hz refresh's
@@ -1692,6 +1834,11 @@ func (r *Renderer) refreshed() {
 		return
 	}
 	r.refreshing = false
+	if r.unpresented && !r.presentHeld() || r.aside != "" {
+		// The frame after waits for the frame to present, or for the call
+		// another goroutine makes (goAside).
+		return
+	}
 	if r.wake != nil && r.presentLater != nil && r.cost.fits() && !r.lat.ready() {
 		// It still builds once the screen has room.
 		r.lat.waitThen(r.wakeLater)
@@ -1709,17 +1856,27 @@ const dxgiStatusOccluded = 0x087A0001
 // DXGI the rest of the last frame.
 func (r *Renderer) present(sync uintptr) error {
 	r.lat.take()
+	if r.presentFlags(sync)&presentDoNotWait != 0 {
+		return r.showSoon(sync)
+	}
 	return r.show(sync)
 }
 
-// show presents the back buffer, its token taken, or none needed.
+// show presents the back buffer, its token taken, or none needed. With
+// DXGI_PRESENT_DO_NOT_WAIT (presentFlags), it returns errStillDrawing when
+// Present would have waited, and the frame is not presented.
 func (r *Renderer) show(sync uintptr) error {
-	var hr uintptr
-	if r.redrew == redrewPart {
-		params := presentParameters{DirtyRectsCount: uint32(len(r.part.Rects)), DirtyRects: unsafe.SliceData(r.part.Rects)}
-		hr = call(r.swapChain, scPresent1, sync, 0, uintptr(unsafe.Pointer(&params)))
-	} else {
-		hr = call(r.swapChain, scPresent, sync, 0)
+	params := r.presentParams()
+	flags := r.presentFlags(sync)
+	hr := presentCall(r.swapChain, sync, flags, params)
+	if flags&presentDoNotWait != 0 && uint32(hr) == dxgiErrorInvalidCall {
+		// A swap chain that takes no DXGI_PRESENT_DO_NOT_WAIT presents
+		// as without it, from now on.
+		r.noWaitRefused = true
+		hr = presentCall(r.swapChain, sync, flags&^presentDoNotWait, params)
+	}
+	if uint32(hr) == dxgiErrorWasStillDrawing {
+		return errStillDrawing
 	}
 	if failed(hr) {
 		return fmt.Errorf("d3d11: present failed: %#x", uint32(hr))
@@ -1728,23 +1885,85 @@ func (r *Renderer) show(sync uintptr) error {
 	// window made hidden, may not be what the window shows once it does:
 	// the next frame draws whole.
 	r.held = r.ctx1 != 0 && uint32(hr) != dxgiStatusOccluded
+	if r.gaveUp && !r.resizing && r.refused == 0 {
+		// DXGI took a frame at once, the swap chain settled: frames
+		// present uncapped again (uncapped.go).
+		r.gaveUp = false
+	}
 	if r.frame-r.swept >= sweepEvery {
 		r.swept = r.frame
 		r.sweep()
-		r.cost.readPeriod()
+		switch {
+		case !r.uncapped:
+			r.cost.readPeriod()
+		case !r.resizing:
+			// Uncapped, the main thread makes no call to DWM that may
+			// wait (uncapped.go).
+			r.readPeriodAside()
+		}
 	}
 	return nil
 }
 
+// presentParams returns what Present1 is given of the part of the frame
+// drawn, nil when it drew whole.
+func (r *Renderer) presentParams() *presentParameters {
+	if r.redrew != redrewPart {
+		return nil
+	}
+	r.params = presentParameters{DirtyRectsCount: uint32(len(r.part.Rects)), DirtyRects: unsafe.SliceData(r.part.Rects)}
+	return &r.params
+}
+
+// resizeBuffersCall calls ResizeBuffers; tests replace it.
+var resizeBuffersCall = func(swapChain, n, w, h, flags uintptr) uintptr {
+	return call(swapChain, scResizeBuffers, n, w, h, 0, flags)
+}
+
+// presentCall calls Present, or Present1 with params when the frame drew
+// in part; tests replace it.
+var presentCall = func(swapChain, sync, flags uintptr, params *presentParameters) uintptr {
+	if params != nil {
+		return call(swapChain, scPresent1, sync, flags, uintptr(unsafe.Pointer(params)))
+	}
+	return call(swapChain, scPresent, sync, flags)
+}
+
 // FrameInfo describes the last frame for MYGO_FRAME_STATS.
 func (r *Renderer) FrameInfo() string {
-	switch r.redrew {
-	case redrewPart:
-		return fmt.Sprintf("redrew %s, %s", r.part.String(), r.b.Summary())
-	case redrewNothing:
-		return "unchanged"
+	info := r.b.Summary()
+	switch {
+	case r.putOff:
+		info = "put off while " + r.aside + " waits on another thread"
+	case r.redrew == redrewPart:
+		info = fmt.Sprintf("redrew %s, %s", r.part.String(), info)
+	case r.redrew == redrewNothing:
+		info = "unchanged"
 	}
-	return r.b.Summary()
+	paced := true
+	switch {
+	case r.uncapped && r.resizing:
+		info += ", paced while resizing"
+	case r.recovering:
+		info += ", paced until DXGI takes a frame at once"
+	case r.tearing:
+		info += ", tearing allowed"
+		paced = false
+	default:
+		paced = false
+	}
+	if paced {
+		if r.refused > 0 {
+			info += fmt.Sprintf(", Present still drawing %d times", r.refused)
+		}
+		if r.unpresented {
+			info += ", presenting once DXGI can"
+		}
+	}
+	if r.afterAside != "" {
+		info += ", after " + r.afterAside + " waited on another thread"
+	}
+	return info
 }
 
 // sweepEvery is how many frames go by between sweeps. show sweeps once
