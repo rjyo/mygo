@@ -5,8 +5,9 @@ import (
 )
 
 // Lexers for languages the general lexer does not fit: JSON's keys,
-// TOML's tables, CSS, markup with the scripts and styles inside it,
-// ERB's Ruby, Markdown with the code of its fenced blocks, and diffs.
+// TOML's tables, HCL's heredocs, CSS, markup with the scripts and styles
+// inside it and Svelte's expressions, ERB's Ruby, Markdown with the code
+// of its fenced blocks, and diffs.
 
 // relabel gives the tokens of line covering start to end kind k,
 // splitting those that reach past them.
@@ -108,6 +109,61 @@ func (t *tomlLexer) Tokenize(line string, state uint64, tokens []Token) ([]Token
 		}
 	}
 	return append(tokens[:n0], toks...), next
+}
+
+// hclLexer adds HCL's heredocs, <<EOT or <<-EOT ending a line, to the
+// general lexer. While in one, its state is the mode hclHeredoc (bits
+// 0-7), which the general lexer never uses, and a hash of the word that
+// ends it (bits 8-39).
+type hclLexer struct{ lexer }
+
+const hclHeredoc = 0xfe
+
+func (h *hclLexer) Tokenize(line string, state uint64, tokens []Token) ([]Token, uint64) {
+	if state&0xff == hclHeredoc {
+		out := lexOut{toks: tokens}
+		out.add(len(line), TokenString)
+		if hclHash(strings.TrimSpace(line)) == state>>8 {
+			return out.toks, 0
+		}
+		return out.toks, state
+	}
+	n0 := len(tokens)
+	tokens, next := h.lexer.Tokenize(line, state, tokens)
+	// A block word before a dot, as in data.x.id or module.m.out, names
+	// a value the way var.x and local.x do.
+	for i := n0; i < len(tokens); i++ {
+		if t := &tokens[i]; t.Kind == TokenKeyword && t.End < len(line) && line[t.End] == '.' {
+			t.Kind = TokenVariable
+		}
+	}
+	if next != 0 {
+		return tokens, next
+	}
+	body := strings.TrimRight(line, " \t\r")
+	j := len(body)
+	for j > 0 && isIdentByte(body[j-1]) {
+		j--
+	}
+	word := body[j:]
+	k := j
+	if k > 0 && body[k-1] == '-' {
+		k--
+	}
+	if word == "" || !identStart(word, "") || k < 2 || body[k-2:k] != "<<" || kindAt(tokens[n0:], k-2) != TokenOperator {
+		return tokens, next
+	}
+	toks := relabel(tokens[n0:], k-2, len(body), TokenString)
+	return append(tokens[:n0], toks...), hclHeredoc | hclHash(word)<<8
+}
+
+// hclHash hashes a heredoc's word into 32 bits, FNV-1a.
+func hclHash(s string) uint64 {
+	h := uint32(2166136261)
+	for i := 0; i < len(s); i++ {
+		h = (h ^ uint32(s[i])) * 16777619
+	}
+	return uint64(h)
 }
 
 // templateLexer lexes a template: text in a host language with code in
@@ -393,12 +449,21 @@ func cssSelectorAhead(s string) bool {
 
 // markupLexer lexes HTML and XML: tags, attributes, comments, entities,
 // and, in HTML, the scripts and styles inside it with their own
-// tokenizers. Its state packs the mode (bits 0-3), what the tag being
-// lexed opens (bits 4-5: 1 a script, 2 a style), and the state of the
-// script or style (bits 16-55).
+// tokenizers. With braces, as Svelte's, it lexes {expressions} in text,
+// in tags and in attribute values with the script's tokenizer, and
+// {#blocks}. Its state packs the mode (bits 0-3), what the tag being
+// lexed opens (bits 4-5: 1 a script, 2 a style), whether the script is
+// TypeScript (bit 6), the braces open in an expression (bits 8-13) and
+// the mode it goes back to (bits 14-15: text, a tag, or a double- or
+// single-quoted value), and the state of the script, style or
+// expression (bits 16-55).
 type markupLexer struct {
 	html          bool
 	script, style Tokenizer
+	// braces lexes {…} as expressions, as Svelte's.
+	braces bool
+	// ts lexes a <script lang="ts">, nil for none.
+	ts Tokenizer
 }
 
 const (
@@ -410,19 +475,82 @@ const (
 	mlCData
 	mlScript
 	mlStyle
+	mlExpr
 )
+
+// The modes an expression goes back to when it ends.
+var mlExprBack = [...]int{mlText, mlTag, mlDouble, mlSingle}
 
 func (m *markupLexer) Tokenize(line string, state uint64, tokens []Token) ([]Token, uint64) {
 	out := lexOut{toks: tokens}
 	mode := int(state & 0xf)
 	embed := int(state >> 4 & 3)
+	ts := state >> 6 & 1
+	depth := int(state >> 8 & 0x3f)
+	back := int(state >> 14 & 3)
 	inner := state >> 16
 	n := len(line)
+	// expr starts an expression at the { at i, going back to the mode
+	// after it ends.
+	expr := func(i, after int) int {
+		out.add(i+1, TokenPunctuation)
+		mode, back, depth, inner = mlExpr, after, 0, 0
+		// A block's tag: {#if}, {:else}, {/each}, {@html}.
+		j := i + 1
+		if j+1 < n && strings.IndexByte("#:/@", line[j]) >= 0 && identStart(line[j+1:], "") {
+			j++
+			for j < n && isIdentByte(line[j]) {
+				j++
+			}
+			out.add(j, TokenKeyword)
+		}
+		return j
+	}
 	for i := 0; i < n; {
 		switch mode {
+		case mlExpr:
+			// Lexed into the room after the line's tokens, and each
+			// written back behind where it is read.
+			toks, next := m.script.Tokenize(line[i:], inner, out.toks[len(out.toks):])
+			end := -1
+			from := 0
+			for _, tk := range toks {
+				if tk.Kind == TokenPunctuation {
+					for k := from; k < tk.End && end < 0; k++ {
+						switch line[i+k] {
+						case '{':
+							depth = min(depth+1, 0x3f)
+						case '}':
+							if depth == 0 {
+								end = k
+							}
+							depth--
+						}
+					}
+				}
+				if end >= 0 {
+					// The token up to the expression's }.
+					out.add(i+end, tk.Kind)
+					break
+				}
+				out.add(i+tk.End, tk.Kind)
+				from = tk.End
+			}
+			if end < 0 {
+				// The expression goes on to the next line.
+				inner = next
+				i = n
+				continue
+			}
+			out.add(i+end+1, TokenPunctuation)
+			i += end + 1
+			mode, depth, back, inner = mlExprBack[back], 0, 0, 0
 		case mlScript, mlStyle:
 			tag := "</script"
 			t := m.script
+			if ts == 1 && m.ts != nil {
+				t = m.ts
+			}
 			if mode == mlStyle {
 				tag, t = "</style", m.style
 			}
@@ -441,7 +569,7 @@ func (m *markupLexer) Tokenize(line string, state uint64, tokens []Token) ([]Tok
 			out.add(stop, TokenText)
 			i = stop
 			if end >= 0 {
-				mode, inner = mlText, 0
+				mode, inner, ts = mlText, 0, 0
 			}
 		case mlComment:
 			end := strings.Index(line[i:], "-->")
@@ -464,14 +592,22 @@ func (m *markupLexer) Tokenize(line string, state uint64, tokens []Token) ([]Tok
 			i += end + 3
 			mode = mlText
 		case mlDouble, mlSingle:
-			q := byte('"')
+			q, after := "\"{", 2
 			if mode == mlSingle {
-				q = '\''
+				q, after = "'{", 3
 			}
-			end := strings.IndexByte(line[i:], q)
+			if !m.braces {
+				q = q[:1]
+			}
+			end := strings.IndexAny(line[i:], q)
 			if end < 0 {
 				out.add(n, TokenString)
 				i = n
+				continue
+			}
+			if line[i+end] == '{' {
+				out.add(i+end, TokenString)
+				i = expr(i+end, after)
 				continue
 			}
 			out.add(i+end+1, TokenString)
@@ -509,13 +645,23 @@ func (m *markupLexer) Tokenize(line string, state uint64, tokens []Token) ([]Tok
 			case c == ' ' || c == '\t' || c == '\r':
 				out.add(i+1, TokenText)
 				i++
+			case c == '{' && m.braces:
+				i = expr(i, 1)
 			default:
 				j := i
-				for j < n && strings.IndexByte(" \t\r=>/\"'", line[j]) < 0 {
+				for j < n && strings.IndexByte(" \t\r=>/\"'{", line[j]) < 0 {
 					j++
 				}
 				if j == i {
 					j++
+				}
+				if embed == 1 && m.ts != nil && strings.EqualFold(line[i:j], "lang") {
+					ts = 0
+					if v := strings.TrimLeft(line[j:], " \t="); len(v) > 0 && (v[0] == '"' || v[0] == '\'') {
+						if e := strings.IndexByte(v[1:], v[0]); e >= 0 && (v[1:1+e] == "ts" || v[1:1+e] == "typescript") {
+							ts = 1
+						}
+					}
 				}
 				out.add(j, TokenAttribute)
 				i = j
@@ -552,7 +698,7 @@ func (m *markupLexer) Tokenize(line string, state uint64, tokens []Token) ([]Tok
 				}
 				out.add(k, TokenTag)
 				name := strings.ToLower(line[j:k])
-				embed = 0
+				embed, ts = 0, 0
 				if m.html && line[i+1] != '/' {
 					switch name {
 					case "script":
@@ -575,9 +721,11 @@ func (m *markupLexer) Tokenize(line string, state uint64, tokens []Token) ([]Tok
 					out.add(i+1, TokenText)
 					i++
 				}
+			case c == '{' && m.braces:
+				i = expr(i, 0)
 			default:
 				j := i + 1
-				for j < n && line[j] != '<' && line[j] != '&' {
+				for j < n && line[j] != '<' && line[j] != '&' && (line[j] != '{' || !m.braces) {
 					j++
 				}
 				out.add(j, TokenText)
@@ -585,7 +733,7 @@ func (m *markupLexer) Tokenize(line string, state uint64, tokens []Token) ([]Tok
 			}
 		}
 	}
-	return out.toks, uint64(mode) | uint64(embed)<<4 | inner<<16
+	return out.toks, uint64(mode) | uint64(embed)<<4 | ts<<6 | uint64(depth)<<8 | uint64(back)<<14 | inner<<16
 }
 
 // indexFold returns where sub, in lower case, first is in s, ignoring

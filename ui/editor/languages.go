@@ -119,6 +119,8 @@ func languageAlias(name string) string {
 		return "yaml"
 	case "eruby":
 		return "erb"
+	case "terraform":
+		return "hcl"
 	case "md":
 		return "markdown"
 	case "rs":
@@ -470,7 +472,7 @@ func makeLanguages() {
 		Tokenizer: &cssLexer{},
 	}
 	html := &Language{
-		Name: "HTML", Extensions: []string{".html", ".htm", ".xhtml", ".vue", ".svelte"}, BlockComment: [2]string{"<!--", "-->"},
+		Name: "HTML", Extensions: []string{".html", ".htm", ".xhtml", ".vue"}, BlockComment: [2]string{"<!--", "-->"},
 		Brackets:  []BracketPair{{Open: "<", Close: ">"}, {Open: "(", Close: ")"}, {Open: "[", Close: "]"}, {Open: "{", Close: "}"}},
 		AutoClose: cAutoClose("\"", "'"), WordChars: "-", TabSize: 2,
 		IncreaseIndent: regexp.MustCompile(`<(\w[\w-]*)(\s[^>]*)?>[^<]*$|[\[({]\s*$`),
@@ -554,6 +556,17 @@ func makeLanguages() {
 				TokenFunction, "import abort throw derivation toString map removeAttrs baseNameOf dirOf isNull fetchTarball fetchGit"),
 			identChars: "-", assignKeys: true, operators: "+-*/=<>!&|?:@"},
 	}
+	hcl := &Language{
+		Name: "HCL", Extensions: []string{".hcl", ".tf", ".tfvars"}, LineComment: "#", BlockComment: [2]string{"/*", "*/"},
+		Brackets: cBrackets, AutoClose: cAutoClose("\""), WordChars: "-", TabSize: 2,
+		IncreaseIndent: regexp.MustCompile(`[\[({]\s*$`),
+		Tokenizer: &hclLexer{lexer{lineComments: []string{"#", "//"}, blockComments: [][2]string{{"/*", "*/"}},
+			strings: []lexString{{open: "\"", close: "\"", escape: '\\', interpOpen: "${", interpClose: "}", kind: TokenString}},
+			words: words(TokenKeyword, "for in if else endif endfor resource data variable output module provider locals terraform",
+				TokenType, "string number bool list map set object tuple any",
+				TokenConstant, "true false null"),
+			identChars: "-", assignKeys: true, calls: true, operators: "+-*/%=<>!&|?:"}},
+	}
 	// HTML's tokenizer highlights the scripts and styles inside it.
 	html.Tokenizer = &markupLexer{html: true, script: javascript.Tokenizer, style: css.Tokenizer}
 	erb := &Language{
@@ -578,6 +591,13 @@ func makeLanguages() {
 			tags:  []templateTag{{open: "{#", close: "#}", comment: true}, {open: "{{", close: "}}"}, {open: "{%", close: "%}"}},
 			marks: "-+", trims: "-+"},
 	}
+	svelte := &Language{
+		Name: "Svelte", Extensions: []string{".svelte"}, BlockComment: html.BlockComment,
+		Brackets: html.Brackets, AutoClose: html.AutoClose, WordChars: "-", TabSize: 2,
+		IncreaseIndent: regexp.MustCompile(`<(\w[\w-]*)(\s[^>]*)?>[^<]*$|\{[#:][^}]*\}\s*$|[\[({]\s*$`),
+		DecreaseIndent: regexp.MustCompile(`^\s*(</|\{[/:])`),
+		Tokenizer:      &markupLexer{html: true, script: javascript.Tokenizer, style: css.Tokenizer, braces: true, ts: typescript.Tokenizer},
+	}
 	languageList = []*Language{goLang, javascript, typescript, json, python, rust, c, cpp, java, kotlin, scala, swift, dart, csharp,
-		shell, yaml, toml, sql, rLang, ruby, lua, php, css, html, erb, xml, markdown, diffLang, dockerfile, makefile, protobuf, graphql, zig, nix, jinja}
+		shell, yaml, toml, sql, rLang, ruby, lua, php, css, html, erb, svelte, xml, markdown, diffLang, dockerfile, makefile, protobuf, graphql, zig, nix, jinja, hcl}
 }

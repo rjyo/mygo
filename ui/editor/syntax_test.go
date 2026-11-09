@@ -85,6 +85,26 @@ func TestTokenizers(t *testing.T) {
 		{"jinja", []string{`ExecStart={{ script | default('/bin/x') }}`, `{%- for r in rules if r.port > 0 +%}`, `{# a`, `b #}x{{ none }}`},
 			`text(ExecStart=)meta({{)var(script)op(|)fn(default)punct(()str('/bin/x')punct())meta(}}) / ` +
 				`meta({%-)kw(for)var(r)kw(in)var(rules)kw(if)var(r)punct(.)prop(port)op(>)num(0)meta(+%}) / comment({# a) / comment(b #})text(x)meta({{)const(none)meta(}})`},
+		// Svelte's expressions in text, tags and values, its blocks, and a
+		// TypeScript script.
+		{"svelte", []string{`<p class="a {b}" {c}>{#if x > 1}{y}{/if}</p>`},
+			`punct(<)tag(p)attr(class)op(=)str("a)punct({)var(b)punct(})str(")punct({)var(c)punct(}>{)kw(#if)var(x)op(>)num(1)punct(}{)var(y)punct(}{)kw(/if)punct(}</)tag(p)punct(>)`},
+		{"svelte", []string{`{fn({a: 1,`, `b})}<i>`, `<script lang="ts">let x: number</script>`},
+			`punct({)fn(fn)punct(({)var(a)op(:)num(1)punct(,) / var(b)punct(})}<)tag(i)punct(>) / ` +
+				`punct(<)tag(script)attr(lang)op(=)str("ts")punct(>)kw(let)var(x)op(:)type(number)punct(</)tag(script)punct(>)`},
+		// HCL's blocks, attributes, interpolations, comments and heredocs.
+		{"hcl", []string{`resource "aws_s3_bucket" "b" {`, `  count = var.n > 0 ? 1 : 0 # c`, `  tags = { Name = "x-${var.env}" } // d`,
+			`  policy = <<-EOT`, `    {"a": "${b}"}`, `  EOT`, `  type = list(string) /* e */`, `}`},
+			`kw(resource)str("aws_s3_bucket")str("b")punct({) / prop(count)op(=)var(var)punct(.)prop(n)op(>)num(0)op(?)num(1)op(:)num(0)comment(# c) / ` +
+				`prop(tags)op(=)punct({)prop(Name)op(=)str("x-)esc(${)var(var)punct(.)prop(env)esc(})str(")punct(})comment(// d) / ` +
+				`prop(policy)op(=)str(<<-EOT) / str({"a": "${b}"}) / str(EOT) / prop(type)op(=)type(list)punct(()type(string)punct())comment(/* e */) / punct(})`},
+		// A block word before a dot names a value, like var.
+		{"hcl", []string{`data "z" "a" {`, `  id = data.z.a.id`, `  x = module.m.out`, `}`},
+			`kw(data)str("z")str("a")punct({) / prop(id)op(=)var(data)punct(.)prop(z)punct(.)prop(a)punct(.)prop(id) / ` +
+				`prop(x)op(=)var(module)punct(.)prop(m)punct(.)prop(out) / punct(})`},
+		// A heredoc's opener in a string or comment opens none.
+		{"hcl", []string{`a = "<<EOT"`, `b = 1 # <<EOT`, `c = 2`},
+			`prop(a)op(=)str("<<EOT") / prop(b)op(=)num(1)comment(# <<EOT) / prop(c)op(=)num(2)`},
 		{"markdown", []string{"# Title", "Some *em* and **strong** `code` [link](url)", "```go", "func x() {}", "```"},
 			"heading(# Title) / text(Some)em(*em*)text(and)strong(**strong**)code(`code`)link([link])str((url)) / punct(```)type(go) / kw(func)fn(x)punct(())punct({}) / punct(```)"},
 		{"diff", []string{"@@ -1,2 +1,2 @@ func x", "-a", "+b", " c"},
@@ -224,10 +244,22 @@ func TestInterpolatedStringsFit(t *testing.T) {
 	}
 }
 
+// A line whose expressions all close leaves the state of plain text.
+func TestSvelteClosedExpressionsLeaveNoState(t *testing.T) {
+	tok := LanguageNamed("svelte").Tokenizer
+	for _, line := range []string{`<p class="a {b}">`, `<p class='a {b}'>`, `<p {c}>`, `{x}`, `<p>{#if a}{b}{/if}</p>`} {
+		if _, state := tok.Tokenize(line, 0, nil); state != 0 {
+			t.Errorf("%q leaves state %#x", line, state)
+		}
+	}
+}
+
 func TestLanguageFor(t *testing.T) {
 	for name, want := range map[string]string{"main.go": "Go", "a/b/Makefile": "Makefile", "x.TSX": "TypeScript", "Dockerfile": "Dockerfile", "x.unknown": "",
 		"main.dart": "Dart", "schema.graphql": "GraphQL", "q.gql": "GraphQL", "plot.r": "R", "plot.R": "R", "Main.scala": "Scala", "build.sc": "Scala", "flake.nix": "Nix",
-		"user.rbs": "Ruby", "show.html.erb": "ERB", "model.rb.tt": "ERB", "nginx.conf.j2": "Jinja", "page.jinja2": "Jinja"} {
+		"user.rbs": "Ruby", "show.html.erb": "ERB", "model.rb.tt": "ERB", "nginx.conf.j2": "Jinja", "page.jinja2": "Jinja",
+		"App.svelte": "Svelte", "x.vue": "HTML",
+		"main.tf": "HCL", "prod.tfvars": "HCL", "config.hcl": "HCL"} {
 		l := LanguageFor(name)
 		got := ""
 		if l != nil {
@@ -276,6 +308,7 @@ func TestLanguageNamed(t *testing.T) {
 		"Scala":   {"scala", "Scala", "sc"},
 		"ERB":     {"erb", "ERB", "eruby"},
 		"Jinja":   {"jinja", "Jinja", "jinja2", "j2"},
+		"HCL":     {"hcl", "terraform", "tf", "tfvars"},
 	} {
 		for _, name := range names {
 			l := LanguageNamed(name)
@@ -298,6 +331,7 @@ func TestLanguageCommentsAndBrackets(t *testing.T) {
 	for name, want := range map[string][3]string{
 		"dart": {"//", "/*", "*/"}, "scala": {"//", "/*", "*/"}, "graphql": {"#", "", ""}, "r": {"#", "", ""},
 		"jinja": {"", "{#", "#}"},
+		"hcl":   {"#", "/*", "*/"},
 	} {
 		l := LanguageNamed(name)
 		if got := [3]string{l.LineComment, l.BlockComment[0], l.BlockComment[1]}; got != want {
@@ -348,6 +382,30 @@ func TestSyntaxIncremental(t *testing.T) {
 				t.Fatalf("round %d: line %d starts in %x (%v), want %x", round, i, got, ok, state)
 			}
 			_, state = tok.Tokenize(text.Line(i), state, nil)
+		}
+	}
+}
+
+func BenchmarkTokenizeHTML(b *testing.B) {
+	benchmarkTokenize(b, "html", "<div class=\"card\" id='x' data-a=\"{b}\">\n\t<a href=\"/p?q=1&amp;r\">Hi &lt;there&gt;</a> <!-- note -->\n"+
+		"\t<script>if (a > 1) { run(`x${y}`) }</script>\n\t<style>.a { color: red; }</style>\n</div>\n")
+}
+
+func BenchmarkTokenizeSvelte(b *testing.B) {
+	benchmarkTokenize(b, "svelte", "<div class=\"card {cls}\" on:click={() => open(id)}>\n\t{#each items as item (item.id)}\n"+
+		"\t\t<a href=\"/p/{item.id}\">{item.name} &amp; {count + 1}</a>\n\t{/each}\n</div>\n")
+}
+
+func benchmarkTokenize(b *testing.B, lang, chunk string) {
+	src := strings.Repeat(chunk, 200)
+	lines := strings.Split(src, "\n")
+	tok := LanguageNamed(lang).Tokenizer
+	var toks []Token
+	b.SetBytes(int64(len(src)))
+	for range b.N {
+		var state uint64
+		for _, l := range lines {
+			toks, state = tok.Tokenize(l, state, toks[:0])
 		}
 	}
 }
