@@ -117,12 +117,12 @@ func (f stateFile) SaveWindowStates(states map[string]WindowState) error {
 	if err != nil {
 		return err
 	}
-	// An error, as Windows still reporting the file in use after rename's
-	// retries, keeps the states for the next save.
+	// An error, as Windows still reporting the file in use after
+	// replaceAppFile's retries, keeps the states for the next save.
 	if err := os.WriteFile(path+".tmp", data, 0o644); err != nil {
 		return err
 	}
-	return rename(path+".tmp", path)
+	return replaceAppFile(path+".tmp", path)
 }
 
 // restoreWindowState applies the state saved under key to p, if the
