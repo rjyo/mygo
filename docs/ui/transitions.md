@@ -246,6 +246,20 @@ popup := ui.ElementTransition{
 }
 ```
 
+`ExitDelay` is how long the `Exit` waits before it goes, as CSS's
+`transition-delay` differs between the states. Zero keeps the `Animation`'s
+`Delay`, as the other changes wait; a negative one does not wait, so rows
+that come in one after another, each with a longer `Delay`, go all at once:
+
+```go
+row := ui.ElementTransition{
+	Animation: &ui.Animation{Duration: 200 * time.Millisecond, Ease: ui.EaseOut, Delay: 80 * time.Millisecond},
+	ExitDelay: -1,
+	Enter:     &ui.Motion{Y: 8},
+	Exit:      &ui.Motion{Y: 8},
+}
+```
+
 A negative `Duration` takes no time at all: every change shows at once,
 and the `Enter` and the `Exit` too, the element leaving without a copy,
 as an app with a reduced-motion setting of its own does; a negative

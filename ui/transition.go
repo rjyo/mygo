@@ -32,13 +32,19 @@ type ElementTransition struct {
 	Animation *Animation
 	// ExitDuration and ExitEase, if set, are how long the Exit takes and
 	// how it goes, in place of Duration and Ease, or of Animation's spring
-	// (whose Delay still holds it): a popup that comes in over 150 ms and
-	// goes over 100. When zero, ExitDuration is Duration's, or about as
-	// long as Animation's spring; when negative, the element goes at once,
-	// without a copy. ExitEase is Ease's, or that of Animation's curve,
-	// when nil.
+	// (whose Delay holds it unless ExitDelay says otherwise): a popup that
+	// comes in over 150 ms and goes over 100. When zero, ExitDuration is
+	// Duration's, or about as long as Animation's spring; when negative,
+	// the element goes at once, without a copy. ExitEase is Ease's, or
+	// that of Animation's curve, when nil.
 	ExitDuration time.Duration
 	ExitEase     Easing
+	// ExitDelay, if set, is how long the Exit waits before it goes, in
+	// place of Animation's Delay, as CSS sets transition-delay for each
+	// state. When zero, the Exit waits as the other changes do; when
+	// negative, it does not wait: the rows of a list that come in one
+	// after another, each with a longer Delay, go all at once.
+	ExitDelay time.Duration
 	// Position, Size, Colors and Shadows choose what animates: where the
 	// element is in its parent, its width and height (its content laid out
 	// at each size on the way), its background and border colors, and its
@@ -349,8 +355,18 @@ func (r *transition) animation() Animation {
 }
 
 // exitAnimation returns how the transition's Exit goes: as its changes do
-// but for its ExitDuration and ExitEase.
+// but for its ExitDuration, ExitEase and ExitDelay.
 func (r *transition) exitAnimation() Animation {
+	a := r.exitTiming()
+	// An Exit at once has no copy, so no delay to set.
+	if d := r.t.ExitDelay; d != 0 && a.Duration >= 0 {
+		a.Delay = max(d, 0)
+	}
+	return a
+}
+
+// exitTiming returns exitAnimation's before its ExitDelay.
+func (r *transition) exitTiming() Animation {
 	t := &r.t
 	if t.ExitDuration == 0 && t.ExitEase == nil {
 		return r.animation()

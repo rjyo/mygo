@@ -665,3 +665,58 @@ func TestTransitionMotionPercent(t *testing.T) {
 		t.Fatalf("halfway out, the copies are %v", gs)
 	}
 }
+
+// TestTransitionExitDelay checks that the Exit waits Animation's Delay
+// unless ExitDelay says otherwise: a positive one is how long it waits,
+// a negative one means it does not.
+func TestTransitionExitDelay(t *testing.T) {
+	ms := time.Millisecond
+	for _, tc := range []struct {
+		name  string
+		delay time.Duration // Animation's Delay
+		t     ElementTransition
+		// whether the copy has moved 50 ms after the element is removed,
+		// and, if it waits, 50 ms after the wait
+		movedAt50, movedAfterWait bool
+	}{
+		{"none", 200 * ms, ElementTransition{}, false, true},
+		{"negative", 200 * ms, ElementTransition{ExitDelay: -1}, true, false},
+		{"negative with ExitDuration", 200 * ms, ElementTransition{ExitDelay: -1, ExitDuration: 100 * ms}, true, false},
+		{"positive", 0, ElementTransition{ExitDelay: 200 * ms, ExitDuration: 100 * ms}, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			shown := true
+			tr := tc.t
+			tr.Animation = &Animation{Duration: 100 * ms, Ease: Linear, Delay: tc.delay}
+			tr.Exit = &Motion{X: 15}
+			tt, now := clockTester(func(c *context) {
+				coreRow(c).Size(200, 40).Background(RGB(255, 255, 255)).Children(func() {
+					if shown {
+						coreBox(c).Key("x").Size(20, 20).Background(RGB(255, 0, 0)).Transition(tr)
+					}
+				})
+			}, 200, 40)
+			*now = now.Add(500 * ms)
+			tt.Frame()
+			shown = false
+			tt.Frame()
+			// The copy has moved over x = 23 once it is no longer white.
+			moved := func() bool { return tt.Image().RGBAAt(23, 10).G < 250 }
+			*now = now.Add(50 * ms)
+			tt.Frame()
+			if got := moved(); got != tc.movedAt50 {
+				t.Errorf("50 ms after it goes, the copy moved is %v, not %v", got, tc.movedAt50)
+			}
+			if !tc.movedAfterWait {
+				return
+			}
+			*now = now.Add(150 * ms)
+			tt.Frame()
+			*now = now.Add(50 * ms)
+			tt.Frame()
+			if !moved() {
+				t.Error("50 ms after the wait, the copy has not moved")
+			}
+		})
+	}
+}
