@@ -812,6 +812,31 @@ func TestColorEmoji(t *testing.T) {
 	}
 }
 
+// TestTextPresentation checks that symbols with text presentation, such as
+// ⏺, draw in the text's color though only a color font has them, and that
+// emoji and those with the emoji presentation selector draw in color.
+func TestTextPresentation(t *testing.T) {
+	if runtime.GOOS != "windows" && runtime.GOOS != "darwin" {
+		t.Skip("emoji fonts vary")
+	}
+	for _, tc := range []struct {
+		text  string
+		color bool
+	}{
+		{"\u23fa", false}, {"\u23fa\ufe0f", true}, {"\u2b50", true}, {"\u2b50\ufe0e", false}, {"\U0001f389", true},
+	} {
+		s := newSystem() // each glyph in atlases of its own
+		l := s.Layout(Params{Text: "a" + tc.text + "a", Style: Style{Size: 32}})
+		g := l.Lines[0].Glyphs[1]
+		if g.Font.color != tc.color {
+			t.Errorf("%+q: color %v, want %v", tc.text, g.Font.color, tc.color)
+		}
+		if img := s.Glyph(g.Font, g.ID, 1, 0, 0, false); !img.OK || img.Colored != tc.color || img.W < 8 {
+			t.Errorf("%+q: %+v", tc.text, img)
+		}
+	}
+}
+
 func TestRegisterFont(t *testing.T) {
 	s := newSystem()
 	if err := s.RegisterFont(goregular.TTF, "MyGo Test Sans"); err != nil {
