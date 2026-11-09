@@ -63,6 +63,20 @@ func (ShellModule) TrashItem(path string) error {
 	return onMainValue(func() error { return backend().Shell().TrashItem(abs) })
 }
 
+// PreviewItem shows the item at path in the Quick Look panel, the preview
+// Finder opens with the space bar. A relative path is relative to the
+// working directory.
+//
+// It is supported on macOS only; all other platforms return ErrUnsupported.
+func (ShellModule) PreviewItem(path string) error {
+	needsApp("Shell.PreviewItem")
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	return onMainValue(func() error { return backend().Shell().PreviewItem(abs) })
+}
+
 // FileIcon returns the icon the file manager shows for a file, a folder or
 // an application, as a PNG image of size by size pixels: pass the size in
 // DIPs times the display's scale factor for a sharp icon. On Windows path

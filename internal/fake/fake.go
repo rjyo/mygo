@@ -1198,6 +1198,14 @@ func (shell) TrashItem(path string) error {
 	return nil
 }
 
+// Previewed are the paths PreviewItem was given.
+var Previewed []string
+
+func (shell) PreviewItem(path string) error {
+	Previewed = append(Previewed, path)
+	return nil
+}
+
 // Opened are the paths OpenApplication was given.
 var Opened []string
 

@@ -1184,6 +1184,10 @@ type Shell interface {
 	OpenPath(path string) error
 	ShowItemInFolder(path string)
 	TrashItem(path string) error
+	// PreviewItem shows the item at path in the Quick Look panel, the
+	// preview Finder opens with the space bar. It is supported on macOS
+	// only; all other platforms return ErrUnsupported.
+	PreviewItem(path string) error
 	Beep()
 	// FileIcon returns the icon the file manager shows for a file, a
 	// folder or an application, as a PNG image of size by size pixels.

@@ -6,7 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 	"unsafe"
+
+	"github.com/ebitengine/purego"
+	"github.com/ebitengine/purego/objc"
 
 	"github.com/egoist/mygo/internal/platform"
 	"github.com/egoist/mygo/transfer"
@@ -141,6 +145,77 @@ func (shell) TrashItem(path string) error {
 				err = errors.New("mygo: cannot move to trash")
 			}
 		}
+	})
+	return err
+}
+
+// Quick Look: QLPreviewPanel is the panel Finder opens with the space bar.
+// The app does not link QuickLook, so the framework is opened on first use,
+// before its class and data source protocol can be looked up.
+
+var (
+	quickLookOnce sync.Once
+	quickLookErr  error
+	// previewSource is the retained data source; the panel keeps its data
+	// source unretained, so this one lives as long as the process.
+	previewSource id
+	previewURLMu  sync.RWMutex
+	previewURL    id
+)
+
+// loadQuickLook opens QuickLook.framework.
+func loadQuickLook() error {
+	quickLookOnce.Do(func() {
+		_, quickLookErr = purego.Dlopen("/System/Library/Frameworks/QuickLook.framework/QuickLook", purego.RTLD_GLOBAL|purego.RTLD_NOW)
+	})
+	return quickLookErr
+}
+
+// previewDataSource returns the object QLPreviewPanel asks for the item to
+// show: one item, the retained URL of the last PreviewItem call.
+func previewDataSource() id {
+	if previewSource != 0 {
+		return previewSource
+	}
+	cls := classDef("MyGoPreviewDataSource", "NSObject", []string{"QLPreviewPanelDataSource"}, []objc.MethodDef{
+		method("numberOfPreviewItemsInPreviewPanel:", func(self id, _ objc.SEL, panel id) int { return 1 }),
+		method("previewPanel:previewItemAtIndex:", func(self id, _ objc.SEL, panel id, index int) id {
+			previewURLMu.RLock()
+			defer previewURLMu.RUnlock()
+			return previewURL
+		}),
+	})
+	previewSource = retain(send(send(cls, "alloc"), "init"))
+	return previewSource
+}
+
+// PreviewItem shows the item at path in the Quick Look panel, as Finder's
+// space bar does. The panel stays open until the user closes it; asking
+// again replaces the item it shows.
+func (shell) PreviewItem(path string) error {
+	if err := loadQuickLook(); err != nil {
+		return fmt.Errorf("mygo: cannot load Quick Look: %w", err)
+	}
+	var err error
+	withPool(func() {
+		if !hasClass("QLPreviewPanel") {
+			err = platform.ErrUnsupported
+			return
+		}
+		src := previewDataSource()
+		u := retain(fileURL(path))
+		previewURLMu.Lock()
+		old := previewURL
+		previewURL = u
+		previewURLMu.Unlock()
+		release(old)
+		panel := send(class("QLPreviewPanel"), "sharedPreviewPanel")
+		send(panel, "setDataSource:", uintptr(src))
+		send(panel, "reloadData")
+		if theBackend != nil {
+			send(theBackend.app, "activateIgnoringOtherApps:", 1)
+		}
+		send(panel, "makeKeyAndOrderFront:", 0)
 	})
 	return err
 }

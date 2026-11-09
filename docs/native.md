@@ -230,6 +230,7 @@ mygo.Shell.OpenExternal("https://example.com") // the default browser
 mygo.Shell.OpenPath("/Users/ada/report.pdf")   // the default app for the file
 mygo.Shell.ShowItemInFolder(path)              // Finder, Explorer, the file manager
 mygo.Shell.TrashItem(path)                     // to the trash
+mygo.Shell.PreviewItem(path)                   // Quick Look, as the space bar does
 mygo.Shell.Beep()
 ```
 
@@ -238,6 +239,12 @@ it fails and leaves the item where it is. On Windows that is an item too
 big for the recycle bin, or on a drive without one, as network shares and
 many removable drives are, which Windows would otherwise delete without
 asking.
+
+`PreviewItem` shows a file in the Quick Look panel, the preview Finder
+opens with the space bar: the panel stays open until the user closes it,
+and asking again replaces the item it shows. It is macOS only; other
+platforms return `ErrUnsupported`. The panel is not modal: the app keeps
+running and the call returns once the item is set.
 
 `FileIcon` returns the icon the file manager shows for a file, a folder
 or an application, as a PNG of the size asked for in pixels: pass the size

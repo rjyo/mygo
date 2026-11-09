@@ -317,6 +317,8 @@ func (shell) ShowItemInFolder(path string) {
 
 func (shell) Beep() { procMessageBeep.Call(0) }
 
+func (shell) PreviewItem(string) error { return platform.ErrUnsupported }
+
 // Screen.
 
 type screen struct{}

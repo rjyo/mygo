@@ -56,6 +56,20 @@ func TestTrashItemRelativePath(t *testing.T) {
 	}
 }
 
+// TestPreviewItemRelativePath checks that a relative path reaches the
+// backend absolute, as the preview needs a file URL.
+func TestPreviewItemRelativePath(t *testing.T) {
+	t.Chdir(t.TempDir())
+	defer func() { fake.Previewed = nil }()
+	if err := Shell.PreviewItem(filepath.Join("notes", "old.txt")); err != nil {
+		t.Fatal(err)
+	}
+	wd, _ := os.Getwd()
+	if want := []string{filepath.Join(wd, "notes", "old.txt")}; !slices.Equal(fake.Previewed, want) {
+		t.Errorf("PreviewItem passed %q, want %q", fake.Previewed, want)
+	}
+}
+
 func TestInstalledApps(t *testing.T) {
 	fake.Apps = []platform.Application{
 		{Name: "zed", ID: "dev.zed.Zed", Path: "/Applications/Zed.app"},

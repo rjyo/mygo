@@ -217,6 +217,8 @@ func (shell) TrashItem(path string) error {
 	return nil
 }
 
+func (shell) PreviewItem(string) error { return platform.ErrUnsupported }
+
 func (shell) Beep() { gdkDisplayBeep(gdkDisplayGetDefault()) }
 
 // Screen.
