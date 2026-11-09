@@ -14,6 +14,11 @@ on:
 permissions:
   contents: read
 
+# The Zig that builds native libraries in both jobs, which the key of the
+# SQLite plugin's native module in the Actions cache names too.
+env:
+  ZIG_VERSION: 0.16.0
+
 # A push supersedes the runs before it on a pull request: the newest commit's
 # run covers theirs. On main a run that started finishes, so that main has a
 # history to tell whether a test that fails on a pull request fails without
@@ -133,12 +138,50 @@ jobs:
           key: ${{ steps.downloads.outputs.cache-primary-key }}
       - uses: mlugg/setup-zig@v2
         with:
-          version: 0.16.0
+          version: ${{ env.ZIG_VERSION }}
       # The SQLite plugin's native module, from its Zig and the SQLite its
       # build.zig.zon pins, which the plugin's tests and the end-to-end
-      # tests load: built here, so that they test these sources.
+      # tests load: built here, so that they test these sources. The build
+      # takes minutes, and the emulated Zig of the Windows ARM64 job runs
+      # past that job's limit now and then, so the library it builds into
+      # .mygo/native is kept in the Actions cache, under a key of all the
+      # build reads: the module's files, Zig's version, and the CLI code
+      # that generates the module's Go and Zig and builds them. A hit skips
+      # the build; any change to these misses, and builds.
+      - name: Find where the SQLite plugin's native module goes
+        id: sqlitecore
+        shell: bash
+        run: |
+          case $RUNNER_OS in Windows) lib=Sqlitecore.dll ;; macOS) lib=libSqlitecore.dylib ;; *) lib=libSqlitecore.so ;; esac
+          echo "path=.mygo/native/$(go env GOOS)-$(go env GOARCH)/$lib" >> "$GITHUB_OUTPUT"
+      - name: Restore the SQLite plugin's native module
+        id: sqlitecore-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ steps.sqlitecore.outputs.path }}
+          key: sqlitecore-${{ runner.os }}-${{ runner.arch }}-zig${{ env.ZIG_VERSION }}-${{ hashFiles('plugins/sqlite/internal/sqlitecore/**', 'internal/nativegen/**', 'internal/nativelib/**', 'cmd/mygo/native*.go', 'go.mod') }}
       - name: Build the SQLite plugin's native module
-        run: go run ./cmd/mygo native build -target host plugins/sqlite/internal/sqlitecore
+        id: sqlitecore-build
+        if: steps.sqlitecore-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          go run ./cmd/mygo native build -target host plugins/sqlite/internal/sqlitecore
+          # The build regenerates the module's Go and Zig first, which a
+          # hit does not: only a build of the files as committed is kept.
+          if [ -z "$(git status --porcelain -- plugins/sqlite/internal/sqlitecore)" ]; then echo "committed=true" >> "$GITHUB_OUTPUT"; fi
+      - name: Save the SQLite plugin's native module
+        if: steps.sqlitecore-cache.outputs.cache-hit != 'true' && steps.sqlitecore-build.outputs.committed == 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ steps.sqlitecore.outputs.path }}
+          key: ${{ steps.sqlitecore-cache.outputs.cache-primary-key }}
+      # The module loads a build in .mygo/native only if it is newer than
+      # its sources, and the cache restores the time it was built, before
+      # this checkout.
+      - name: Date the restored module after its sources
+        if: steps.sqlitecore-cache.outputs.cache-hit == 'true'
+        shell: bash
+        run: touch "${{ steps.sqlitecore.outputs.path }}"
       # cmd/mygo builds and packages apps, which takes the macOS runners
       # about six minutes and, on a slow one beside the other packages,
       # past go test's ten: the same tests, more time.
@@ -239,11 +282,43 @@ jobs:
       - name: Install Zig (x86_64)
         shell: pwsh
         run: |
-          Invoke-WebRequest https://ziglang.org/download/0.16.0/zig-x86_64-windows-0.16.0.zip -OutFile "$env:RUNNER_TEMP\zig.zip"
+          Invoke-WebRequest "https://ziglang.org/download/$env:ZIG_VERSION/zig-x86_64-windows-$env:ZIG_VERSION.zip" -OutFile "$env:RUNNER_TEMP\zig.zip"
           Expand-Archive "$env:RUNNER_TEMP\zig.zip" -DestinationPath "$env:RUNNER_TEMP"
-          "$env:RUNNER_TEMP\zig-x86_64-windows-0.16.0" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+          "$env:RUNNER_TEMP\zig-x86_64-windows-$env:ZIG_VERSION" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+      # As in the job above. The emulated build takes five or six minutes,
+      # and twice it ran past 25, until the job's limit canceled it: one
+      # that runs past 15 fails then, naming this step, rather than
+      # leaving the job's limit to cancel it.
+      - name: Find where the SQLite plugin's native module goes
+        id: sqlitecore
+        shell: bash
+        run: |
+          case $RUNNER_OS in Windows) lib=Sqlitecore.dll ;; macOS) lib=libSqlitecore.dylib ;; *) lib=libSqlitecore.so ;; esac
+          echo "path=.mygo/native/$(go env GOOS)-$(go env GOARCH)/$lib" >> "$GITHUB_OUTPUT"
+      - name: Restore the SQLite plugin's native module
+        id: sqlitecore-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ steps.sqlitecore.outputs.path }}
+          key: sqlitecore-${{ runner.os }}-${{ runner.arch }}-zig${{ env.ZIG_VERSION }}-${{ hashFiles('plugins/sqlite/internal/sqlitecore/**', 'internal/nativegen/**', 'internal/nativelib/**', 'cmd/mygo/native*.go', 'go.mod') }}
       - name: Build the SQLite plugin's native module
-        run: go run ./cmd/mygo native build -target host plugins/sqlite/internal/sqlitecore
+        id: sqlitecore-build
+        if: steps.sqlitecore-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 15
+        shell: bash
+        run: |
+          go run ./cmd/mygo native build -target host plugins/sqlite/internal/sqlitecore
+          if [ -z "$(git status --porcelain -- plugins/sqlite/internal/sqlitecore)" ]; then echo "committed=true" >> "$GITHUB_OUTPUT"; fi
+      - name: Save the SQLite plugin's native module
+        if: steps.sqlitecore-cache.outputs.cache-hit != 'true' && steps.sqlitecore-build.outputs.committed == 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ steps.sqlitecore.outputs.path }}
+          key: ${{ steps.sqlitecore-cache.outputs.cache-primary-key }}
+      - name: Date the restored module after its sources
+        if: steps.sqlitecore-cache.outputs.cache-hit == 'true'
+        shell: bash
+        run: touch "${{ steps.sqlitecore.outputs.path }}"
       - run: go test ./...
       - name: Test without the inspector, as production builds
         if: runner.os == 'Linux'
