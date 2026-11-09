@@ -909,6 +909,9 @@ func (v *view) encodeKey(k vt.KeyEvent, press bool) bool {
 	v.keys.Sync(t.term, t.opts.OptionAsAlt)
 	b := v.keys.Encode(k)
 	if len(b) == 0 {
+		b = controlKey(k)
+	}
+	if len(b) == 0 {
 		return false
 	}
 	t.in.push(append([]byte(nil), b...))
@@ -917,6 +920,25 @@ func (v *view) encodeKey(k vt.KeyEvent, press bool) bool {
 		t.term.SetSelection(nil)
 	}
 	return true
+}
+
+// controlKeys are the Control keys Ghostty's legacy encoding leaves to
+// fixterms' CSI u, which it makes of a key's text only: these keys come
+// without text, as Control keys do, and it sends nothing for them. xterm
+// and most terminals send their C0 controls, which shells and editors
+// read: Ctrl+I is Tab, Ctrl+M Enter and Ctrl+[ Esc.
+var controlKeys = map[vt.Key]string{vt.KeyI: "\t", vt.KeyM: "\r", vt.KeyBracketLeft: "\x1b"}
+
+// controlKey returns the C0 control of a Control key the encoder sent
+// nothing for, as other Control keys send theirs (Ctrl+C is ^C). The
+// Kitty keyboard protocol encodes these keys itself, so they never come
+// here with it.
+func controlKey(k vt.KeyEvent) []byte {
+	c, ok := controlKeys[k.Key]
+	if !ok || k.Action == vt.KeyRelease || k.Mods != vt.ModCtrl || k.Text != "" {
+		return nil
+	}
+	return []byte(c)
 }
 
 // sendText sends text that is no key, as of an input method.

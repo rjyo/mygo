@@ -638,6 +638,11 @@ func TestKeys(t *testing.T) {
 	key(0, ui.KeyA, "a", "a")
 	key(ui.Shift, ui.KeyA, "A", "A")
 	key(ui.Ctrl, ui.KeyC, "", "\x03")
+	// The Control keys fixterms makes CSI u of send their C0 controls,
+	// as in xterm, for shells and editors.
+	key(ui.Ctrl, ui.KeyI, "", "\t")
+	key(ui.Ctrl, ui.KeyM, "", "\r")
+	key(ui.Ctrl, ui.KeyBracketLeft, "", "\x1b")
 	key(0, ui.KeyEnter, "", "\r")
 	key(0, ui.KeyBackspace, "", "\x7f")
 	key(0, ui.KeyUp, "", "\x1b[A")
@@ -655,6 +660,8 @@ func TestKeys(t *testing.T) {
 	term.Feed([]byte("\x1b[>1u"))
 	key(0, ui.KeyEscape, "", "\x1b[27u")
 	key(ui.Ctrl, ui.KeyC, "", "\x1b[99;5u")
+	key(ui.Ctrl, ui.KeyI, "", "\x1b[105;5u")
+	key(ui.Ctrl, ui.KeyBracketLeft, "", "\x1b[91;5u")
 	// Programs in cursor key mode get application keys.
 	term.Feed([]byte("\x1b[<u\x1b[?1h"))
 	key(0, ui.KeyUp, "", "\x1bOA")

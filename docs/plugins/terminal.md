@@ -62,7 +62,9 @@ The terminal does what terminal apps do:
   screen of full-screen programs;
 - the keyboard as programs ask: legacy sequences, xterm's modifyOtherKeys
   or the Kitty keyboard protocol, and input methods, which compose at the
-  cursor;
+  cursor. In legacy sequences Ctrl+I, Ctrl+M and Ctrl+[ send Tab, Enter
+  and Esc, as in xterm, where Ghostty sends fixterms' CSI u, which
+  shells don't read;
 - mouse reports, focus reports, bracketed paste, synchronized output,
   hyperlinks (OSC 8), the title (OSC 0 and 2), the working directory
   (OSC 7), copying to and reading the clipboard (OSC 52, OSC 5522) as the
