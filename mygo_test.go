@@ -61,6 +61,9 @@ func TestMain(m *testing.M) {
 	if os.Getenv("MYGO_TEST_STUCK_QUIT") == "1" {
 		stuckQuit()
 	}
+	if dir := os.Getenv("MYGO_TEST_CLEAR_WINDOW_STATES"); dir != "" {
+		clearWindowStatesOnQuit(dir)
+	}
 	if mode := os.Getenv("MYGO_TEST_END_SESSION"); mode != "" {
 		endSession(mode)
 	}

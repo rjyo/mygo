@@ -208,6 +208,7 @@ type WindowOptions struct {
 	// same key, for example at the next launch, gets them back as long as
 	// it would show on a connected display: they override X, Y, Width,
 	// Height, UseContentSize, Maximized and FullScreen.
+	// App.ClearWindowStates forgets them.
 	StateKey string
 
 	// Content makes the window show a user interface MyGo draws itself,
@@ -258,6 +259,14 @@ type WindowState struct {
 // field of a state, as JSON does: on Windows, a window whose state lost
 // its pixels (WindowState.PixelX) is centered when the displays have
 // different scales.
+//
+// In a quit, the states are saved after the OnBeforeQuit listeners have
+// run, as each window closes, and once more after the event loop has
+// stopped, right before the OnQuit listeners run: states that the app
+// removes from the store itself in OnBeforeQuit are written again.
+// App.ClearWindowStates drops them for good instead, from any of those
+// listeners or at any other time, through SaveWindowStates with no
+// states.
 type WindowStateStore interface {
 	// LoadWindowStates returns the saved states. It is called once, when
 	// the first window with a StateKey is created. Without states (nil, or
@@ -265,8 +274,9 @@ type WindowStateStore interface {
 	LoadWindowStates() (map[string]WindowState, error)
 	// SaveWindowStates replaces the saved states with states, which the
 	// store may keep. It is called when a window with a StateKey closes
-	// and when the app quits, if a state changed. After an error the
-	// next call saves the states again.
+	// and when the app quits, if a state changed, and with an empty map
+	// by App.ClearWindowStates. After an error the next call saves the
+	// states again.
 	SaveWindowStates(states map[string]WindowState) error
 }
 
@@ -280,6 +290,18 @@ func (a *Application) SetWindowStateStore(s WindowStateStore) {
 	a.stateStore = s
 	a.mu.Unlock()
 }
+
+// ClearWindowStates forgets the states of the windows
+// (WindowOptions.StateKey), as an app's "Reset settings" does: it saves
+// no states to the store (window-state.json, or the store of
+// SetWindowStateStore, with an empty map), and the windows save theirs no
+// more for the rest of the run. The windows open keep their bounds; those
+// created afterwards, as those of the next launch, get their options.
+// It may be called at any time, from any goroutine, from the OnBeforeQuit,
+// OnWillQuit and OnQuit listeners too, which run before the quit's last
+// save, and before Run. It returns the store's error; the next save, when
+// a window closes or the app quits, tries again.
+func (a *Application) ClearWindowStates() error { return onMainValue(clearWindowStates) }
 
 // Window is a native window hosting a web page, or the Content of package
 // ui. Create windows with NewWindow once the application is ready.

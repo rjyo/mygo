@@ -1824,7 +1824,10 @@ as in Tauri:
   window on the way, and the normal bounds only change in the normal
   state) and when the window closes; it is saved when a window closes
   and when the app quits, if it changed, and kept for the next save when
-  saving fails. A saved window that would not show on any
+  saving fails. `App.ClearWindowStates` saves an empty map and sets
+  `windowStates.cleared`, after which windows capture nothing for the rest
+  of the run, so the quit's saves (as windows close, and in `finish`
+  before `OnQuit`) cannot bring the states back. A saved window that would not show on any
   display keeps its size and is centered. On Windows, where a window's
   position in DIPs changes with the displays' scales (`dipSpace`), and
   earlier versions' could not tell displays of different scales apart,

@@ -5,8 +5,10 @@ package mygo
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -22,7 +24,9 @@ func TestWindowState(t *testing.T) {
 	App.SetPath(PathUserData, dir)
 	delay := windowStateDelay
 	windowStateDelay = 20 * time.Millisecond
-	forget := func() { windowStates.loaded, windowStates.byKey, windowStates.dirty = false, nil, false }
+	forget := func() {
+		windowStates.loaded, windowStates.byKey, windowStates.dirty, windowStates.cleared = false, nil, false, false
+	}
 	onMain(forget)
 	// A new process: the states are written as when the app quits, and read
 	// again.
@@ -155,7 +159,9 @@ func (m *memoryStates) SaveWindowStates(states map[string]WindowState) error {
 func TestWindowStateStore(t *testing.T) {
 	dir := t.TempDir()
 	App.SetPath(PathUserData, dir)
-	forget := func() { windowStates.loaded, windowStates.byKey, windowStates.dirty = false, nil, false }
+	forget := func() {
+		windowStates.loaded, windowStates.byKey, windowStates.dirty, windowStates.cleared = false, nil, false, false
+	}
 	onMain(forget)
 	store := &memoryStates{states: map[string]WindowState{"main": {X: 30, Y: 40, Width: 640, Height: 480, Maximized: true}}}
 	App.SetWindowStateStore(store)
@@ -211,6 +217,107 @@ func TestWindowStateStore(t *testing.T) {
 	if got := onMainValue(func() WindowState { return store.states["failed"] }); got != want {
 		t.Errorf("saved %+v after a failed save, want %+v", got, want)
 	}
+}
+
+// TestClearWindowStates: ClearWindowStates empties the store, and no
+// window saves its state again in the run, as one that moves and closes
+// after it, the quit's last save, or one created then with options
+// that would capture a state.
+func TestClearWindowStates(t *testing.T) {
+	forget := func() {
+		windowStates.loaded, windowStates.byKey, windowStates.dirty, windowStates.cleared = false, nil, false, false
+	}
+	onMain(forget)
+	store := &memoryStates{states: map[string]WindowState{"main": {X: 30, Y: 40, Width: 640, Height: 480}, "other": {Width: 300, Height: 200}}}
+	App.SetWindowStateStore(store)
+	t.Cleanup(func() {
+		onMain(forget)
+		App.SetWindowStateStore(nil)
+	})
+	saved := func() map[string]WindowState {
+		return onMainValue(func() map[string]WindowState { return store.states })
+	}
+
+	w, fw := testWindow(t, WindowOptions{StateKey: "main", Width: 400, Height: 300})
+	if o := fw.Opts; o.X != 30 || o.Width != 640 {
+		t.Fatalf("restored options = %+v", o)
+	}
+	// A failed save is tried again by the next one.
+	onMain(func() { store.err = errors.New("database is locked") })
+	if err := App.ClearWindowStates(); err == nil || len(saved()) != 2 {
+		t.Fatalf("ClearWindowStates with a failing store = %v, saved %v", err, saved())
+	}
+	onMain(func() { store.err = nil })
+
+	onMain(func() {
+		fw.SetBounds(platform.Rect{X: 200, Y: 150, Width: 800, Height: 600})
+		w.captureState() // as once the move settled
+	})
+	w.Destroy()
+	if s := saved(); len(s) != 0 {
+		t.Errorf("saved %v after ClearWindowStates", s)
+	}
+	_, fw = testWindow(t, WindowOptions{StateKey: "other", Maximized: true, X: 5, Y: 6, Width: 500, Height: 400})
+	if o := fw.Opts; o.Width != 500 || o.Height != 400 || o.X != 5 {
+		t.Errorf("a window created after ClearWindowStates got %+v, want its options", o)
+	}
+	onMain(saveWindowStates) // as when the app quits
+	if s := saved(); len(s) != 0 {
+		t.Errorf("the quit saved %v after ClearWindowStates", s)
+	}
+	if loads := onMainValue(func() int { return store.loads }); loads != 1 {
+		t.Errorf("states loaded %d times", loads)
+	}
+}
+
+// TestClearWindowStatesOnQuit: states cleared in OnBeforeQuit stay
+// cleared, while the windows close and the app finishes after it.
+func TestClearWindowStatesOnQuit(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	cmd := exec.Command(exe, "-test.run=^$")
+	cmd.Env = append(os.Environ(), "MYGO_TEST_CLEAR_WINDOW_STATES="+dir)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, windowStateFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var states map[string]WindowState
+	if err := json.Unmarshal(data, &states); err != nil || len(states) != 0 {
+		t.Errorf("%s after the quit: %s (%v)", windowStateFile, data, err)
+	}
+}
+
+// clearWindowStatesOnQuit is a helper process for
+// TestClearWindowStatesOnQuit: with a window whose state was saved in
+// dir, it quits, clearing the states in OnBeforeQuit.
+func clearWindowStatesOnQuit(dir string) {
+	App.SetPath(PathUserData, dir)
+	App.WhenReady(func() {
+		w := NewWindow(WindowOptions{StateKey: "main", X: 10, Y: 20, Width: 500, Height: 400})
+		w.closeState()
+		if _, err := os.Stat(filepath.Join(dir, windowStateFile)); err != nil {
+			fmt.Println("not saved:", err)
+			os.Exit(1)
+		}
+		App.OnBeforeQuit(func(*QuitEvent) {
+			if err := App.ClearWindowStates(); err != nil {
+				fmt.Println(err)
+				os.Exit(1)
+			}
+		})
+		App.Quit()
+	})
+	if err := App.Run(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	os.Exit(0)
 }
 
 // pixelScreen, pixelBackend and pixelWindow stand for a backend that

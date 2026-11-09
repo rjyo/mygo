@@ -156,6 +156,25 @@ quits, on the main thread. Windows open with their options when there are
 no states or loading them fails; a save that fails is tried again the next
 time.
 
+In a quit, the states are saved after the `OnBeforeQuit` listeners have
+run, as each window closes, and once more after the event loop has
+stopped, right before the `OnQuit` listeners run. A "Reset settings"
+action that removed `window-state.json`, or the states from its own store,
+would see them written again. `App.ClearWindowStates()` forgets them for
+good instead: it saves no states, an empty map for a `WindowStateStore`,
+and the windows save theirs no more until the app exits. The windows open
+keep their bounds, and those created afterwards, as at the next launch,
+get their options. It can be called at any time, from a quit listener
+too:
+
+```go
+mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) {
+	if resetRequested {
+		_ = mygo.App.ClearWindowStates()
+	}
+})
+```
+
 ### Bring a page back
 
 A window's position comes back with its `StateKey`; its page comes back
