@@ -1842,6 +1842,35 @@ func TestQuitCanBeCanceled(t *testing.T) {
 	}
 }
 
+func TestQuitCanceledEvent(t *testing.T) {
+	var canceled int
+	off := App.OnQuitCanceled(func() { canceled++ })
+	defer off()
+
+	offBefore := App.OnBeforeQuit(func(e *QuitEvent) { e.PreventDefault() })
+	if onMainValue(fb.QuitRequested) {
+		t.Fatal("quit was not canceled by OnBeforeQuit")
+	}
+	offBefore()
+
+	w, _ := testWindow(t, WindowOptions{})
+	offClose := w.OnClose(func(e *CloseEvent) { e.PreventDefault() })
+	if onMainValue(fb.QuitRequested) {
+		t.Fatal("quit was not canceled by a window")
+	}
+	offClose()
+
+	offWill := App.OnWillQuit(func(e *QuitEvent) { e.PreventDefault() })
+	if onMainValue(fb.QuitRequested) {
+		t.Fatal("quit was not canceled by OnWillQuit")
+	}
+	offWill()
+
+	if canceled != 3 {
+		t.Errorf("OnQuitCanceled ran %d times, want 3", canceled)
+	}
+}
+
 func TestPaths(t *testing.T) {
 	dir, err := App.Path(PathUserData)
 	if err != nil || !strings.HasSuffix(dir, "MyGoTest") {

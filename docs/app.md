@@ -60,6 +60,7 @@ where:
 | `OnWindowAllClosed` | the last window closed, unless the app is quitting |
 | `OnBeforeQuit(func(e *mygo.QuitEvent))` | a quit started, before the windows close; `e.PreventDefault()` cancels it, unless the OS ends the session (`e.SessionEnding`) |
 | `OnWillQuit(func(e *mygo.QuitEvent))` | every window has closed and the app is about to quit; it can still be canceled, unless the OS ends the session |
+| `OnQuitCanceled` | a quit that started was canceled by a listener or a window; the app keeps running |
 | `OnQuit` | the event loop stopped, right before `Run` returns |
 
 Each returns a function that removes the listener.
@@ -87,6 +88,10 @@ mygo.App.OnActivate(func(hasVisibleWindows bool) {
   then quits; `OnBeforeQuit` and `OnWillQuit` listeners can cancel it too.
   Cmd+Q, the Quit menu item and Ctrl+C in the terminal (SIGINT and SIGTERM)
   quit the same way; a second signal exits at once.
+- When one of them cancels the quit, `OnQuitCanceled` runs: an app that set
+  its own quitting state in `OnBeforeQuit` clears it there, or it would go on
+  running with that state set. The windows a canceled `OnWillQuit` had
+  already closed stay closed.
 - When the OS ends the session (logout, restart, shutdown) on Windows and
   macOS, the quit listeners and the windows' `OnClose` run all the same,
   in that order and before `OnQuit`, but can't cancel it: the
