@@ -1322,3 +1322,31 @@ func TestDiffViewDeletedRunInView(t *testing.T) {
 		t.Fatalf("the last deleted line's tokens: %+v, final %v", l.toks, l.exact)
 	}
 }
+
+// A unified view forgets the deleted lines it laid out, and the rows it
+// shaped, once frames stop showing them, as an editor does its own: a
+// diff scrolled through keeps no more of them than of a screen or two.
+func TestDiffViewForgetsDeletedLines(t *testing.T) {
+	var old, nw []string
+	for i := range 6000 {
+		line := "line " + strconv.Itoa(i)
+		old = append(old, line)
+		if i%3 != 0 {
+			nw = append(nw, line)
+		}
+	}
+	d := &DiffState{Old: NewBuffer(strings.Join(old, "\n")), New: NewBuffer(strings.Join(nw, "\n")), Layout: DiffUnified, ExpandUnchanged: true}
+	tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).Fill() }, 600, 300)
+	tt.Frame()
+	for y := 0.0; y < d.eds[1].view.heights.total(); y += 250 {
+		d.SetScrollY(y)
+		tt.Frame()
+	}
+	ov := &d.oldView
+	if n := len(ov.lines.m); n > 600 {
+		t.Errorf("%d of 2,000 deleted lines still laid out", n)
+	}
+	if n := len(ov.shaped.cur) + len(ov.shaped.prev); n > 600 {
+		t.Errorf("%d shaped rows of 2,000 deleted lines still kept", n)
+	}
+}

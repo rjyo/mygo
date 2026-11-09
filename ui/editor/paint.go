@@ -160,6 +160,11 @@ func (ed *editor) paint(p *ui.Painter, r ui.Rect) {
 		p.AnimationFrame()
 	}
 	v.endFrame()
+	// A unified diff's deleted lines are the old text's, which its view
+	// lays out and shapes as this one paints them.
+	if ds, ok := ed.o.decor.(*diffSide); ok && ds.unified {
+		ds.d.oldView.endFrame()
+	}
 }
 
 // prepare works out what highlights the lines in view.
