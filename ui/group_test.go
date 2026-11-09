@@ -300,3 +300,42 @@ func TestCacheHoldsBlur(t *testing.T) {
 		}
 	}
 }
+
+// TestLayerKeepsTransformedChildren checks that a layer (Cache, Blur or an
+// effect) of an untransformed element keeps what is scaled or rotated
+// inside it in its place, as it draws without the layer.
+func TestLayerKeepsTransformedChildren(t *testing.T) {
+	white, red := RGB(255, 255, 255), RGB(255, 0, 0)
+	layers := map[string]func(e *node) *node{
+		"cache":  func(e *node) *node { return e.Cache() },
+		"blur":   func(e *node) *node { return e.Blur(0.5) },
+		"effect": func(e *node) *node { return e.Effect(wholeLayer{}) },
+	}
+	turns := map[string]func(e *node) *node{
+		"scale":  func(e *node) *node { return e.Scale(0.5, 0.5) },
+		"rotate": func(e *node) *node { return e.Rotate(45) },
+	}
+	for ln, layer := range layers {
+		for tn, turn := range turns {
+			tt := coreNewTester(func(c *context) {
+				coreBox(c).Size(200, 100).Background(white).Children(func() {
+					layer(coreBox(c).Absolute().Left(60).Top(30).Size(40, 40)).Children(func() {
+						turn(coreBox(c).Size(40, 40).Background(red))
+					})
+				})
+			}, 200, 100)
+			for range 2 {
+				tt.Frame()
+				img := tt.Image()
+				if p := img.RGBAAt(80, 50); p.R != 255 || p.G > 10 {
+					t.Errorf("%s, %s: at the center %v, want red", ln, tn, p)
+				}
+				if tn == "scale" {
+					if p := img.RGBAAt(64, 34); p.G < 245 {
+						t.Errorf("%s, %s: outside the square %v, want white", ln, tn, p)
+					}
+				}
+			}
+		}
+	}
+}

@@ -177,16 +177,13 @@ func layerPaint(e *node, dx, dy float32, lifting *node, view Rect) func(cp *Pain
 			cp.clip = Rect{view.X + dx, view.Y + dy, view.W, view.H}
 		}
 		// The subtree in e's own space, moved to the bitmap's corner:
-		// positions shift, and the transforms of those transformed lose
-		// e's own, as a layer of e's content.
+		// positions shift, and the transforms of those transformed are
+		// rebased into the layer's space, losing e's own if it has one,
+		// as a layer of e's content.
 		shift(e, dx, dy)
-		if world.Set {
-			unworld(e, world, dx, dy)
-		}
+		unworld(e, world, dx, dy)
 		cp.element(e)
-		if world.Set {
-			restoreVisual(e)
-		}
+		restoreVisual(e)
 		shift(e, -dx, -dy)
 		e.effecting = false
 	}
@@ -206,7 +203,8 @@ func (p *Painter) layerOp(cv *Canvas, x0, y0 float32, w, h int, opacity, blur fl
 
 // unworld takes off the transform w of e's subtree, laid out as it moved
 // by (dx, dy): each one's maps its layout, moved, as w's inverse does
-// what it mapped before, so that e itself draws untransformed.
+// what it mapped before, so that e itself draws untransformed. An unset w
+// is the identity: the transforms are only conjugated by the shift.
 func unworld(e *node, w scene.Affine, dx, dy float32) {
 	inv, ok := w.Inverse()
 	if !ok {
