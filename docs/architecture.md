@@ -5157,7 +5157,12 @@ either.
     or a second after it was shown without one (a timer, which only an
     idle main thread lets fire); a refresh of DWM between the present and
     its frame showing shows the background under the surface
-    (`fillUnder`). A window made hidden gets no `WM_PAINT`: its first frame is
+    (`fillUnder`). A window whose frames show through DirectComposition
+    (no redirection bitmap, as a flyout's, or web views over the frames)
+    has no pixels of its own there, and DWM would show it black for a
+    refresh or more: it stays cloaked until DWM composed the frame
+    (`DwmFlush` on a goroutine, within four refreshes at 60 Hz), then
+    uncloaks on the main thread (#1591). A window made hidden gets no `WM_PAINT`: its first frame is
     drawn while it is hidden (`drawHidden`), which makes it ready to
     show, and it uncloaks after its first `WM_PAINT` once shown; a
     present that DXGI reports occluded leaves the next frame to draw
