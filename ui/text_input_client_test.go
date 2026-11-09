@@ -2,6 +2,7 @@ package ui
 
 import (
 	"github.com/egoist/mygo/internal/platform"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -424,5 +425,53 @@ func TestSpaceScrollsOnlyWithoutTextFocus(t *testing.T) {
 	tt.Frame()
 	if value != "fixed" || s.Y == 0 {
 		t.Fatalf("Space in a read-only input made it %q and scrolled to %v", value, s.Y)
+	}
+}
+
+// TestTextInputClientEditMenu: an element of HandleTextInput has the text
+// field items in its context menu, as a text input has, and EditItems puts
+// them in a menu of its own; choosing one comes to its HandleInput as the
+// Edit menu's command does.
+func TestTextInputClientEditMenu(t *testing.T) {
+	c := &primitiveClient{text: "some text", selection: TextInputSelection{Range: TextInputRange{Start: 0, End: 4}}}
+	var commands []string
+	view := func(menu func(m *Menu)) func(ctx *context) {
+		return func(ctx *context) {
+			box := coreBox(ctx).Size(250, 80).HandleTextInput(c).HandleInput(func(ev InputEvent) bool {
+				if ev.Kind == InputCommand {
+					commands = append(commands, ev.Text)
+					return true
+				}
+				return false
+			})
+			box.ContextMenu(menu)
+		}
+	}
+	tt := coreNewTester(view(func(m *Menu) { m.EditItems() }), 300, 100)
+	defer tt.rt.close()
+	tt.RightClickAt(40, 20)
+	if got := tt.Menu(); !slices.Contains(got, "Copy") || !slices.Contains(got, "Paste") || !slices.Contains(got, "Select All") {
+		t.Fatalf("the menu: %q", got)
+	}
+	if err := tt.ChooseMenuItem("Copy"); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(commands, []string{"copy"}) {
+		t.Fatalf("the commands: %q", commands)
+	}
+
+	// Without a selection, Copy is there but can't be chosen.
+	c.selection = TextInputSelection{Range: TextInputRange{Start: 4, End: 4}}
+	own := coreNewTester(view(func(m *Menu) {
+		m.Item("Mine")
+		m.EditItems()
+	}), 300, 100)
+	defer own.rt.close()
+	own.RightClickAt(40, 20)
+	if got := own.Menu(); len(got) < 2 || got[0] != "Mine" || !slices.Contains(got, "Copy") {
+		t.Fatalf("the menu of one's own: %q", got)
+	}
+	if err := own.ChooseMenuItem("Copy"); err == nil {
+		t.Fatal("chose Copy with nothing selected")
 	}
 }

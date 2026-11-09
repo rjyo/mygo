@@ -793,3 +793,32 @@ func TestRichTextMenu(t *testing.T) {
 		t.Fatalf("without Menu, the app's item: %q", got)
 	}
 }
+
+func TestRichTextEditMenu(t *testing.T) {
+	doc := NewDocument(NewText("some text"))
+	tt := ui.NewTester(func(c *ui.Context) { Editor(c, doc).Fill() }, 500, 300)
+	tt.RightClickAt(40, 20)
+	if got := tt.Menu(); !slices.Contains(got, "Copy") || !slices.Contains(got, "Paste") || !slices.Contains(got, "Select All") {
+		t.Fatalf("the editor's own menu: %q", got)
+	}
+	if err := tt.ChooseMenuItem("Select All"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a, z := doc.Selection(); min(a, z) != 0 || max(a, z) != len("some text") {
+		t.Fatalf("Select All selected %d…%d", a, z)
+	}
+
+	// EditItems puts the editor's commands in the app's own menu.
+	app := ui.NewTester(func(c *ui.Context) {
+		Editor(c, NewDocument(NewText("some text")), EditorOptions{Menu: func(m *ui.Menu) {
+			m.Item("Ask the app")
+			m.Separator()
+			m.EditItems()
+		}}).Fill()
+	}, 500, 300)
+	app.RightClickAt(40, 20)
+	if got := app.Menu(); len(got) < 3 || got[0] != "Ask the app" || !slices.Contains(got, "Copy") {
+		t.Fatalf("the app's menu with EditItems: %q", got)
+	}
+}
