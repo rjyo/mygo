@@ -746,6 +746,7 @@ func (rt *engine) animateLayout(root *node, w, h float32) {
 	for _, u := range holding {
 		e, r := u.e, u.r
 		if e.parent.ghosts {
+			journalKeep(rt, &e.flags)
 			e.flags |= flagInvisible
 			if rt.focused == e.id {
 				// Unseen, it takes no focus yet, but keeps it for later.
@@ -851,6 +852,7 @@ func (c *context) byDepth(uses []transitionUse) []transitionUse {
 
 // apply shows e at s.
 func (r *transition) apply(e *node, s tbox) {
+	journalKeepNode(e)
 	if s.w != e.w || s.h != e.h {
 		switch {
 		case r.collapse != 0:
@@ -974,6 +976,7 @@ func (rt *engine) animateExits(root *node, now time.Time, still, instant bool) {
 		g := r.ghost
 		g.next = nil
 		p.add(g)
+		journalKeep(rt, &p.ghosts)
 		p.ghosts = true
 		if p == rt.c.overlay {
 			rt.overlayExits = true
@@ -1161,7 +1164,9 @@ func (rt *engine) animateShadows(e *node, r *transition) {
 		}
 	}
 	if r.shadowMoving {
-		e.shadows = append(e.shadows[:0], r.shadowShown...)
+		// Its own array, not the one the view built, as painting the
+		// element puts its shadows back (Painter.element).
+		e.shadows = r.shadowShown
 	}
 }
 

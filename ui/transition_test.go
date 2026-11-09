@@ -762,7 +762,7 @@ func TestTransitionFadesShadows(t *testing.T) {
 		t.Helper()
 		*now = now.Add(100 * time.Millisecond)
 		tt.Frame()
-		return box.shadows
+		return shownShadows(box)
 	}
 	settle := func() {
 		*now = now.Add(time.Second)

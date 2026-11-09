@@ -1212,6 +1212,7 @@ func layoutAbsolute(e *node) {
 		if c.attach != 0 {
 			if c.popover != nil && c.popover.inHidden() {
 				// Nowhere to attach to: it hides with its target.
+				journalKeep(c.c.rt, &c.hidden)
 				c.hidden = true
 				continue
 			}
@@ -1350,6 +1351,10 @@ func attachedAt(c, e *node, t Rect, pw, ph, w, h float32) (x, y float32) {
 		if fy {
 			sy = 1 - sy
 		}
+		rt := c.c.rt
+		journalKeep(rt, &c.originX)
+		journalKeep(rt, &c.originY)
+		journalKeep(rt, &c.originSet)
 		c.originX, c.originY, c.originSet = sx, sy, true
 	}
 	dx, dy := c.relative(pw, ph)

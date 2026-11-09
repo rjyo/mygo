@@ -262,21 +262,32 @@ func (p *Painter) element(e *node) {
 	if e.themed != nil {
 		p.theme = e.themed
 	}
-	defer func() { p.transform, p.inline, p.theme = savedTransform, savedInline, savedTheme }()
+	// What its styleFn and Transition change as it paints goes back as it
+	// is painted, so that it holds what the view built, and painting it
+	// again starts from that.
+	r := e.st.trec
+	if r != nil && (r.built != p.rt.frame || r.elem != e) {
+		r = nil
+	}
+	styled := e.styleFn != nil || r != nil
+	var built builtStyle
+	if styled {
+		built = builtStyle{e.bg, e.borderC, e.ts.color, e.opacity, e.opacitySet, e.shadows}
+	}
+	defer func() {
+		p.transform, p.inline, p.theme = savedTransform, savedInline, savedTheme
+		if styled {
+			e.bg, e.borderC, e.ts.color, e.opacity, e.opacitySet, e.shadows = built.bg, built.border, built.text, built.opacity, built.opacitySet, built.shadows
+		}
+	}()
 
 	// Whether its look follows its hover, as this painting tells
 	// (Hovered): an element not painted keeps what its last did.
 	e.st.hoverLook = false
 	if e.styleFn != nil {
-		if b := &e.built; !e.styled {
-			e.styled = true
-			*b = builtStyle{e.bg, e.borderC, e.ts.color, e.opacity, e.opacitySet}
-		} else {
-			e.bg, e.borderC, e.ts.color, e.opacity, e.opacitySet = b.bg, b.border, b.text, b.opacity, b.opacitySet
-		}
 		e.styleFn(e)
 	}
-	if r := e.st.trec; r != nil && r.built == p.rt.frame && r.elem == e {
+	if r != nil {
 		p.rt.animateColors(e, r)
 		if animateShadows != nil {
 			animateShadows(p.rt, e, r)

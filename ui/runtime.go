@@ -192,6 +192,9 @@ type engine struct {
 	noHitFilter bool
 
 	states map[uint64]*state
+	// journal keeps the built values of the fields written after the
+	// build (journal.go).
+	journal journal
 	// built are the states the pass being built looked up (lookState), in
 	// the order it did, and nbuilt how many of states it built: endPass
 	// forgets the input of those alone, and prune looks for states to
@@ -731,6 +734,8 @@ func (rt *engine) runFrame() {
 		rt.c.used = rt.c.dirty
 	}
 
+	// The elements are built anew: their journal goes.
+	rt.journal.reset()
 	focused := rt.focused
 	// An event handled while building (a click, an edit) may change what
 	// was built before it: build again, so the frame shows the outcome.
@@ -806,6 +811,10 @@ func (rt *engine) runFrame() {
 		rt.stats.passes = rt.pass + 1
 	}
 	root := rt.c.root
+	rt.journal.start()
+	if checkBuilt != nil {
+		checkBuilt(rt, builtBuilt)
+	}
 	if rt.insp.open {
 		// What the inspector's Styles tab changed, over what the view built.
 		rt.insp.applyEdits(root)
@@ -814,7 +823,13 @@ func (rt *engine) runFrame() {
 	rt.insp.lap(0)
 	layoutTree(root, appW, h)
 	rt.measureFit(root)
+	if checkBuilt != nil {
+		checkBuilt(rt, builtLaidOut)
+	}
 	rt.commit(root, w, h)
+	if checkBuilt != nil {
+		checkBuilt(rt, builtCommitted)
+	}
 	// Scrolling can put a new native drop target under a stationary
 	// pointer. Resolve it against this frame's geometry, then rebuild if
 	// needed so DragOver/DataDragOver show the new target too.
@@ -847,6 +862,9 @@ func (rt *engine) runFrame() {
 		// what the frame draws, and paint it again.
 		rt.text.MakeRoom()
 		rt.paint(root, w, h, scale)
+	}
+	if checkBuilt != nil {
+		checkBuilt(rt, builtPainted)
 	}
 	rt.stats.lap(phasePaint)
 	rt.insp.lap(2)
@@ -1087,6 +1105,9 @@ func (rt *engine) repaintFrame(w, h, scale float32) {
 		rt.text.MakeRoom()
 		rt.paint(root, w, h, scale)
 	}
+	if checkBuilt != nil {
+		checkBuilt(rt, builtRepainted)
+	}
 	rt.stats.lap(phasePaint)
 	rt.insp.repainted(time.Since(start))
 	rt.host.present(&rt.scene)
@@ -1217,6 +1238,25 @@ func (rt *engine) prune() {
 		rt.focused = 0
 	}
 }
+
+// checkBuilt, which ui's tests set (builtcheck_test.go), checks that the
+// fields of the elements that the view builds are as it built them after
+// each phase of the frame that follows: what layout, commit and painting
+// find goes into fields of their own, so that an element kept to the next
+// frame without being built again holds what it was built with.
+var checkBuilt func(rt *engine, phase builtPhase)
+
+// builtPhase is a phase of a frame after which checkBuilt checks.
+type builtPhase uint8
+
+const (
+	builtBuilt     builtPhase = iota // the view built the elements
+	builtLaidOut                     // laid out
+	builtCommitted                   // committed
+	builtPainted                     // painted
+	builtRepainted                   // painted again, in a frame that only paints
+	builtDropped                     // the window closed: what the check kept goes
+)
 
 // checkFrames has frames check what the engine keeps to do less, as ui's
 // tests have them do (TestMain), but not its benchmarks.
@@ -1396,6 +1436,10 @@ func (rt *engine) dropFrame() {
 	clear(rt.states)
 	rt.free = nil
 	rt.hits, rt.liftHits = nil, nil
+	rt.journal = journal{}
+	if checkBuilt != nil {
+		checkBuilt(rt, builtDropped)
+	}
 }
 
 // endFrame ends a frame, and closes the engine when its window closed

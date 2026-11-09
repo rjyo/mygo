@@ -3102,12 +3102,30 @@ either.
   modifier keys builds anew, as views may show what they do. The frame
   that builds a scroll's rows under a still pointer paints their looks
   already (`rehover(false)`); after it presents, a hover moved by `prune`
-  asks for a frame painting (`rehover(true)`). A styleFn changes the
-  colors and opacity of its element as it paints, so painting it again
-  starts from those it was built with (`node.built`, kept as it first
-  paints, `styled`), not from what the last painting chose.
+  asks for a frame painting (`rehover(true)`). A styleFn, and a
+  `Transition` moving colors or shadows, change the element's colors,
+  opacity and shadows as it paints; `Painter.element` puts back those it
+  was built with once it painted (`builtStyle`), so that painting it again
+  starts from them, not from what the last painting chose (a moving
+  shadow points to the transition's own array, never into the built one).
   `TestHoverLookPaintsAsBuilt` compares each frame painted for a hover
-  with the frame built anew, over many controls. A frame of another size, or after the text
+  with the frame built anew, over many controls.
+  What the frame writes after the build into fields the view builds goes
+  in the journal (`ui/journal.go`): a table's, a form's and a toolbar's
+  fits, a List's offset, an attached element's origin and hiding, the
+  spans a paragraph merges from the texts inside it, the parent of exit
+  copies, and whole elements before a transition, a magic move or the
+  inspector's edits change them (`journalKeepNode`). The journal goes
+  as the next build begins, its elements built anew; it is what lets an
+  element kept to a later frame without being built again go back to
+  what it was built with (`rollback`) before that frame lays it out
+  (#1599). What the frame computes in fields of its own needs none: the
+  boxes, `world`, `ink`, the measures and layout records, the inline
+  fragments and the tree's links. ui's tests (`TestMain`) check after each
+  frame that the other fields, the journal rolled back, are what the view
+  built (`checkBuilt`, `builtcheck_test.go`, comparing their bytes and the
+  elements of their slices); `MYGO_BUILT_COLLECT=1` checks after each
+  phase and lists what changed rather than failing, to find the writer. A frame of another size, or after the text
   system forgot its layouts (`text.System.Generation`, as it lets go of
   fonts the elements' layouts hold), builds anew all the same. The timers
   the last frame built armed stay; the host arms them (`afterTimer`,

@@ -100,6 +100,8 @@ func (e *node) layoutToolbar(cw float32) {
 	for ch := e.first; ch != nil; ch = ch.next {
 		if ch.collapsed {
 			// Laid out again: the room may have grown.
+			journalKeep(e.c.rt, &ch.flags)
+			journalKeep(e.c.rt, &ch.collapsed)
 			ch.flags &^= flagAbsolute | flagInvisible
 			ch.collapsed = false
 			e.forgetIntrinsic()
@@ -136,6 +138,8 @@ func (e *node) layoutToolbar(cw float32) {
 		}
 	}
 	collapse := func(ch *node) {
+		journalKeep(e.c.rt, &ch.flags)
+		journalKeep(e.c.rt, &ch.collapsed)
 		ch.flags |= flagAbsolute | flagInvisible
 		ch.collapsed = true
 		e.forgetIntrinsic()

@@ -593,6 +593,10 @@ func (tf *tableFit) apply() {
 	tf.done, tf.drag.fit = true, ""
 	var w float32
 	for _, cell := range tf.cells {
+		rt := cell.c.rt
+		journalKeep(rt, &cell.width)
+		journalKeep(rt, &cell.grow)
+		journalKeep(rt, &cell.shrink)
 		cell.width = length{}
 		w = max(w, intrinsic(cell, true))
 	}

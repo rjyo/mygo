@@ -1640,12 +1640,13 @@ func (e *node) Hovered() bool {
 	if !e.hasState() {
 		return false
 	}
-	e.flags |= flagHover
 	rt := e.c.rt
 	if rt.painting {
-		// Its look follows its hover (hoverNeeds).
+		// Its look follows its hover (hoverNeeds), and the element is as
+		// built.
 		e.st.hoverLook = true
 	} else {
+		e.flags |= flagHover
 		e.st.hoverBuilt = true
 	}
 	if e.IsDisabled() {
@@ -1690,9 +1691,12 @@ func (e *node) Pressed() bool {
 	if !e.hasState() {
 		return false
 	}
-	e.flags |= flagClickable | flagHover
 	s := e.st
 	rt := e.c.rt
+	if !rt.painting {
+		// As it paints, the element is as built.
+		e.flags |= flagClickable | flagHover
+	}
 	if rt.insp.isForced(e.id, forceActive) && !e.disabled() {
 		return true
 	}

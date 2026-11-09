@@ -194,12 +194,13 @@ const (
 	flagClip = flagClipX | flagClipY
 )
 
-// builtStyle is what a styleFn may change of an element: its colors and
-// opacity.
+// builtStyle is what a styleFn or a Transition may change of an element
+// as it paints: its colors, opacity and shadows.
 type builtStyle struct {
 	bg, border, text Color
 	opacity          float32
 	opacitySet       bool
+	shadows          []shadow
 }
 
 type shadow struct {
@@ -458,12 +459,6 @@ type node struct {
 	// the element's, not captured by a closure, so that building a button
 	// allocates nothing.
 	faces [3]Color
-	// built is what styleFn may change of the element as it paints, as the
-	// view built it, kept as it first paints (styled): painting it again,
-	// as a frame only painting does for a hover (lookDue), starts from
-	// it rather than from what the last painting changed.
-	built  builtStyle
-	styled bool
 
 	// Input the element takes itself (HandleInput), and where the caret of
 	// the text it takes is (TextCaret).
@@ -2176,6 +2171,7 @@ func (e *node) add(child *node) {
 	child.parent = e
 	child.depth = e.depth + 1
 	if child.zIndex != 0 {
+		journalKeep(e.c.rt, &e.zOrder)
 		e.zOrder = true // set before it was added, as on a copy leaving (ghostOf)
 	}
 	if e.last == nil {

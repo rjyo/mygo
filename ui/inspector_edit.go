@@ -68,6 +68,7 @@ func (in *inspector) applyEditsTo(e *node) {
 		return
 	}
 	if edits := in.edits[e.id]; len(edits) > 0 {
+		journalKeepNode(e)
 		for i := range edits {
 			ed := &edits[i]
 			switch {

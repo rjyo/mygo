@@ -443,6 +443,7 @@ func under(e *node, world, around scene.Affine) {
 	if world == around {
 		return
 	}
+	journalKeepNode(e)
 	inv, ok := around.Inverse()
 	if !ok {
 		return
@@ -480,6 +481,7 @@ func (*matches) scale(e *node, w, h float32) {
 	if e.originSet {
 		ox, oy = e.originX, e.originY
 	}
+	journalKeepNode(e)
 	e.transform = e.transform.Then(Transform{m: scene.Translation((kx-1)*ox*e.w, (ky-1)*oy*e.h).Mul(scene.Scaling(kx, ky))})
 }
 
@@ -660,6 +662,7 @@ func (m *matches) move() {
 		switch {
 		case holder != nil && holder != e:
 			if u.t.Fly && !e.lift && inert(e) {
+				journalKeep(rt, &e.flags)
 				e.flags |= flagInvisible
 			}
 		case rec.takenAt != rt.frame:
@@ -929,6 +932,9 @@ func (m *matches) fly(f *flight, e *node, shown, box Rect, uses []transitionUse,
 	if src == nil && f.srcID != 0 {
 		src = m.builtWith(uses, f.srcID)
 	}
+	if src != nil {
+		journalKeepNode(src)
+	}
 	if src != nil && f.morph {
 		// Its characters move into this one's.
 		src.flags |= flagInvisible
@@ -969,6 +975,7 @@ func (m *matches) fly(f *flight, e *node, shown, box Rect, uses []transitionUse,
 	// look lays out nothing.
 	lab := f.r.animation().Oklab
 	look := mixLook(f.lookFrom, f.lookTo, k, lab)
+	journalKeepNode(e)
 	e.transform = look.turn
 	if f.morph {
 		// Its text as laid out, which its characters move to, as they
@@ -1036,6 +1043,7 @@ func (m *matches) flyOn(f *flight, id uint64, uses []transitionUse, now time.Tim
 	if x := rt.trans[f.copyIn]; e == nil || x == nil || x.ghost == nil || x.built == rt.frame || e.flags&flagInvisible != 0 {
 		return false // gone, or flying with another element of its Match
 	}
+	journalKeepNode(e)
 	r := f.r
 	box := Rect{e.x, e.y, e.w, e.h}
 	shown, moving := m.advance(f, box, now)
@@ -1105,6 +1113,7 @@ func (m *matches) show(e *node, r Rect, scaled bool) {
 // rather than each glyph a pixel at a time, and is the text at rest once
 // there.
 func (m *matches) pin(e *node, rest Rect) Point {
+	journalKeepNode(e)
 	_, _, s := m.rt.size()
 	around := m.around(e)
 	x, rx := snapTo(e.x-around.X, rest.X, s)

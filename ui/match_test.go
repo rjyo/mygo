@@ -352,7 +352,7 @@ func TestRouterTransitionMatch(t *testing.T) {
 		t.Fatalf("on the way, %d elements paint over the window", len(ls))
 	}
 	// From the thumbnail's color, the thumbnail still built.
-	if c := keyed(tt, "hero").bg; c != RGB(255, 0, 0) {
+	if c := shownBackground(keyed(tt, "hero")); c != RGB(255, 0, 0) {
 		t.Errorf("appearing, the hero is %v, not the thumbnail's red", c)
 	}
 	// The match over before the pages faded into each other, the
@@ -461,7 +461,7 @@ func TestMatchWithoutFly(t *testing.T) {
 	if g := keyed(tt, "grid").first; g == nil || g.leaving == 0 {
 		t.Error("the thumbnail does not go as its Exit says")
 	}
-	if c := keyed(tt, "hero").bg; c != RGB(255, 0, 0) {
+	if c := shownBackground(keyed(tt, "hero")); c != RGB(255, 0, 0) {
 		t.Errorf("appearing, the hero's background is %v, not the thumbnail's red", c)
 	}
 	*now = now.Add(50 * time.Millisecond)

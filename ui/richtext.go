@@ -169,7 +169,10 @@ func coreRichText(c *context, spans ...Span) *node {
 // textSpans encodes the styles of an element's spans for its layout, once
 // a frame, with those of the elements inside it, once it is built.
 func (e *node) textSpans() string {
+	rt := e.c.rt
 	if e.first != nil && !e.merged {
+		journalKeepSpans(rt, &e.spans)
+		journalKeep(rt, &e.merged)
 		e.spans, e.merged = e.inlineSpans(), true
 	}
 	if e.spans == nil || e.spansKey != "" {
@@ -177,6 +180,7 @@ func (e *node) textSpans() string {
 	}
 	sc := e.st.spanCache()
 	sc.update(e.spans)
+	journalKeepString(rt, &e.spansKey)
 	e.spansKey = sc.key
 	return e.spansKey
 }

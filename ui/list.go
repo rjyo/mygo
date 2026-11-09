@@ -1413,6 +1413,7 @@ func (s *ListState) focusedRow(e *node, n int) (int, bool) {
 // built in the list shows, as a scroll container's content: a message that
 // it is empty, say.
 func (e *node) layoutList(w, h float32) {
+	rt := e.c.rt
 	f := e.list
 	s, n := f.s, f.n
 	hs := &s.heights
@@ -1443,6 +1444,7 @@ func (e *node) layoutList(w, h float32) {
 		_, uh := boxLayout(e, cw, inf, true)
 		e.contentW, e.contentH = float64(cw+e.padX()), float64(max(uh, max(h-e.padY(), 0))+e.padY())
 		layoutAbsolute(e)
+		journalKeep(rt, &e.scrollBase)
 		e.scrollBase = 0
 		s.remember(e, 0, -1, true, st.scrollY)
 		return
@@ -1648,10 +1650,12 @@ func (e *node) layoutList(w, h float32) {
 	if pinned != nil {
 		// Above the rows scrolling under it, and still at the top when the
 		// offset moves before placing.
+		journalKeep(rt, &pinned.flags)
 		pinned.flags |= flagAbsolute
 		e.forgetIntrinsic()
 	}
 	e.contentW, e.contentH = float64(cw+e.padX()), content
+	journalKeep(rt, &e.scrollBase)
 	e.scrollBase = scroll
 	st.scrollTo(st.scrollX, scroll)
 	s.inset = inset
