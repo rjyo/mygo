@@ -323,3 +323,21 @@ func TestTesterAccessTabPanel(t *testing.T) {
 		t.Errorf("Settings tab controls %q", tab.Controls)
 	}
 }
+
+// TestTesterAccessLandmarks checks that the main content, the top bar,
+// the footer and the sidebar of a window are landmarks.
+func TestTesterAccessLandmarks(t *testing.T) {
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Column(c).Children(func() {
+			ui.Row(c).Role(ui.RoleBanner).Label("Mail").Children(func() { ui.Text(c, "Mail") })
+			ui.Column(c).Role(ui.RoleComplementary).Label("Folders").Children(func() { ui.Text(c, "Inbox") })
+			ui.Column(c).Role(ui.RoleMain).Label("Messages").Children(func() { ui.Text(c, "Hello") })
+			ui.Row(c).Role(ui.RoleContentInfo).Label("Status").Children(func() { ui.Text(c, "3 unread") })
+		})
+	}, 400, 400)
+	for r, name := range map[ui.Role]string{ui.RoleBanner: "Mail", ui.RoleComplementary: "Folders", ui.RoleMain: "Messages", ui.RoleContentInfo: "Status"} {
+		if a := accessOf(t, tt, r, name); a.Role != r {
+			t.Errorf("%s: %+v", name, a)
+		}
+	}
+}

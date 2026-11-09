@@ -170,6 +170,28 @@ const (
 	//	panel := ui.Column(c).Role(ui.RoleTabPanel).Label("Settings").Children(content)
 	//	tab.Controls(panel)
 	RoleTabPanel
+	// RoleMain is the landmark holding the main content of a window, as
+	// HTML's main: what the window is for, apart from its bars and
+	// sidebars. A window has one, and a Label is not needed. Screen
+	// readers list it among the window's landmarks, and jump to it.
+	RoleMain
+	// RoleBanner is the landmark holding the top bar of a window, with
+	// the app's name or the window's title, as a page's header. A window
+	// has at most one. Screen readers list it among the window's
+	// landmarks, and jump to it.
+	RoleBanner
+	// RoleContentInfo is the landmark holding information about the
+	// content of a window, as its footer or status area (the document's
+	// word count, its author, a copyright), as a page's footer. A window
+	// has at most one. Screen readers list it among the window's
+	// landmarks, and jump to it.
+	RoleContentInfo
+	// RoleComplementary is the landmark holding content that completes
+	// the main content and makes sense on its own, as a sidebar of
+	// related items or an inspector, as HTML's aside. Name it with Label
+	// when a window has several. Screen readers list it among the
+	// window's landmarks, and jump to it.
+	RoleComplementary
 )
 
 // tabular reports whether elements of a role hold rows of cells: tables,
@@ -569,6 +591,14 @@ func (e *node) accessRole() (platform.AccessRole, bool) {
 		return platform.RoleInsertion, true
 	case RoleTabPanel:
 		return platform.RoleTabPanel, true
+	case RoleMain:
+		return platform.RoleMain, true
+	case RoleBanner:
+		return platform.RoleBanner, true
+	case RoleContentInfo:
+		return platform.RoleContentInfo, true
+	case RoleComplementary:
+		return platform.RoleComplementary, true
 	default:
 		return platform.AccessRole(e.role - RoleGroup), true
 	}
@@ -608,7 +638,8 @@ func leafRole(r platform.AccessRole) bool {
 		platform.RoleTabList, platform.RoleTable, platform.RoleRow, platform.RoleCell, platform.RoleColumnHeader, platform.RoleRowHeader, platform.RoleTree,
 		platform.RoleListItem, platform.RoleToolbar, platform.RoleRadioGroup, platform.RoleMenu, platform.RoleMenuBar, platform.RoleHeading, platform.RoleNavigation,
 		platform.RoleRegion, platform.RoleLog, platform.RoleTimer, platform.RoleAlert, platform.RoleSearch,
-		platform.RoleArticle, platform.RoleGrid, platform.RoleTreeGrid, platform.RoleDeletion, platform.RoleInsertion, platform.RoleTabPanel:
+		platform.RoleArticle, platform.RoleGrid, platform.RoleTreeGrid, platform.RoleDeletion, platform.RoleInsertion, platform.RoleTabPanel,
+		platform.RoleMain, platform.RoleBanner, platform.RoleContentInfo, platform.RoleComplementary:
 		return false
 	}
 	return true

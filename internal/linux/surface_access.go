@@ -343,7 +343,9 @@ func loadAccessNames() {
 		platform.RoleHeading: {"heading", "label"},
 		// A landmark, whose xml-roles attribute says which, as Chromium's.
 		platform.RoleNavigation: {"landmark", "panel"}, platform.RoleRegion: {"landmark", "panel"},
-		platform.RoleSearch: {"landmark", "panel"}, platform.RoleArticle: {"article", "panel"},
+		platform.RoleSearch: {"landmark", "panel"}, platform.RoleMain: {"landmark", "panel"},
+		platform.RoleBanner: {"landmark", "panel"}, platform.RoleContentInfo: {"landmark", "panel"}, platform.RoleComplementary: {"landmark", "panel"},
+		platform.RoleArticle: {"article", "panel"},
 		// Live regions, which their object attributes say how to read.
 		platform.RoleLog: {"log", "panel"}, platform.RoleTimer: {"timer", "panel"},
 		platform.RoleAlert:     {"notification", "alert"},
@@ -379,6 +381,7 @@ var xmlRoles = map[platform.AccessRole]string{
 	platform.RoleTimer: "timer", platform.RoleAlert: "alert", platform.RoleStatus: "status",
 	platform.RoleGrid: "grid", platform.RoleTreeGrid: "treegrid",
 	platform.RoleDeletion: "deletion", platform.RoleInsertion: "insertion", platform.RoleTabPanel: "tabpanel",
+	platform.RoleMain: "main", platform.RoleBanner: "banner", platform.RoleContentInfo: "contentinfo", platform.RoleComplementary: "complementary",
 }
 
 // accessTree is what assistive technology sees of a surface.

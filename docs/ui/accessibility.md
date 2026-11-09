@@ -685,6 +685,10 @@ WAI-ARIA's Core Accessibility API Mappings say:
 | `ui.RoleRowHeader` | the cell naming its row of a table, named by its content, whose buttons and other elements stay reachable, as a cell's | `AXCell` | row header | HeaderItem "row header" |
 | `ui.RoleDeletion` | content removed from a document, as a diff's removed lines or an old price struck out, as HTML's `<del>`; its text is inside it | `AXGroup`, `AXDeleteStyleGroup` | content deletion, `xml-roles:deletion` | Text "deletion" |
 | `ui.RoleInsertion` | content added to a document, as a diff's added lines, as HTML's `<ins>` | `AXGroup`, `AXInsertStyleGroup` | content insertion, `xml-roles:insertion` | Text "insertion" |
+| `ui.RoleMain` | the main content of a window, apart from its bars and sidebars, as HTML's `<main>`; a window has one | `AXGroup`, `AXLandmarkMain` | landmark, `xml-roles:main` | Group, the main landmark type |
+| `ui.RoleBanner` | the top bar of a window, with the app's name or the window's title, as a page's `<header>`; a window has at most one | `AXGroup`, `AXLandmarkBanner` | landmark, `xml-roles:banner` | Group, the custom landmark type "banner" |
+| `ui.RoleContentInfo` | the footer or status area, with information about the content, as a page's `<footer>`; a window has at most one | `AXGroup`, `AXLandmarkContentInfo` | landmark, `xml-roles:contentinfo` | Group, the custom landmark type "content information" |
+| `ui.RoleComplementary` | content that completes the main content and stands on its own, as a sidebar or an inspector, as HTML's `<aside>`; name each with `Label` when there are several | `AXGroup`, `AXLandmarkComplementary` | landmark, `xml-roles:complementary` | Group, the custom landmark type "complementary" |
 | `ui.RoleTabPanel` | the content of a tab, named after its tab with `Label` and pointed to by the tab's `Controls`, as ARIA's Tabs pattern; no landmark | `AXGroup`, role description "tab panel" | scroll pane, `xml-roles:tabpanel` | Pane "tab panel" |
 
 Live regions say how they are read (`AXARIALive`, ATK's `live` and

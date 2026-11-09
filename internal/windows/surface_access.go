@@ -195,6 +195,8 @@ var uiaControlTypes = map[platform.AccessRole]int32{
 	platform.RoleSeparator: 50038, platform.RoleRowHeader: 50035, platform.RoleSearch: 50026,
 	platform.RoleArticle: 50026, platform.RoleGrid: 50028, platform.RoleTreeGrid: 50028, // DataGrid
 	platform.RoleDeletion: 50020, platform.RoleInsertion: 50020, platform.RoleTabPanel: 50033, // Pane
+	// The other landmarks are groups.
+	platform.RoleMain: 50026, platform.RoleBanner: 50026, platform.RoleContentInfo: 50026, platform.RoleComplementary: 50026,
 }
 
 // ariaRoles are the ARIA roles of nodes whose control type does not say
@@ -206,6 +208,14 @@ var ariaRoles = map[platform.AccessRole]string{
 	platform.RoleRowHeader: "rowheader", platform.RoleSearch: "search", platform.RoleArticle: "article",
 	platform.RoleGrid: "grid", platform.RoleTreeGrid: "treegrid",
 	platform.RoleDeletion: "deletion", platform.RoleInsertion: "insertion", platform.RoleTabPanel: "tabpanel",
+	platform.RoleMain: "main", platform.RoleBanner: "banner", platform.RoleContentInfo: "contentinfo", platform.RoleComplementary: "complementary",
+}
+
+// landmarkNames are what landmarks without a UIA landmark type of their
+// own are called.
+var landmarkNames = map[platform.AccessRole]string{
+	platform.RoleMain: "main", platform.RoleBanner: "banner",
+	platform.RoleContentInfo: "content information", platform.RoleComplementary: "complementary",
 }
 
 // variant is VARIANT, with the value of the types used here.
@@ -1211,6 +1221,8 @@ func (e *uiaElement) property(id int, v *variant) {
 			str("row header")
 		case platform.RoleTabPanel:
 			str("tab panel")
+		case platform.RoleMain, platform.RoleBanner, platform.RoleContentInfo, platform.RoleComplementary:
+			str(landmarkNames[n.Role])
 		case platform.RoleTextField:
 			if n.States&platform.AccessSearch != 0 {
 				str("search box") // as Core-AAM's searchbox
@@ -1323,12 +1335,16 @@ func (e *uiaElement) property(id int, v *variant) {
 			*v = variant{VT: vtI4, Val: 80003} // UIA_NavigationLandmarkTypeId
 		case platform.RoleSearch:
 			*v = variant{VT: vtI4, Val: 80004} // UIA_SearchLandmarkTypeId
-		case platform.RoleRegion:
+		case platform.RoleMain:
+			*v = variant{VT: vtI4, Val: 80002} // UIA_MainLandmarkTypeId
+		case platform.RoleRegion, platform.RoleBanner, platform.RoleContentInfo, platform.RoleComplementary:
 			*v = variant{VT: vtI4, Val: 80000} // UIA_CustomLandmarkTypeId
 		}
 	case uiaLocalizedLandmarkType:
 		if n.Role == platform.RoleRegion {
 			str("region")
+		} else if name, ok := landmarkNames[n.Role]; ok && n.Role != platform.RoleMain {
+			str(name) // what the custom landmark type is called
 		}
 	case uiaAriaRoleProperty:
 		if n.Role == platform.RoleTextField && n.States&platform.AccessSearch != 0 {

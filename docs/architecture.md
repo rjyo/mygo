@@ -2781,6 +2781,12 @@ either.
   landmark with `xml-roles:region`, and UIA's custom LandmarkType;
   `RoleSearch` is `AXGroup` with `AXLandmarkSearch`, ATK's landmark
   with `xml-roles:search`, and UIA's Group with the search LandmarkType;
+  `RoleMain`, `RoleBanner`, `RoleContentInfo` and `RoleComplementary`
+  are `AXGroup` with `AXLandmarkMain`, `AXLandmarkBanner`,
+  `AXLandmarkContentInfo` and `AXLandmarkComplementary`, ATK's landmark
+  with `xml-roles` main, banner, contentinfo and complementary, and UIA's
+  Group with the main LandmarkType, or the custom one named "banner",
+  "content information" and "complementary";
   `RoleArticle`, no landmark, is `AXGroup` with `AXDocumentArticle`,
   ATK's article, and UIA's Group named "article";
   `RoleLog`, `RoleTimer` and `RoleAlert` are `AXGroup` with

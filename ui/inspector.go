@@ -648,6 +648,14 @@ func roleName(r Role) string {
 		return "Insertion"
 	case RoleTabPanel:
 		return "TabPanel"
+	case RoleMain:
+		return "Main"
+	case RoleBanner:
+		return "Banner"
+	case RoleContentInfo:
+		return "ContentInfo"
+	case RoleComplementary:
+		return "Complementary"
 	}
 	return ""
 }
@@ -670,6 +678,14 @@ func accessibleRole(e *node) (string, bool) {
 		return "insertion", true
 	case RoleTabPanel:
 		return "tabpanel", true
+	case RoleMain:
+		return "main", true
+	case RoleBanner:
+		return "banner", true
+	case RoleContentInfo:
+		return "contentinfo", true
+	case RoleComplementary:
+		return "complementary", true
 	}
 	switch role := Role(r) + RoleGroup; role {
 	case RoleGroup:

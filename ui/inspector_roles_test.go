@@ -5,9 +5,10 @@ package ui
 import "testing"
 
 // TestInspectorRoleNames checks that the inspector names the roles of
-// deleted and inserted content and tab panels as Chrome does.
+// deleted and inserted content tab panels and landmarks as Chrome does.
 func TestInspectorRoleNames(t *testing.T) {
-	for r, want := range map[Role]string{RoleDeletion: "deletion", RoleInsertion: "insertion", RoleTabPanel: "tabpanel"} {
+	for r, want := range map[Role]string{RoleDeletion: "deletion", RoleInsertion: "insertion", RoleTabPanel: "tabpanel",
+		RoleMain: "main", RoleBanner: "banner", RoleContentInfo: "contentinfo", RoleComplementary: "complementary"} {
 		e := &node{role: r}
 		if got, seen := accessibleRole(e); got != want || !seen {
 			t.Errorf("role %d: %q, %v", r, got, seen)
