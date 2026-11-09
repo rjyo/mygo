@@ -159,6 +159,89 @@ func TestTableReorder(t *testing.T) {
 	}
 }
 
+// Changed reports a column moved or resized once the user lets go, when
+// the layout is new, and a column fitted to its cells, not as the pointer
+// moves: the app saves ListState.Columns once per gesture.
+func TestTableColumnsChanged(t *testing.T) {
+	s := ListState{}
+	cols := []TableColumn{{Title: "Name"}, {Title: "Kind", Width: 100}, {Title: "Size", Width: 80}}
+	names := []string{"a.txt"}
+	changes := 0
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Fill().Padding(10).Children(func() {
+			if coreTable(c, &s, cols, len(names), func(row, col int) {
+				coreText(c, []string{names[row], "Document", "1 KB"}[col]).SingleLine()
+			}).Grow(1).Changed() {
+				changes++
+			}
+		})
+	}, 500, 300)
+	expect := func(n int, what string) {
+		t.Helper()
+		if changes != n {
+			t.Fatalf("%s: Changed reported %d times, want %d (%+v)", what, changes, n, s.Columns)
+		}
+	}
+	kind := header(t, tt, "Kind")
+	y := float32(kind.Y + kind.H/2)
+
+	// Resizing Kind by its edge: reported on release only.
+	edge := float32(kind.X+kind.W) - 2
+	tt.Press(edge, y)
+	tt.Move(edge+10, y)
+	tt.Move(edge+30, y)
+	expect(0, "resizing, held")
+	tt.Release(edge+30, y)
+	expect(1, "resized")
+	if w := s.Columns.Widths["Kind"]; w != 130 {
+		t.Fatalf("Kind is %v wide", w)
+	}
+	// A press on the edge that comes back where it started changes nothing.
+	edge += 30
+	tt.Press(edge, y)
+	tt.Move(edge+20, y)
+	tt.Move(edge, y)
+	tt.Release(edge, y)
+	expect(1, "resized and back")
+
+	// A double click on the edge fits the column to its cells: one change,
+	// and none for a column already fitted.
+	tt.ClickAt(edge, y)
+	tt.ClickAt(edge, y)
+	expect(2, "fitted")
+	kind = header(t, tt, "Kind")
+	edge = float32(kind.X+kind.W) - 2
+	tt.ClickAt(edge, y)
+	tt.ClickAt(edge, y)
+	expect(2, "fitted again")
+
+	// Moving Kind past Size: reported on release only.
+	x := float32(kind.X + 20)
+	tt.Press(x, y)
+	for _, d := range []float32{5, 20, 50, 60} {
+		tt.Move(x+d, y)
+	}
+	if got := s.Columns.Order; len(got) != 3 || got[2] != "Kind" {
+		t.Fatalf("the order while held: %q", got)
+	}
+	expect(2, "moving, held")
+	tt.Release(x+60, y)
+	expect(3, "moved")
+	// A drag that leaves the column where it was changes nothing.
+	x = float32(header(t, tt, "Kind").X + 20)
+	tt.Press(x, y)
+	tt.Move(x-5, y)
+	tt.Move(x-10, y)
+	tt.Release(x-10, y)
+	if got := s.Columns.Order; got[2] != "Kind" {
+		t.Fatalf("Kind moved: %q", got)
+	}
+	expect(3, "dragged in place")
+	// Nor does a click on a header that does not sort.
+	tt.Click("Size")
+	expect(3, "clicked")
+}
+
 // A column dragged past several others stays the one dragged: its header
 // keeps the press as the others move aside.
 func TestTableReorderFar(t *testing.T) {

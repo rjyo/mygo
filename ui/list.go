@@ -170,8 +170,11 @@ type ListState struct {
 	// that sorts first.
 	SortBy *[]SortOrder
 	// Columns keeps the order and the widths the user gave a Table's
-	// columns, by ID: restore it from saved settings, and save it as it
-	// changes.
+	// columns, by ID: restore it from saved settings, and save it when
+	// the table's Changed reports it. It changes as the user drags a
+	// header or its edge, and Changed reports it once, as the user lets
+	// go, when the order or a width is new, and once a double click on
+	// an edge fits a column to its cells.
 	Columns TableLayout
 	// RoundRows rounds the corners of a Table's chosen and hovered rows at
 	// the theme's Radius, as a List's are, rather than leaving them square

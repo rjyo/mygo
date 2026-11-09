@@ -123,7 +123,20 @@ The user arranges the columns, as in Finder:
 
 `ListState.Columns` keeps the order and the widths, by the columns' `ID`s
 (their titles by default): set it from saved settings to restore them, and
-save it as it changes.
+save it when the table's `Changed` reports it. `Columns` changes as the
+pointer moves, but `Changed` reports it once, as the user lets go of a header
+or an edge, when the order or a width is new, and once a double click fits a
+column to its cells, so the settings are written once per gesture:
+
+```go
+if ui.Table(c, &app.files, cols, len(files), cell).Grow(1).Changed() {
+	app.settings.Columns = app.files.Columns
+	app.saveSettings()
+}
+```
+
+With `Sort` or `SortBy` set too, `Changed` also reports a new sort: save
+both when it reports either.
 
 ## Sorting
 

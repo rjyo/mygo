@@ -2567,7 +2567,9 @@ func SwitchBase(c *Context, on *bool) Element {
 // the rows of its section scroll under it.
 //
 // The user resizes columns by dragging the edges of their headers, and
-// moves them by dragging the headers, which s.Columns keeps; columns wider
+// moves them by dragging the headers, which s.Columns keeps; Changed
+// reports the new layout once the user lets go, or once a double click
+// fits a column to its cells, for the app to save. Columns wider
 // than the table scroll sideways, the header with them. With s.Sort, a
 // click on the header of a Sortable column sorts the rows by it; with
 // s.SortBy, a Cmd-click or a Shift-click sorts by it after the others;
