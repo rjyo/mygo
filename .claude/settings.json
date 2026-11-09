@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh api -X PUT repos/egoist/mygo/pulls/*/ccr/auto_merge *)",
+      "Bash(gh api -X POST repos/egoist/mygo/pulls/*/ccr/ready_for_review*)",
+      "Bash(gh api -X PATCH repos/egoist/mygo/pulls/*)",
+      "Bash(gh api -X PUT repos/egoist/mygo/pulls/*/merge *)",
+      "Bash(gh api -X POST repos/egoist/mygo/actions/runs/*/approve)",
+      "Bash(gh api -X POST repos/egoist/mygo/actions/runs/*/rerun-failed-jobs)"
+    ]
+  }
+}
