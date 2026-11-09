@@ -476,14 +476,18 @@ func paintKnob(p *Painter, t *Theme, k Rect, held float32, focus bool) {
 // Progress creates a progress bar filled to value between 0 and 1; a
 // negative value shows activity of unknown length. It fills from its
 // start: the right right to left (Direction). Reverse fills it from the
-// other side.
+// other side. It fills in the accent color, or the color TextColor gives
+// it, as a quota bar in a product's own color, over a track in the
+// theme's Border color, or the one Background gives it.
+//
+//	ui.Progress(c, app.used/app.quota).TextColor(brand).Label("Storage")
 func coreProgress(c *context, value float64) *node {
 	t := c.theme
 	rad := t.Space(0.75)
-	e := coreBox(c).Height(t.Space(1.5)).Radius(rad).Background(t.Border).Clip()
+	e := coreBox(c).Height(t.Space(1.5)).Radius(rad).Background(t.Border).TextColor(c.accent(t)).Clip()
 	e.role, e.hasRange, e.accRange = RoleProgress, true, [3]float64{0, 1, value}
-	fill := c.accent(t)
 	e.Draw(func(p *Painter, r Rect) {
+		fill := e.ts.color
 		fromRight := e.reverse != e.rtl()
 		if value >= 0 {
 			w := r.W * float32(math.Min(value, 1))

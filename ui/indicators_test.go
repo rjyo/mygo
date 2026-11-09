@@ -85,6 +85,89 @@ func TestMeter(t *testing.T) {
 	}
 }
 
+// A Meter's levels fill it in colors of the app's own, those left zero in
+// the theme's, and Background colors its track.
+func TestMeterColors(t *testing.T) {
+	gray, amber, brand, track := RGB(140, 140, 140), RGB(230, 160, 20), RGB(20, 90, 200), RGB(230, 230, 236)
+	storage := &MeterLevels{Warning: 80, Critical: 95, NormalColor: gray, WarningColor: amber}
+	quota := &MeterLevels{NormalColor: brand}
+	values := []float64{50, 85, 97}
+	tt := coreNewTester(func(c *context) {
+		coreColumn(c).Gap(10).Padding(10).Children(func() {
+			for i, v := range values {
+				coreMeter(c, v, 0, 100, storage).Width(100).Label([]string{"Fine", "Warning", "Critical"}[i])
+			}
+			coreMeter(c, 30, 0, 100, quota).Width(100).Background(track).Label("Quota")
+		})
+	}, 200, 200)
+	th := tt.rt.c.theme
+	for _, want := range []struct {
+		color Color
+		w     float32
+	}{{gray, 50}, {amber, 85}, {th.Danger, 97}, {brand, 30}} {
+		if f := fillsOf(tt, want.color); len(f) != 1 || abs(f[0].W-want.w) > 0.01 {
+			t.Errorf("%v fills %v, want one %v wide", want.color, f, want.w)
+		}
+	}
+	// The theme's Warning shows for none, nor does its Success.
+	if f := fillsOf(tt, th.Warning); len(f) != 0 {
+		t.Errorf("the theme's Warning fills %v", f)
+	}
+	if f := fillsOf(tt, th.Success); len(f) != 0 {
+		t.Errorf("the theme's Success fills %v", f)
+	}
+	if f := fillsOf(tt, track); len(f) != 1 || f[0].W != 100 {
+		t.Errorf("the track fills %v", f)
+	}
+	// A battery's, low values the bad ones, in the app's colors.
+	battery := &MeterLevels{Warning: 20, Critical: 10, CriticalColor: amber}
+	level := 5.0
+	tt = coreNewTester(func(c *context) {
+		coreMeter(c, level, 0, 100, battery).Width(100)
+	}, 200, 100)
+	if f := fillsOf(tt, amber); len(f) != 1 || f[0].W != 5 {
+		t.Errorf("an empty battery fills %v", f)
+	}
+	level = 60
+	tt.Frame()
+	if f := fillsOf(tt, tt.rt.c.theme.Success); len(f) != 1 || f[0].W != 60 {
+		t.Errorf("a charged battery fills %v", f)
+	}
+}
+
+// A Progress fills in the color TextColor gives it, determinate or not,
+// over the track Background gives it, from the right right to left.
+func TestProgressColor(t *testing.T) {
+	brand, track := RGB(20, 90, 200), RGB(230, 230, 236)
+	value := 0.25
+	tt := coreNewTester(func(c *context) {
+		coreProgress(c, value).Width(200).TextColor(brand).Background(track).Label("Storage")
+	}, 200, 100)
+	if f := fillsOf(tt, brand); len(f) != 1 || f[0].X != 0 || f[0].W != 50 {
+		t.Errorf("a quarter fills %v in its color", f)
+	}
+	if f := fillsOf(tt, track); len(f) != 1 || f[0].W != 200 {
+		t.Errorf("the track fills %v", f)
+	}
+	if f := fillsOf(tt, tt.rt.c.theme.Accent); len(f) != 0 {
+		t.Errorf("the accent fills %v", f)
+	}
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
+	if n := accessNode(t, tt.h.access, platform.RoleProgress, "Storage"); n.Now != 0.25 {
+		t.Errorf("it reads %+v", n)
+	}
+	value = -1
+	tt.Frame()
+	if f := fillsOf(tt, brand); len(f) != 1 || f[0].W != 60 {
+		t.Errorf("of unknown length, it slides %v in its color", f)
+	}
+	value = 0.25
+	tt.SetDirection(RightToLeft)
+	if f := fillsOf(tt, brand); len(f) != 1 || f[0].X != 150 || f[0].W != 50 {
+		t.Errorf("right to left, a quarter fills %v", f)
+	}
+}
+
 // nearColor reports whether a pixel is about a color.
 func nearColor(got color.RGBA, want Color) bool {
 	d := func(a, b uint8) bool { return int(a)-int(b) < 8 && int(b)-int(a) < 8 }

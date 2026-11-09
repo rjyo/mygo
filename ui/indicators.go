@@ -44,14 +44,23 @@ func coreSpinner(c *context) *node {
 // worse: the theme's Warning color from Warning, its Danger color from
 // Critical. A Critical below Warning makes low values the bad ones, as a
 // battery's. Their zero value shows the theme's Success color throughout.
+//
+// NormalColor, WarningColor and CriticalColor fill the bar in colors of
+// the app's own, as a storage bar in a neutral gray until it is almost
+// full, in place of the theme's Success, Warning and Danger: those left
+// zero (Transparent) keep the theme's. Levels without Warning or Critical
+// fill it in NormalColor throughout.
 type MeterLevels struct {
 	Warning, Critical float64
+
+	NormalColor, WarningColor, CriticalColor Color
 }
 
 // Meter creates a bar showing value between lo and hi, as AppKit's level
 // indicator and the web's meter: the theme's Success color, or Warning and
-// Danger from the levels given, nil for none. Assistive technology sees a
-// level indicator of that value; name it with Label.
+// Danger from the levels given, nil for none, or the levels' own colors.
+// Background colors its track. Assistive technology sees a level
+// indicator of that value; name it with Label.
 //
 //	ui.Meter(c, app.disk.Used, 0, app.disk.Size, &ui.MeterLevels{Warning: 0.8 * size, Critical: 0.95 * size}).Label("Disk")
 func coreMeter(c *context, value, lo, hi float64, levels *MeterLevels) *node {
@@ -61,13 +70,17 @@ func coreMeter(c *context, value, lo, hi float64, levels *MeterLevels) *node {
 	e.widget = "Meter"
 	e.hasRange, e.accRange = true, [3]float64{lo, hi, value}
 	color := t.Success
-	if l := levels; l != nil && l.Warning != l.Critical {
+	if l := levels; l != nil {
+		if l.NormalColor != Transparent {
+			color = l.NormalColor
+		}
 		low := l.Critical < l.Warning
 		switch {
+		case l.Warning == l.Critical:
 		case !low && value >= l.Critical, low && value <= l.Critical:
-			color = t.Danger
+			color = orColor(l.CriticalColor, t.Danger)
 		case !low && value >= l.Warning, low && value <= l.Warning:
-			color = t.Warning
+			color = orColor(l.WarningColor, t.Warning)
 		}
 	}
 	frac := fraction(value, lo, hi)
@@ -81,6 +94,14 @@ func coreMeter(c *context, value, lo, hi float64, levels *MeterLevels) *node {
 		p.Fill(Rect{x, r.Y, r.W * frac, r.H}, color, rad)
 	})
 	return e
+}
+
+// orColor returns c, or else when c is zero.
+func orColor(c, or Color) Color {
+	if c == Transparent {
+		return or
+	}
+	return c
 }
 
 // Rating creates a row of max stars, as AppKit's rating level indicator,

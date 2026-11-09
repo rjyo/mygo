@@ -1759,8 +1759,9 @@ func MenuButton(c *Context, label string, build func(m *Menu)) Element {
 
 // Meter creates a bar showing value between lo and hi, as AppKit's level
 // indicator and the web's meter: the theme's Success color, or Warning and
-// Danger from the levels given, nil for none. Assistive technology sees a
-// level indicator of that value; name it with Label.
+// Danger from the levels given, nil for none, or the levels' own colors.
+// Background colors its track. Assistive technology sees a level
+// indicator of that value; name it with Label.
 //
 //	ui.Meter(c, app.disk.Used, 0, app.disk.Size, &ui.MeterLevels{Warning: 0.8 * size, Critical: 0.95 * size}).Label("Disk")
 func Meter(c *Context, value float64, lo float64, hi float64, levels *MeterLevels) Element {
@@ -2000,7 +2001,11 @@ func PrimaryButton(c *Context, label string) Element {
 // Progress creates a progress bar filled to value between 0 and 1; a
 // negative value shows activity of unknown length. It fills from its
 // start: the right right to left (Direction). Reverse fills it from the
-// other side.
+// other side. It fills in the accent color, or the color TextColor gives
+// it, as a quota bar in a product's own color, over a track in the
+// theme's Border color, or the one Background gives it.
+//
+//	ui.Progress(c, app.used/app.quota).TextColor(brand).Label("Storage")
 func Progress(c *Context, value float64) Element {
 	_ctx := c.build()
 	if _ctx == nil {

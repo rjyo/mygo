@@ -13,6 +13,14 @@ ui.Progress(c, -1).Label("Connecting")
 `Reverse` fills it from the right, for interfaces laid out from right to
 left. It stretches across its column; give it a `Width` in a row.
 
+It fills in the theme's accent color, over a track in its `Border` color.
+For a bar in a product's colors, `TextColor` gives it a fill of its own and
+`Background` a track; a bar of unknown length slides in that color too:
+
+```go
+ui.Progress(c, app.synced/app.total).TextColor(brand).Background(brandTrack).Label("Syncing")
+```
+
 A bar of unknown length moves only while it is in view, and costs only its
 painting: the window paints the last frame again at the display's rate,
 without running the view.
