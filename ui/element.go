@@ -319,6 +319,7 @@ type layoutStyle struct {
 	pretty     bool
 	keepSpaces bool
 	ellipsis   string
+	middle     bool
 }
 
 // Element is a node of a frame's user interface. The functions that create
@@ -1897,6 +1898,21 @@ func (e *node) PreserveSpaces() *node { e.keepSpaces = true; return e }
 // Ellipsis sets what ends text that MaxLines or SingleLine cuts, "…" by
 // default.
 func (e *node) Ellipsis(s string) *node { e.ellipsis = s; return e }
+
+// TruncateMiddle puts the ellipsis of text that SingleLine or MaxLines
+// cuts in the middle of its last line rather than at its end, so that it
+// keeps both its start and its end, about as wide each, in the room
+// layout gives it: a list of files shows "src/components/…/picker.go",
+// whose folder and file's name both show.
+func (e *node) TruncateMiddle() *node {
+	linkTruncateMiddle.Do(text.Shared().UseTruncateMiddle)
+	e.middle = true
+	return e
+}
+
+// linkTruncateMiddle lets the text system cut text in its middle once an
+// element asks for it, so that apps that never do not link it.
+var linkTruncateMiddle sync.Once
 
 // Label names the element for assistive technology and for finding it in
 // tests, when its text does not.

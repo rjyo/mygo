@@ -129,6 +129,9 @@ type shapedLine struct {
 	// whitespace ending it included.
 	start, end int
 	runs       []shapedRun
+	// mark is the rune of the paragraph an ellipsis stands at, whose
+	// glyphs have Cluster -1: the first it hides.
+	mark int
 }
 
 // shapedRun is a run of glyphs of one font and direction.

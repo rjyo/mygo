@@ -91,6 +91,15 @@ type Params struct {
 	// Ellipsis ("…" when empty); 0 is unlimited.
 	MaxLines int
 	Ellipsis string
+	// TruncateMiddle puts the Ellipsis of a text that MaxLines cuts in
+	// the middle of its last line rather than at its end: the line keeps
+	// as many of the graphemes it starts with and of those ending its
+	// paragraph as fit Width beside the ellipsis, about as wide on each
+	// side, as a path keeps its first folders and its file's name. Where
+	// the paragraph fits, and only the text after it is cut, or without a
+	// width, the ellipsis ends the line all the same. It takes effect once
+	// System.UseTruncateMiddle was called.
+	TruncateMiddle bool
 	// NoWrap breaks lines only at newlines, aligning them within Width
 	// all the same.
 	NoWrap bool
@@ -474,6 +483,9 @@ type System struct {
 	// tabs is tabStop once UseTabSize was called, so that apps that never
 	// set a tab size do not link it.
 	tabs func(s *System, style Style) float32
+	// middle is ellipsizeMiddle once UseTruncateMiddle was called, so
+	// that apps that never cut text in its middle do not link it.
+	middle func(s *System, text []rune, spans []Span, start int, p Params, width float32, rtl bool) (shapedLine, bool)
 }
 
 type markKey struct {
@@ -659,6 +671,15 @@ func (s *System) UseTabSize() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.tabs = (*System).tabStop
+}
+
+// UseTruncateMiddle lets layouts cut text in its middle
+// (Params.TruncateMiddle), which package ui calls as the first element
+// asks for it.
+func (s *System) UseTruncateMiddle() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.middle = (*System).ellipsizeMiddle
 }
 
 // RegisterFont adds a TrueType or OpenType font (or collection) to the
@@ -1471,6 +1492,9 @@ func line(p Params, text []rune, sl shapedLine, offset int, rtl bool, m lineMetr
 			for _, g := range run.glyphs {
 				if g.Cluster >= 0 {
 					starts = append(starts, g.Cluster)
+				} else {
+					// The runes before the ellipsis end where it stands.
+					starts = append(starts, sl.mark)
 				}
 			}
 			slices.Sort(starts)
@@ -1478,7 +1502,7 @@ func line(p Params, text []rune, sl shapedLine, offset int, rtl bool, m lineMetr
 		}
 		for k, g := range run.glyphs {
 			if g.Cluster < 0 { // the ellipsis
-				g.Cluster = line.End
+				g.Cluster = offset + sl.mark
 			} else {
 				if g.Cluster >= trim && g.Cluster < sl.end {
 					continue
@@ -1579,41 +1603,22 @@ var ellipsis = []rune{'…'}
 
 // ellipsize lays out the paragraph text from rune start on one line ending
 // with an ellipsis: as many of its graphemes as fit width with it (all of
-// them for 0).
+// them for 0). With Params.TruncateMiddle the ellipsis stands in the
+// middle of the line instead, where ellipsizeMiddle finds room for it.
 func (s *System) ellipsize(text []rune, spans []Span, start int, p Params, width float32, rtl bool) shapedLine {
+	if p.TruncateMiddle && s.middle != nil && width > 0 {
+		if l, ok := s.middle(s, text, spans, start, p, width, rtl); ok {
+			return l
+		}
+	}
 	e := s.engine()
 	rest := text[start:]
 	restSpans := spansIn(spans, start, len(text))
-	mark := ellipsis
-	if p.Ellipsis != "" {
-		mark = []rune(p.Ellipsis)
-	}
+	mark := markOf(p)
 	cut := len(rest)
 	if width > 0 {
-		key := markKey{style: p.Style, mark: p.Ellipsis, rtl: rtl}
-		ellipsis, ok := s.marks[key]
-		if !ok {
-			for _, l := range e.shape(mark, p.Style, nil, 0, rtl, false) {
-				ellipsis = max(ellipsis, advance(l))
-			}
-			if len(s.marks) >= 256 {
-				clear(s.marks)
-			}
-			s.marks[key] = ellipsis
-		}
-		// The advance of each cluster, at its first rune.
-		s.advances = slices.Grow(s.advances[:0], len(rest))[:len(rest)]
-		advances := s.advances
-		clear(advances)
-		for _, l := range e.shape(rest, p.Style, restSpans, 0, rtl, false) {
-			for _, run := range l.runs {
-				for _, g := range run.glyphs {
-					if g.Cluster >= 0 && g.Cluster < len(rest) {
-						advances[g.Cluster] += g.Advance
-					}
-				}
-			}
-		}
+		ellipsis := s.markWidth(p, mark, rtl)
+		advances := s.clusterAdvances(rest, restSpans, p, rtl)
 		var b Boundaries
 		b.Reset(rest)
 		w := float32(0)
@@ -1646,7 +1651,7 @@ func (s *System) ellipsize(text []rune, spans []Span, start int, p Params, width
 	}
 	t := append(append(s.ellipsized[:0], rest[:cut]...), mark...)
 	s.ellipsized = t
-	out := shapedLine{start: start, end: start + cut}
+	out := shapedLine{start: start, end: start + cut, mark: start + cut}
 	// The ellipsis takes the style of the text it ends.
 	tSpans := spansIn(restSpans, 0, cut)
 	if n := len(tSpans); n > 0 && tSpans[n-1].End == cut {
@@ -1666,6 +1671,162 @@ func (s *System) ellipsize(text []rune, spans []Span, start int, p Params, width
 		}
 	}
 	return out
+}
+
+// ellipsizeMiddle lays out the paragraph text from rune start on one line
+// with an ellipsis in its middle (Params.TruncateMiddle): as many of the
+// graphemes starting it and ending it as fit width with the ellipsis
+// between them, each going to the side that is the narrower so far, as
+// long as it fits. The line holds the runes the ellipsis hides. It
+// reports false where all of them fit, which leaves the ellipsis to end
+// the line.
+func (s *System) ellipsizeMiddle(text []rune, spans []Span, start int, p Params, width float32, rtl bool) (shapedLine, bool) {
+	rest := text[start:]
+	restSpans := spansIn(spans, start, len(text))
+	mark := markOf(p)
+	room := width - s.markWidth(p, mark, rtl)
+	advances := s.clusterAdvances(rest, restSpans, p, rtl)
+	var b Boundaries
+	b.Reset(rest)
+	g := b.graphemes // the start of each grapheme, then len(rest)
+	pads := padded(restSpans)
+	// The span of grapheme i, where spans pad their pieces.
+	span := func(i int) int {
+		if !pads {
+			return -1
+		}
+		return spanIndex(restSpans, g[i])
+	}
+	// The padding between graphemes of spans j and k: the end of j's piece
+	// and the start of k's, or none within a span.
+	between := func(j, k int) float32 {
+		if j == k {
+			return 0
+		}
+		return padOf(restSpans, j) + padOf(restSpans, k)
+	}
+	advance := func(i int) float32 {
+		w := float32(0)
+		for _, a := range advances[g[i]:g[i+1]] {
+			w += a
+		}
+		return w
+	}
+	// The line keeps graphemes [0, head) and [tail, n), as wide as headW
+	// and tailW with the padding within them, and those of the spans of
+	// head's last and tail's first, hk and tk, around the ellipsis.
+	n := len(g) - 1
+	head, tail := 0, n
+	headW, tailW := float32(0), float32(0)
+	hk, tk := -1, -1
+	for head < tail {
+		hj, tj := span(head), span(tail-1)
+		hw := headW + advance(head) + between(hk, hj)
+		tw := tailW + advance(tail-1) + between(tj, tk)
+		headFits := hw+tailW+between(hj, tk) <= room
+		tailFits := headW+tw+between(hk, tj) <= room
+		if headFits && (headW <= tailW || !tailFits) {
+			headW, hk, head = hw, hj, head+1
+		} else if tailFits {
+			tailW, tk, tail = tw, tj, tail-1
+		} else {
+			break
+		}
+	}
+	// The ellipsis takes the place of the spaces beside it.
+	cut, resume := g[head], g[tail]
+	for cut > 0 && unicode.IsSpace(rest[cut-1]) {
+		cut--
+	}
+	for resume < len(rest) && unicode.IsSpace(rest[resume]) {
+		resume++
+	}
+	if head == tail || resume == len(rest) {
+		return shapedLine{}, false
+	}
+	t := append(append(append(s.ellipsized[:0], rest[:cut]...), mark...), rest[resume:]...)
+	s.ellipsized = t
+	// The ellipsis takes the style of the text before it, and the text
+	// after it keeps its own.
+	shift := cut + len(mark)
+	tSpans := spansIn(restSpans, 0, cut)
+	after := spansIn(restSpans, resume, len(rest))
+	if k := len(tSpans); k > 0 && tSpans[k-1].End == cut {
+		tSpans[k-1].End = shift
+	} else if len(after) > 0 {
+		tSpans = append(tSpans, Span{End: shift})
+	}
+	for _, sp := range after {
+		sp.End += shift
+		tSpans = append(tSpans, sp)
+	}
+	out := shapedLine{start: start, end: len(text), mark: start + cut}
+	// A rune of t, as one of the paragraph: those of the ellipsis are at
+	// the runes it hides.
+	at := func(i int) int {
+		if i <= cut {
+			return start + i
+		}
+		return start + resume + max(i-shift, 0)
+	}
+	for _, l := range s.engine().shape(t, p.Style, tSpans, 0, rtl, false) {
+		for _, run := range l.runs {
+			run.start, run.end = at(run.start), at(run.end)
+			for i := range run.glyphs {
+				if g := &run.glyphs[i]; g.Cluster >= cut && g.Cluster < shift {
+					g.Cluster = -1
+				} else {
+					g.Cluster = at(g.Cluster)
+				}
+			}
+			out.runs = append(out.runs, run)
+		}
+	}
+	return out, true
+}
+
+// markOf returns the ellipsis of a text, "…" unless Params.Ellipsis gives
+// another.
+func markOf(p Params) []rune {
+	if p.Ellipsis != "" {
+		return []rune(p.Ellipsis)
+	}
+	return ellipsis
+}
+
+// markWidth returns the advance of mark, the ellipsis of p, kept for its
+// style and direction.
+func (s *System) markWidth(p Params, mark []rune, rtl bool) float32 {
+	key := markKey{style: p.Style, mark: p.Ellipsis, rtl: rtl}
+	w, ok := s.marks[key]
+	if !ok {
+		for _, l := range s.engine().shape(mark, p.Style, nil, 0, rtl, false) {
+			w = max(w, advance(l))
+		}
+		if len(s.marks) >= 256 {
+			clear(s.marks)
+		}
+		s.marks[key] = w
+	}
+	return w
+}
+
+// clusterAdvances returns the advance of each cluster of text, shaped on
+// one line, at its first rune, in a buffer of the system.
+func (s *System) clusterAdvances(text []rune, spans []Span, p Params, rtl bool) []float32 {
+	s.advances = slices.Grow(s.advances[:0], len(text))[:len(text)]
+	advances := s.advances
+	clear(advances)
+	for _, l := range s.engine().shape(text, p.Style, spans, 0, rtl, false) {
+		for _, run := range l.runs {
+			for _, g := range run.glyphs {
+				if g.Cluster >= 0 && g.Cluster < len(text) {
+					advances[g.Cluster] += g.Advance
+				}
+			}
+		}
+	}
+	return advances
 }
 
 // advance returns the width a shaped line's glyphs take.

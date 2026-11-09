@@ -617,6 +617,189 @@ func TestEllipsis(t *testing.T) {
 	}
 }
 
+// checkMiddleCut returns the runes a line that TruncateMiddle cut keeps
+// before its ellipsis and from where it keeps them after it, checking
+// that its glyphs hold no hidden rune and that one ellipsis stands
+// between them.
+func checkMiddleCut(t *testing.T, l *Layout) (cut, resume int) {
+	t.Helper()
+	if !l.Truncated || len(l.Lines) != 1 {
+		t.Fatalf("truncated %v, %d lines", l.Truncated, len(l.Lines))
+	}
+	line := l.Lines[0]
+	cut, resume = -1, len(l.Runes)
+	for _, g := range line.Glyphs {
+		if g.Runes == 0 {
+			if cut >= 0 && g.Cluster != cut {
+				t.Fatalf("ellipsis glyphs at %d and %d", cut, g.Cluster)
+			}
+			cut = g.Cluster
+		}
+	}
+	if cut < 0 {
+		t.Fatalf("no ellipsis in %+v", line.Glyphs)
+	}
+	for _, g := range line.Glyphs {
+		if g.Runes > 0 && g.Cluster >= cut {
+			resume = min(resume, g.Cluster)
+		}
+	}
+	for _, g := range line.Glyphs {
+		if g.Runes > 0 && g.Cluster < cut && g.Cluster+g.Runes > cut {
+			t.Errorf("glyph %+v holds runes the ellipsis hides from %d", g, cut)
+		}
+	}
+	if line.Start != 0 || line.End != len(l.Runes) || resume <= cut {
+		t.Fatalf("line %d to %d, cut at %d, resuming at %d", line.Start, line.End, cut, resume)
+	}
+	return cut, resume
+}
+
+func TestTruncateMiddle(t *testing.T) {
+	s := newSystem()
+	s.UseTruncateMiddle()
+	path := "src/components/settings/appearance/theme/picker.go"
+	p := Params{Text: path, Style: Style{Size: 14}, Width: 160, MaxLines: 1, TruncateMiddle: true}
+	l := s.Layout(p)
+	cut, resume := checkMiddleCut(t, l)
+	if w := l.Lines[0].Width; w > p.Width {
+		t.Errorf("the line is %v wide in %v", w, p.Width)
+	}
+	if !strings.HasPrefix(path, "src/") || cut < 4 || resume > len(path)-len("picker.go") {
+		t.Errorf("kept %q…%q", path[:cut], path[resume:])
+	}
+	// Both sides are about as wide: they differ by less than a grapheme.
+	width := func(text string) float32 { return s.Layout(Params{Text: text, Style: p.Style}).Width }
+	head, tail, m := width(path[:cut]), width(path[resume:]), width("m")
+	if head-tail > m || tail-head > m {
+		t.Errorf("%q is %v wide, %q %v", path[:cut], head, path[resume:], tail)
+	}
+	// The runes it hides sit where the text resumes, after the ellipsis.
+	at, _, _ := l.Caret(resume)
+	for i := cut + 1; i < resume; i++ {
+		if x, _, _ := l.Caret(i); x != at {
+			t.Errorf("the caret before hidden rune %d is at %v, not %v", i, x, at)
+		}
+	}
+	prev := float32(-1)
+	for i := 0; i <= len(path); i++ {
+		x, _, _ := l.Caret(i)
+		if x < prev {
+			t.Errorf("the caret before rune %d is at %v, left of %v", i, x, prev)
+		}
+		prev = x
+	}
+	if i := l.IndexAt(l.Lines[0].Width+10, 5); i != len(path) {
+		t.Errorf("past the end is rune %d", i)
+	}
+}
+
+func TestTruncateMiddleGraphemes(t *testing.T) {
+	s := newSystem()
+	s.UseTruncateMiddle()
+	// Each grapheme is two runes: an e and its accent, and a family of
+	// four joined into one emoji is seven.
+	for _, text := range []string{strings.Repeat("é", 40), strings.Repeat("👩‍👩‍👧‍👦", 12)} {
+		l := s.Layout(Params{Text: text, Style: Style{Size: 14}, Width: 90, MaxLines: 1, TruncateMiddle: true})
+		cut, resume := checkMiddleCut(t, l)
+		var b Boundaries
+		b.Reset(l.Runes)
+		for _, i := range []int{cut, resume} {
+			if _, ok := slices.BinarySearch(b.graphemes, i); !ok {
+				t.Errorf("%q is cut at rune %d, inside a grapheme", text, i)
+			}
+		}
+	}
+}
+
+func TestTruncateMiddleRTL(t *testing.T) {
+	s := newSystem()
+	s.UseTruncateMiddle()
+	for _, text := range []string{
+		"שלום עולם זהו טקסט ארוך מאוד שצריך לקצר באמצע",
+		"مرحبا بالعالم هذا نص طويل جدا يجب اختصاره في المنتصف",
+		"docs/מדריכים/התחלה/מהירה/readme.md",
+	} {
+		p := Params{Text: text, Style: Style{Size: 14}, Width: 140, MaxLines: 1, TruncateMiddle: true}
+		l := s.Layout(p)
+		cut, resume := checkMiddleCut(t, l)
+		line := l.Lines[0]
+		// Arabic's letters join, and beside the ellipsis take other forms
+		// than those measured, as at the end of a line cut there.
+		joins := strings.ContainsFunc(text, func(r rune) bool { return unicode.Is(unicode.Arabic, r) })
+		if line.Width > p.Width && !joins || cut == 0 || resume == len(l.Runes) {
+			t.Errorf("%q: %v wide, cut at %d, resuming at %d", text, line.Width, cut, resume)
+		}
+		if want := isRTL(l.Runes, false); line.RTL != want {
+			t.Errorf("%q: RTL %v", text, line.RTL)
+		}
+	}
+}
+
+func TestTruncateMiddleSpans(t *testing.T) {
+	s := newSystem()
+	s.UseTruncateMiddle()
+	// A folder in the style of the text, then a file's name larger.
+	text := "src/components/settings/theme/picker.go"
+	name := strings.Index(text, "picker")
+	spans := EncodeSpans([]Span{{End: name}, {End: len(text), Size: 20}})
+	l := s.Layout(Params{Text: text, Style: Style{Size: 12}, Spans: spans, Width: 180, MaxLines: 1, TruncateMiddle: true})
+	cut, resume := checkMiddleCut(t, l)
+	if resume > name {
+		t.Fatalf("resumes at %d, after the name at %d", resume, name)
+	}
+	for _, g := range l.Lines[0].Glyphs {
+		want := float32(12)
+		if g.Runes > 0 && g.Cluster >= name {
+			want = 20
+		}
+		if g.Size != want {
+			t.Errorf("glyph %+v of rune %d (cut at %d) is %v large", g, g.Cluster, cut, g.Size)
+		}
+	}
+}
+
+func TestTruncateMiddleEnds(t *testing.T) {
+	s := newSystem()
+	text := "src/components/settings/appearance/theme/picker.go"
+	p := Params{Text: text, Style: Style{Size: 14}, Width: 160, MaxLines: 1, TruncateMiddle: true}
+	endsWithEllipsis := func(l *Layout) bool {
+		gs := l.Lines[0].Glyphs
+		return l.Truncated && gs[len(gs)-1].Runes == 0 && l.Lines[0].End < len(l.Runes)
+	}
+	// Before UseTruncateMiddle the ellipsis ends the line.
+	if l := s.Layout(p); !endsWithEllipsis(l) {
+		t.Errorf("without UseTruncateMiddle: %+v", l.Lines[0])
+	}
+	s.UseTruncateMiddle()
+	// So it does where the paragraph fits and only the next one is cut,
+	// and without a width.
+	for _, q := range []Params{
+		{Text: "src/a.go\nsrc/b.go", Style: p.Style, Width: 160, MaxLines: 1, TruncateMiddle: true},
+		{Text: text + "\n" + text, Style: p.Style, MaxLines: 1, TruncateMiddle: true},
+	} {
+		if l := s.Layout(q); !endsWithEllipsis(l) {
+			t.Errorf("%q in %v: %+v", q.Text, q.Width, l.Lines[0])
+		}
+	}
+	// A text that fits is not cut.
+	p.Width = 1000
+	if l := s.Layout(p); l.Truncated {
+		t.Errorf("a text that fits is cut: %+v", l.Lines[0])
+	}
+	// The last of several lines is cut in its middle, keeping the end of
+	// its paragraph.
+	long := "The quick brown fox jumps over the lazy dog and keeps running to the end.txt"
+	l := s.Layout(Params{Text: long, Style: p.Style, Width: 160, MaxLines: 2, TruncateMiddle: true})
+	if len(l.Lines) != 2 || !l.Truncated {
+		t.Fatalf("%d lines, truncated %v", len(l.Lines), l.Truncated)
+	}
+	last := l.Lines[1]
+	if g := last.Glyphs[len(last.Glyphs)-1]; last.End != len(l.Runes) || g.Runes == 0 || g.Cluster+g.Runes != len(l.Runes) || last.Width > 160 {
+		t.Errorf("the last line ends at %d with %+v, %v wide", last.End, g, last.Width)
+	}
+}
+
 func TestColorEmoji(t *testing.T) {
 	if runtime.GOOS != "windows" && runtime.GOOS != "darwin" {
 		t.Skip("emoji fonts vary")

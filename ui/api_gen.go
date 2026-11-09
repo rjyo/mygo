@@ -8216,6 +8216,21 @@ func (_handle Element) TranslateZ(z float32) Element {
 	return wrapElement(_node.TranslateZ(z))
 }
 
+// TruncateMiddle puts the ellipsis of text that SingleLine or MaxLines
+// cuts in the middle of its last line rather than at its end, so that it
+// keeps both its start and its end, about as wide each, in the room
+// layout gives it: a list of files shows "src/components/…/picker.go",
+// whose folder and file's name both show.
+func (_handle Element) TruncateMiddle() Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.TruncateMiddle())
+}
+
 // Underline underlines text.
 func (_handle Element) Underline() Element {
 	_node := _handle.node()

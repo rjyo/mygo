@@ -389,6 +389,7 @@ var elementChains = map[string]bool{
 	"Translate":            true,
 	"TranslatePercent":     true,
 	"TranslateZ":           true,
+	"TruncateMiddle":       true,
 	"Underline":            true,
 	"UnderlineOffset":      true,
 	"Unselectable":         true,
