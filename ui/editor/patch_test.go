@@ -298,13 +298,14 @@ func TestPatchHunksHighlightApartStrings(t *testing.T) {
 	if k := firstKind(t, d.Old, "def g"); k != TokenString {
 		t.Fatalf("def in the docstring of a whole text is %v", k)
 	}
-	// A Language.Highlighter of the app's sees the patch's text whole.
+	// A Language.Highlighter of the app's sees the patch's text whole,
+	// with its hunks' starts, which NewTokenHighlighter restarts at.
 	var seen Snapshot
 	d.New.SetLanguage(&Language{Name: "Own", Highlighter: func(text Snapshot, _ func()) Highlighter {
 		seen = text
 		return NewTokenHighlighter(LanguageFor("app.py").Tokenizer, text)
 	}})
-	if k := firstKind(t, d.New, "def g"); k != TokenString || seen.String() != d.New.String() {
+	if k := firstKind(t, d.New, "def g"); k != TokenKeyword || seen.String() != d.New.String() {
 		t.Fatalf("def is %v with the app's highlighter of %q", k, seen.String())
 	}
 }
@@ -345,5 +346,57 @@ func TestMoveRestarts(t *testing.T) {
 	b.Edit(Edit{Start: 2, End: 4})
 	if !slices.Equal(b.restarts, []int{1}) {
 		t.Errorf("restarts %v after the line between went", b.restarts)
+	}
+}
+
+// recordingHighlighter is an app's highlighter keeping the snapshots it
+// is given.
+type recordingHighlighter struct{ texts []Snapshot }
+
+func (h *recordingHighlighter) Edit(_, new Snapshot, _ []Change)                    { h.texts = append(h.texts, new) }
+func (h *recordingHighlighter) Highlight(int, time.Duration) bool                   { return true }
+func (h *recordingHighlighter) Tokens(_ int, _ string, dst []Token) ([]Token, bool) { return dst, true }
+
+// A Language.Highlighter of the app's knows where a patch's hunks start,
+// from its snapshots, as the edits move them.
+func TestPatchRestartsOnSnapshot(t *testing.T) {
+	files, err := ParsePatch(`--- a/app.py
++++ b/app.py
+@@ -1,3 +1,3 @@
+-import os
++import sys
+ 
+ x = 1
+@@ -20,2 +20,2 @@ def f():
+-    return 1
++    return 2
+`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := &DiffState{}
+	d.SetPatch(files[0])
+	if got := d.New.Snapshot().Restarts(); !slices.Equal(got, []int{0, 3}) {
+		t.Fatalf("snapshot's restarts %v, want [0 3]", got)
+	}
+	h := &recordingHighlighter{}
+	d.New.SetLanguage(&Language{Name: "Own", Highlighter: func(text Snapshot, _ func()) Highlighter {
+		h.texts = append(h.texts, text)
+		return h
+	}})
+	d.New.highlighter()
+	d.New.Edit(Edit{Start: 0, Text: "# top\n"})
+	d.New.highlighter()
+	if len(h.texts) != 2 {
+		t.Fatalf("%d snapshots, want 2", len(h.texts))
+	}
+	for i, want := range [][]int{{0, 3}, {0, 4}} {
+		if got := h.texts[i].Restarts(); !slices.Equal(got, want) {
+			t.Errorf("snapshot %d: restarts %v, want %v", i, got, want)
+		}
+	}
+	// A buffer of the app's own has none.
+	if got := NewBuffer("a\nb").Snapshot().Restarts(); got != nil {
+		t.Errorf("a plain buffer's restarts are %v", got)
 	}
 }

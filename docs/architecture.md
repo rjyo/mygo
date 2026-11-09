@@ -3840,7 +3840,9 @@ either.
     state the line above ended in (`lexer.go`, `lexers.go`), keeping the
     states, and after an edit goes on below it only until a line starts
     as it did before. A patch's texts start each hunk in state 0, at
-    lines the buffer moves with its edits (`setRestarts`). Optional
+    lines the buffer moves with its edits (`setRestarts`) and its
+    snapshots carry (`Snapshot.Restarts`), for a `Language.Highlighter`
+    to start them as well. Optional
     interfaces give a parser's structure to Select Larger, folding,
     brackets and indentation, so that tree-sitter can plug in as a
     `Language.Highlighter` without the editor changing.

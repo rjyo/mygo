@@ -122,7 +122,8 @@ type Language struct {
 	//
 	// A patch's texts (DiffState.SetPatch) are its hunks' lines one after
 	// another: the default highlighter starts each hunk in state 0, as
-	// the start of a text, while a Highlighter sees one text.
+	// the start of a text, and a Highlighter finds the lines where they
+	// start in its snapshots' Restarts.
 	Highlighter func(text Snapshot, invalidate func()) Highlighter
 }
 
@@ -192,12 +193,8 @@ type Indenter interface {
 // which a line starting as it did then, past dirty, confirms.
 type tokenHighlighter struct {
 	t      Tokenizer
-	text   Snapshot
+	text   Snapshot // its restarts start in state 0
 	states []uint64 // the state line i starts in
-	// restarts are the lines that start in state 0 whatever the line
-	// before ends in, in order: the first lines of a patch's hunks
-	// (Buffer.restarts).
-	restarts []int
 	// frontier is how many lines from the top start in states known
 	// right. confirmed is how many would be, were the edits since the
 	// last pass to leave the states after them as they were: a pass that
@@ -214,20 +211,18 @@ type tokenHighlighter struct {
 // uses by default: t tokenizes each line from the state the line before
 // ends in, and an edit tokenizes the lines after it again until one
 // starts in the state it started in before, as TextMate grammars and
-// Monaco do, a frame's budget at a time.
+// Monaco do, a frame's budget at a time. The text's Restarts start in
+// the tokenizer's first state.
 func NewTokenHighlighter(t Tokenizer, text Snapshot) Highlighter {
-	return newTokenHighlighter(t, text, nil)
+	return newTokenHighlighter(t, text)
 }
 
-func newTokenHighlighter(t Tokenizer, text Snapshot, restarts []int) *tokenHighlighter {
-	return &tokenHighlighter{t: t, text: text, states: []uint64{0}, restarts: restarts, frontier: 1, confirmed: 1, dirty: -1}
+func newTokenHighlighter(t Tokenizer, text Snapshot) *tokenHighlighter {
+	return &tokenHighlighter{t: t, text: text, states: []uint64{0}, frontier: 1, confirmed: 1, dirty: -1}
 }
 
 func (h *tokenHighlighter) Edit(old, new Snapshot, changes []Change) {
 	h.text = new
-	if len(h.restarts) > 0 {
-		h.restarts = moveRestarts(h.restarts, old, new, changes)
-	}
 	for _, c := range changes {
 		oldLine, oldEndLine := old.LineOf(c.OldStart), old.LineOf(c.OldEnd)
 		newLine, newEndLine := new.LineOf(c.NewStart), new.LineOf(c.NewEnd)
@@ -252,7 +247,7 @@ func (h *tokenHighlighter) Edit(old, new Snapshot, changes []Change) {
 	}
 	// A line restarting may have moved to the line a change starts or
 	// ends in, which kept the state of the line there.
-	for _, r := range h.restarts {
+	for _, r := range h.text.restarts {
 		if r < len(h.states) {
 			h.states[r] = 0
 		}
@@ -283,10 +278,11 @@ func (h *tokenHighlighter) Highlight(last int, budget time.Duration) bool {
 	for h.frontier <= last {
 		stopped := false
 		// The next line starting in state 0, -1 for none.
-		k, _ := slices.BinarySearch(h.restarts, h.frontier)
+		restarts := h.text.restarts
+		k, _ := slices.BinarySearch(restarts, h.frontier)
 		restart := -1
-		if k < len(h.restarts) {
-			restart = h.restarts[k]
+		if k < len(restarts) {
+			restart = restarts[k]
 		}
 		h.text.t.EachLine(h.frontier-1, last, func(i, _ int, line string) bool {
 			// The clock is read every 64 lines, and sooner after long ones:
@@ -308,8 +304,8 @@ func (h *tokenHighlighter) Highlight(last int, budget time.Duration) bool {
 			}
 			if i+1 == restart {
 				end = 0
-				if k++; k < len(h.restarts) {
-					restart = h.restarts[k]
+				if k++; k < len(restarts) {
+					restart = restarts[k]
 				} else {
 					restart = -1
 				}
@@ -357,9 +353,9 @@ func (h *tokenHighlighter) stateOf(line int) (uint64, bool) {
 // moveRestarts moves lines starting in state 0, in order, through an
 // edit's changes from old to new: a line moves with its first byte, and
 // goes when a change replaced it. They stay in order, without
-// duplicates. It reuses lines.
+// duplicates. It leaves lines as they are, which snapshots share.
 func moveRestarts(lines []int, old, new Snapshot, changes []Change) []int {
-	out := lines[:0]
+	out := make([]int, 0, len(lines))
 	k, delta := 0, 0
 	for _, line := range lines {
 		if line >= old.LineCount() {
@@ -411,25 +407,24 @@ func (b *Buffer) highlighter() Highlighter {
 		s = &syntaxState{lang: lang}
 		b.syntax = s
 	}
-	var restarts []int
 	if s.h == nil {
-		s.text, restarts = Snapshot{b.text, b.version, b.crlf}, slices.Clone(b.restarts)
+		s.text = Snapshot{b.text, b.version, b.crlf, b.restarts}
 	}
 	b.mu.Unlock()
 	if s.h == nil {
-		s.h = newHighlighter(lang, s.text, b.invalidate, restarts)
+		s.h = newHighlighter(lang, s.text, b.invalidate)
 	}
 	entries, version, ok := b.entriesSince(s.text.version)
 	if !ok {
 		// Too far behind: a highlighter of the text as it is.
 		b.mu.Lock()
-		s.text, restarts = Snapshot{b.text, b.version, b.crlf}, slices.Clone(b.restarts)
+		s.text = Snapshot{b.text, b.version, b.crlf, b.restarts}
 		b.mu.Unlock()
-		s.h = newHighlighter(lang, s.text, b.invalidate, restarts)
+		s.h = newHighlighter(lang, s.text, b.invalidate)
 		return s.h
 	}
 	for _, e := range entries {
-		next := Snapshot{e.text, e.version, b.crlf}
+		next := Snapshot{e.text, e.version, b.crlf, e.restarts}
 		s.h.Edit(s.text, next, publicChanges(e.changes))
 		s.text = next
 	}
@@ -438,12 +433,12 @@ func (b *Buffer) highlighter() Highlighter {
 }
 
 // newHighlighter makes the highlighter of text in l: l's own, else the
-// default one, starting the lines restarts in state 0.
-func newHighlighter(l *Language, text Snapshot, invalidate func(), restarts []int) Highlighter {
+// default one.
+func newHighlighter(l *Language, text Snapshot, invalidate func()) Highlighter {
 	if l.Highlighter != nil {
 		return l.Highlighter(text, invalidate)
 	}
-	return newTokenHighlighter(l.Tokenizer, text, restarts)
+	return newTokenHighlighter(l.Tokenizer, text)
 }
 
 // setRestarts makes lines, in order, start in state 0 in the default

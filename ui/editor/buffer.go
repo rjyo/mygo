@@ -51,8 +51,8 @@ type Buffer struct {
 	syntax   *syntaxState
 	// restarts are the lines that start in state 0 in the default
 	// highlighter, the first lines of a patch's hunks (setRestarts),
-	// which each version moves (record); restartsText is the text they
-	// are of.
+	// which each version moves (record) into a new slice, as snapshots
+	// share them; restartsText is the text they are of.
 	restarts     []int
 	restartsText rope.Text
 	// wake are the windows showing the buffer, which a highlighter
@@ -84,9 +84,10 @@ type change struct {
 }
 
 type logEntry struct {
-	version uint64
-	text    rope.Text
-	changes []change
+	version  uint64
+	text     rope.Text
+	changes  []change
+	restarts []int // the buffer's restarts in text
 }
 
 // transaction is a step of undo: the text before and after, the changes
@@ -188,7 +189,7 @@ func (b *Buffer) snapshot() (rope.Text, uint64) {
 func (b *Buffer) Snapshot() Snapshot {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return Snapshot{b.text, b.version, b.crlf}
+	return Snapshot{b.text, b.version, b.crlf, b.restarts}
 }
 
 // String returns the text.
@@ -474,11 +475,11 @@ func (b *Buffer) setSelectionsAfter(owner, sel any) {
 // b.mu is held.
 func (b *Buffer) record(changes []change) {
 	b.version++
-	b.log = append(b.log, logEntry{version: b.version, text: b.text, changes: changes})
 	if len(b.restarts) > 0 {
 		b.restarts = moveRestarts(b.restarts, Snapshot{t: b.restartsText}, Snapshot{t: b.text}, publicChanges(changes))
 		b.restartsText = b.text
 	}
+	b.log = append(b.log, logEntry{version: b.version, text: b.text, changes: changes, restarts: b.restarts})
 	if len(b.log) > logMax {
 		b.log = slices.Delete(b.log, 0, len(b.log)-logMax/2)
 	}
@@ -686,9 +687,10 @@ func offsetOf(t rope.Text, p Pos) int {
 // Snapshot is a version of a buffer's text, which stays as it is while
 // the buffer changes: read it from any goroutine.
 type Snapshot struct {
-	t       rope.Text
-	version uint64
-	crlf    bool
+	t        rope.Text
+	version  uint64
+	crlf     bool
+	restarts []int // Restarts, never changed
 }
 
 // Version returns the buffer's version the snapshot is of.
@@ -699,6 +701,14 @@ func (s Snapshot) Version() uint64 { return s.version }
 func (s Snapshot) Len() int       { return s.t.Len() }
 func (s Snapshot) LineCount() int { return s.t.LineCount() }
 func (s Snapshot) String() string { return s.t.String() }
+
+// Restarts returns the lines, in order, that start as the start of a
+// text does, whatever the line before ends in: the first lines of a
+// patch's hunks (DiffState.SetPatch), which the edits since have moved.
+// A highlighter starts each in its first state, so that a hunk ending
+// inside a string or a comment does not run on into the next. It is nil
+// for other texts.
+func (s Snapshot) Restarts() []int { return slices.Clone(s.restarts) }
 
 // Line returns line i, without its newline.
 func (s Snapshot) Line(i int) string { return s.t.Line(i) }
