@@ -156,14 +156,26 @@ export async function fetch(input: RequestInfo | URL, init: RequestInit = {}): P
     statusText: head.statusText ?? "",
     headers: head.headers ?? [],
   });
-  const own = (name: string, value: unknown) => Object.defineProperty(res, name, { value, enumerable: true });
-  own("url", head.url ?? url.href);
-  own("redirected", head.redirected ?? false);
-  if (!valid) own("status", status);
-  return res;
+  return withMetadata(res, head.url ?? url.href, head.redirected ?? false, status);
 }
 
 export default fetch;
+
+/** Native clones copy internal response data, not the properties we add. */
+function withMetadata(res: Response, url: string, redirected: boolean, status: number): Response {
+  // Capture the native method before installing the wrapper to avoid recursion.
+  const clone = res.clone;
+  const own = (name: string, value: unknown) => Object.defineProperty(res, name, { value, enumerable: true });
+  own("url", url);
+  own("redirected", redirected);
+  if (res.status !== status) own("status", status);
+  Object.defineProperty(res, "clone", {
+    value(this: Response): Response {
+      return withMetadata(clone.call(this), this.url, this.redirected, this.status);
+    },
+  });
+  return res;
+}
 
 /** The error a failed request rejects with. */
 function failure(err: unknown): Error {
