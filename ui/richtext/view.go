@@ -887,6 +887,43 @@ func (d *Document) VisibleParagraphs() []ParagraphBox {
 	return boxes
 }
 
+// CaretRect returns the caret of the editor showing the document, where
+// the editor paints it in this frame, focused or not: a line as high as
+// the caret's, in DIPs from the top left of the editor's element,
+// scrolled. Place a popup at its bottom, as completions under what is
+// typed after a "/" or an "@". A frame in which the caret moves from where
+// this said, as the user types, the editor scrolls or its width changes,
+// builds another, as one that moves the paragraphs VisibleParagraphs gave
+// does, so that the popup follows. ok is false until an editor showed the
+// document, and while the caret is scrolled out of view.
+//
+// Call it on the main thread, as the view builds.
+func (d *Document) CaretRect() (r ui.Rect, ok bool) {
+	d.lock()
+	v := d.shownIn.Value()
+	d.mu.Unlock()
+	if v != nil && v.doc == d && v.width > 0 {
+		v.sync()
+		v.layout(v.width, v.viewH)
+		r, ok = v.caretRect()
+	}
+	d.lock()
+	d.readCaret, d.caretRect = true, r
+	d.mu.Unlock()
+	return r, ok
+}
+
+// caretRect returns where the editor paints the caret, in its element,
+// and whether that is in view.
+func (v *view) caretRect() (ui.Rect, bool) {
+	if len(v.paras) == 0 {
+		return ui.Rect{}, false
+	}
+	x, y, h := v.caretAt(v.caret, v.composeCaret, v.affinity)
+	r := ui.Rect{X: v.padX + x, Y: v.padY + float32(y-v.scroll), W: 1, H: h}
+	return r, r.Y+r.H > 0 && r.Y < v.rect.H
+}
+
 // boxes appends the boxes of the paragraphs in view to out.
 func (v *view) boxes(out []ParagraphBox) []ParagraphBox {
 	for i := v.first; i <= v.last && i < len(v.paras); i++ {
@@ -904,14 +941,20 @@ func (v *view) moved() {
 	d := v.doc
 	d.lock()
 	read, was := d.read, d.boxes
-	d.read = false
+	readCaret, caretWas := d.readCaret, d.caretRect
+	d.read, d.readCaret = false, false
 	d.mu.Unlock()
-	if !read {
-		return
+	if read {
+		v.placed = v.boxes(v.placed[:0])
+		if !slices.Equal(v.placed, was) {
+			v.services.Invalidate()
+			return
+		}
 	}
-	v.placed = v.boxes(v.placed[:0])
-	if !slices.Equal(v.placed, was) {
-		v.services.Invalidate()
+	if readCaret {
+		if r, _ := v.caretRect(); r != caretWas {
+			v.services.Invalidate()
+		}
 	}
 }
 

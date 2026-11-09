@@ -192,8 +192,9 @@ made through the document. `EditorOptions` set:
 - `Menu`, to build the context menu in place of the editor's own, as an app
   with a menu of its own opens it;
 - `OnKey`, asked about a key before the editor acts on it, as an app's
-  popup over the text (a list of completions) takes the arrows, Enter and
-  Escape: true takes the key;
+  popup over the text (a list of completions, placed at
+  `Document.CaretRect`) takes the arrows, Enter and Escape: true takes the
+  key;
 - `Spans`, given the spans a paragraph is drawn as and returning them
   split, colored or spaced otherwise, their text the same, as an app colors
   a block of code by its language or spaces the letters; change
@@ -319,6 +320,35 @@ spacing between paragraphs) is left out of its box, so a mark at its top
 lines up with its first line. `VisibleParagraphs` lays out only what is in
 view, as painting does, so it costs as little in a long document as in a
 short one. It returns nil until an editor showed the document.
+
+## The caret on screen
+
+`Document.CaretRect` returns where the editor shows the caret, focused or
+not: a line as high as the caret's, in DIPs from the top left of the
+editor's element, scrolled, and whether it is in view. Read it as the view
+builds to place a popup at the caret, as completions after a `/` or an `@`,
+whose arrows, Enter and Escape `OnKey` takes. Put the popup in a box with
+the editor, placed at the bottom of the caret:
+
+```go
+caret, ok := app.doc.CaretRect()
+ui.Box(c).Fill().Children(func() {
+	richtext.EditorBase(c, app.doc, richtext.EditorOptions{OnKey: app.completionKey}).Fill()
+	if app.completing && ok {
+		ui.Column(c).Absolute().Left(caret.X).Top(caret.Y + caret.H + 4).Children(func() {
+			for _, s := range app.completions {
+				ui.Text(c, s)
+			}
+		})
+	}
+})
+```
+
+As with the paragraphs, the caret is where the editor paints it in that
+frame: one that moves it from where it was read, as the user types, the
+editor scrolls or its width changes, builds another, so the popup follows
+the caret. `ok` is false until an editor showed the document, and while the
+caret is scrolled out of view, where the popup hides.
 
 ## Typing at the edges of formats
 

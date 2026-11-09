@@ -4,6 +4,8 @@ import (
 	"sync"
 	"time"
 	"weak"
+
+	"github.com/egoist/mygo/ui"
 )
 
 // Document is what an Editor edits: a Text, its
@@ -43,6 +45,10 @@ type Document struct {
 	shownIn weak.Pointer[view]
 	read    bool
 	boxes   []ParagraphBox
+	// readCaret is set as the app reads the caret (CaretRect), which
+	// caretRect holds, for the same.
+	readCaret bool
+	caretRect ui.Rect
 }
 
 // change is a change of a document: the runes from start to oldEnd

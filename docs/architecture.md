@@ -4107,10 +4107,10 @@ either.
     Attachments are inline objects of the text system; a first line's
     indent is the layout's (`TextShape.Indent`), on the side the
     paragraph starts at, the right of one reading right to left.
-    `Document.VisibleParagraphs` lays out what is in view as it is read,
-    as painting does, and the paint that finds the paragraphs elsewhere
-    than read asks for a frame (`Services.Invalidate`), as
-    `ListState.Visible` builds another.
+    `Document.VisibleParagraphs` and `Document.CaretRect` lay out what is
+    in view as they are read, as painting does, and the paint that finds
+    the paragraphs or the caret elsewhere than read asks for a frame
+    (`Services.Invalidate`), as `ListState.Visible` builds another.
   - *Formats out of the process.* The clipboard carries the editor's JSON,
     HTML (`golang.org/x/net/html` reads what is pasted) and plain text;
     browsers carry each text format through the clipboard events. The
