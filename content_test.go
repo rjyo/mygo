@@ -167,6 +167,39 @@ func TestContentViewRunsAfterNewWindow(t *testing.T) {
 	}
 }
 
+// TestContentFirstFrameWaits checks that the window shows when its first
+// frame waits on the main thread, handling events meanwhile, as
+// Secrets.Get does: the show NewWindow left to the next turn runs within
+// that frame, and must not be lost.
+func TestContentFirstFrameWaits(t *testing.T) {
+	frames := 0
+	var fw *fake.Window
+	onMain(func() {
+		w := NewWindow(WindowOptions{Title: "Waits", Content: ui.View(func(c *ui.Context) {
+			frames++
+			if frames == 1 {
+				// A read that returns once what the main loop queued
+				// before it has run, as a keychain read of some
+				// milliseconds does.
+				release := make(chan struct{})
+				postMain(func() { close(release) })
+				offMain(func() int { <-release; return 0 })
+			}
+			ui.Text(c, "hello")
+		})})
+		t.Cleanup(w.Destroy)
+		fw = fb.Windows()[len(fb.Windows())-1]
+		// The system draws the first frame on NewWindow's turn.
+		fw.FakeSurface().Frame()
+	})
+	for range 3 {
+		onMain(func() {})
+	}
+	if frames == 0 || !fw.IsVisible() {
+		t.Errorf("after a first frame that waits: %d frames, visible %v", frames, fw.IsVisible())
+	}
+}
+
 func TestContentDrawsAndHandlesInput(t *testing.T) {
 	clicks := 0
 	view := func(c *ui.Context) {
