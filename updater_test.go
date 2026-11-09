@@ -513,3 +513,27 @@ func TestHTTPGetRetries(t *testing.T) {
 		t.Errorf("Retry-After 5: %v", got)
 	}
 }
+
+// TestWorkPattern checks that an app at the root of a drive or share, as
+// D:\, unpacks its update next to it (#1529).
+func TestWorkPattern(t *testing.T) {
+	roots := []string{string(filepath.Separator), "."}
+	if runtime.GOOS == "windows" {
+		roots = append(roots, `D:\`, `\\server\share\`)
+	}
+	for _, target := range roots {
+		pattern := workPattern(target)
+		if strings.ContainsFunc(pattern, func(r rune) bool { return r < 0x80 && os.IsPathSeparator(uint8(r)) }) {
+			t.Errorf("workPattern(%q) = %q, which holds a separator", target, pattern)
+		}
+	}
+	if got, want := workPattern(filepath.Join(t.TempDir(), "MyApp")), ".MyApp.update-"; got != want {
+		t.Errorf("workPattern of an app in a folder = %q, want %q", got, want)
+	}
+	// The pattern makes a directory next to a root.
+	dir, err := os.MkdirTemp(t.TempDir(), workPattern(string(filepath.Separator)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Remove(dir)
+}

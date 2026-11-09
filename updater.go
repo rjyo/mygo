@@ -267,7 +267,7 @@ func installUpdate(ctx context.Context, get update.Getter, m update.Manifest, ke
 		return err
 	}
 	// Next to the app, so that it can be renamed into place.
-	work, err := os.MkdirTemp(filepath.Dir(target), "."+filepath.Base(target)+".update-")
+	work, err := os.MkdirTemp(filepath.Dir(target), workPattern(target))
 	if err != nil {
 		return fmt.Errorf("cannot write next to the app: %w", err)
 	}
@@ -318,6 +318,18 @@ func installUpdate(ctx context.Context, get update.Getter, m update.Manifest, ke
 		return err
 	}
 	return swap(unpacked, target)
+}
+
+// workPattern returns the pattern of the directory an update of the app
+// at target is unpacked in, next to it: named after the app, or after no
+// name where target is the root of a drive or share, as D:\ (#1529),
+// whose base name is a separator, which os.MkdirTemp rejects.
+func workPattern(target string) string {
+	name := filepath.Base(target)
+	if name == "." || strings.ContainsFunc(name, func(r rune) bool { return r < 0x80 && os.IsPathSeparator(uint8(r)) }) {
+		name = "app"
+	}
+	return "." + name + ".update-"
 }
 
 // applyDelta downloads the delta d into work and makes the new version of
