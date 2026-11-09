@@ -9,6 +9,7 @@ import (
 	"math"
 	"runtime"
 	"slices"
+	"sync"
 
 	"github.com/egoist/mygo/internal/scene"
 )
@@ -867,6 +868,40 @@ func toSRGB(c float32) float32 {
 	return 1.055*float32(math.Pow(float64(max(c, 0)), 1/2.4)) - 0.055
 }
 
+// srgbSteps is the resolution of sRGBTable, the 16 bits of a linear
+// light's fraction above 0.0031308.
+const srgbSteps = 1 << 16
+
+var (
+	srgbOnce  sync.Once
+	srgbTable *[srgbSteps + 1]float32 // table[i] is toSRGB(i / srgbSteps)
+)
+
+// srgb converts linear light to sRGB as toSRGB does, between two entries
+// of a table that is built the first time one is needed: a gradient mixed
+// in Oklab converts three components a pixel, and math.Pow costs more
+// than the rest of the pixel. Its worst error from toSRGB is 0.000127 of
+// 255.
+func srgb(c float32) float32 {
+	if c <= 0.0031308 {
+		return c * 12.92
+	}
+	srgbOnce.Do(func() {
+		t := &[srgbSteps + 1]float32{}
+		for i := range t {
+			t[i] = toSRGB(float32(i) / srgbSteps)
+		}
+		srgbTable = t
+	})
+	if c >= 1 {
+		return srgbTable[srgbSteps] // white, which light above it clamps to
+	}
+	x := c * srgbSteps // above 0.0031308, and below 1
+	i := int(x)
+	a, b := srgbTable[i], srgbTable[i+1]
+	return a + (b-a)*(x-float32(i))
+}
+
 // oklab converts an sRGB color to Oklab, as the shaders do.
 func oklab(c scene.Color) [3]float32 { return scene.Oklab(c) }
 
@@ -877,9 +912,9 @@ func fromOklab(lab [3]float32) [3]float32 {
 	s := lab[0] - 0.0894841775*lab[1] - 1.2914855480*lab[2]
 	l, m, s = l*l*l, m*m*m, s*s*s
 	return [3]float32{
-		toSRGB(4.0767416621*l - 3.3077115913*m + 0.2309699292*s),
-		toSRGB(-1.2684380046*l + 2.6097574011*m - 0.3413193965*s),
-		toSRGB(-0.0041960863*l - 0.7034186147*m + 1.7076147010*s),
+		srgb(4.0767416621*l - 3.3077115913*m + 0.2309699292*s),
+		srgb(-1.2684380046*l + 2.6097574011*m - 0.3413193965*s),
+		srgb(-0.0041960863*l - 0.7034186147*m + 1.7076147010*s),
 	}
 }
 
