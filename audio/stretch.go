@@ -43,9 +43,9 @@ type stretcher struct {
 	ana   float64 // the frame the speed puts the next segment at
 
 	// The source frames, counted on past its loop's end, that the frames
-	// of the voice's hist are at; those of what it read last, from tag0 by
-	// tagStep; and where the frames after them are.
-	tags          [4]float64
+	// of the voice's ring are at, as it holds them; those of what it read
+	// last, from tag0 by tagStep; and where the frames after them are.
+	tags          []float64
 	tag0, tagStep float64
 	next          float64
 }
@@ -64,6 +64,7 @@ func newStretcher(rate, ch int) *stretcher {
 		tail: make([]float32, hs*ch),
 		out:  make([]float32, hs*ch),
 		own:  make([]float32, 256*ch),
+		tags: make([]float64, ringFrames),
 	}
 	for j := range st.win {
 		s := math.Sin(math.Pi / 2 * (float64(j) + 0.5) / float64(hs))
@@ -80,16 +81,14 @@ func (st *stretcher) reset(f int64, on bool) {
 	st.end = -1
 	st.on, st.first, st.done = on, true, false
 	st.ana, st.next = float64(f), float64(f)
-	// The voice's second frame of hist is at idx: f-3 after a reset.
-	for k := range st.tags {
-		st.tags[k] = float64(f - 4 + int64(k))
-	}
+	// The voice is at f, until frames come in.
+	st.tags[f&(ringFrames-1)] = float64(f)
+	st.tags[(f+1)&(ringFrames-1)] = float64(f + 1)
 }
 
-// push notes the frame that comes into the voice's hist at tag.
-func (st *stretcher) push(tag float64) {
-	st.tags[0], st.tags[1], st.tags[2] = st.tags[1], st.tags[2], st.tags[3]
-	st.tags[3] = tag
+// push notes that frame f, coming into the voice's ring, is at tag.
+func (st *stretcher) push(f int64, tag float64) {
+	st.tags[f&(ringFrames-1)] = tag
 }
 
 // drop forgets the frames before to; those not read yet are skipped.

@@ -198,7 +198,11 @@ for it; apps that don't, don't.
 The output opens when something first plays and closes five seconds after
 everything stopped, so an app that plays nothing keeps no audio device
 busy. It plays at 48 kHz in stereo, about 40 ms ahead; players of other
-rates are resampled as they play.
+rates are resampled as they play. Those that play faster than 48 kHz, a
+sound of 88.2, 96 or 192 kHz or one sped up, go through a low-pass first,
+flat to 20 kHz and 80 dB down from 24 kHz, so that what they have above
+24 kHz does not fold back as a tone you hear; it costs about 1% of a core
+for each such player at 96 kHz.
 
 `audio.SetLatency` sets how far ahead it mixes, as Web Audio's
 `latencyHint`:

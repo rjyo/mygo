@@ -296,7 +296,7 @@ func (p *Player) Play() {
 		// A sound starting at its start starts at once; one resuming in
 		// the middle fades in, as one pausing fades out, without a click.
 		// One still fading out ramps back from where it is.
-		v.snap = v.idx+3 <= 0
+		v.snap = v.head <= 0
 		v.fadeIn = !v.snap
 		v.active = true
 		voices = append(voices, v)

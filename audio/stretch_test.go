@@ -107,6 +107,7 @@ func TestPreservesPitch(t *testing.T) {
 		{"mono", sampleRate, []float64{220}},
 		{"stereo", sampleRate, []float64{200, 300}},
 		{"mono at 24 kHz", 24000, []float64{220}},
+		{"stereo at 96 kHz", 96000, []float64{200, 300}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s := NewSound(tc.rate, len(tc.freqs), sine(tc.rate, 2, tc.freqs...))

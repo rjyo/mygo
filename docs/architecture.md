@@ -2244,10 +2244,29 @@ voices (`audio/mixer.go`) under one mutex. Each reads frames from a source,
 an in-memory sound or a stream that a goroutine of its own decodes about a
 second ahead into a ring (`audio/source.go`); the mixer never waits on a
 stream, playing silence for one that is late. Voices resample to 48 kHz
-stereo with a Catmull-Rom spline at their rate times their speed, and ramp
-their gains (a 2×2 matrix of volume and pan) over 5 ms on every change,
-pause and resume. Looping happens in the source, so a loop has no gap; the
-voice counts frames past it modulo the length for `Position`.
+stereo at their rate times their speed, and ramp their gains (a 2×2 matrix
+of volume and pan) over 5 ms on every change, pause and resume. Looping
+happens in the source, so a loop has no gap; the voice counts frames past
+it modulo the length for `Position`.
+
+Up to one source frame an output frame, a voice interpolates with a
+Catmull-Rom spline. Faster (a sound above 48 kHz, or one sped up), a spline
+would fold what is above 24 kHz back below it, so the voice interpolates
+with a Kaiser-windowed sinc (`audio/resample.go`), a low-pass at the
+output's rate: 32 output frames either side, -6 dB at 22 kHz, flat to
+20 kHz and 80 dB down from 24 kHz, as many times wider in source frames,
+and its cutoff as many times lower, as the source is faster. Its weights
+are a bank the voice computes when its step changes, for 128 phases an
+output frame (fewer source frames apart, the faster), from a table of the
+kernel made once; it interpolates between the two phases either side, so a
+frame costs two multiply-adds a source frame and channel, about 1% of a
+core at 96 kHz. Past 8 source frames an output frame, the kernel stops at
+256 frames either side: its window narrows to those, and its cutoff comes
+down so that its stopband still starts at 24 kHz, as far as it can (to
+48× it does). The voice keeps the frames around where it is in a ring of
+512, stored twice over so that its kernel's are in a row, and reads its
+source as far ahead as the interpolation reaches; `Position` stays where
+the output is, not where the voice read to, and a seek clears the ring.
 
 A player that preserves pitch (`SetPreservesPitch`) gets a stretcher
 (`audio/stretch.go`) between its source and its resampler, which then

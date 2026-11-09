@@ -72,12 +72,19 @@ type voice struct {
 	loop               bool
 	loopStart, loopEnd int64 // frames, loopEnd 0 for the end
 
-	// The four source frames the output is interpolated between, the
-	// second at idx, and how far the output is past it.
-	hist  [4][2]float32
+	// The source frames around the output, stereo: frame f at f mod
+	// ringFrames, and again ringFrames after, so that any ringFrames in a
+	// row are in a row. The output is phase past frame idx, and head is
+	// the frame that comes in next, as far ahead as the interpolation
+	// reaches.
+	ring  [][2]float32
 	idx   int64
 	phase float64
+	head  int64
 	end   int64 // the frame after the last, once the source ended, or -1
+
+	// The sinc's weights while the voice downsamples.
+	bank sincBank
 
 	in    []float32 // frames read from the source and not yet used
 	inPos int
@@ -108,10 +115,9 @@ type mark struct {
 // reset starts the voice over at frame f of its source, which the caller
 // has moved there.
 func (v *voice) reset(f int64) {
-	v.hist = [4][2]float32{}
-	// Three frames come in before the first output: the second is f.
-	v.idx = f - 3
-	v.phase = 3
+	// Silence before f.
+	clear(v.ring)
+	v.idx, v.phase, v.head = f, 0, f
 	v.end = -1
 	v.inPos, v.inLen = 0, 0
 	if v.st != nil {
@@ -128,7 +134,8 @@ func (v *voice) ended() bool { return v.end >= 0 && v.idx >= v.end }
 // loop's end.
 func (v *voice) at() float64 {
 	if st := v.st; st != nil {
-		return st.tags[1] + v.phase*(st.tags[2]-st.tags[1])
+		a := st.tags[v.idx&(ringFrames-1)]
+		return a + v.phase*(st.tags[(v.idx+1)&(ringFrames-1)]-a)
 	}
 	return float64(v.idx) + v.phase
 }
@@ -141,10 +148,11 @@ func (v *voice) stretch() {
 		ch = 1
 	}
 	st := newStretcher(int(v.rate), ch)
-	// The frame coming in next is at idx+3, and the second of hist at idx.
-	st.reset(v.idx+3, true)
-	for k := range st.tags {
-		st.tags[k] = float64(v.idx - 1 + int64(k))
+	// The frame coming in next is at head, and those in the ring at
+	// themselves.
+	st.reset(v.head, true)
+	for f := v.idx; f < v.head; f++ {
+		st.tags[f&(ringFrames-1)] = float64(f)
 	}
 	st.n = copy(st.buf, v.in[v.inPos:v.inLen]) / ch
 	st.rd += int64(st.n)
@@ -214,20 +222,23 @@ func (v *voice) close() {
 	v.src.close()
 }
 
-// next shifts in the source's next frame, and reports false while a stream
-// has none decoded yet.
+// next takes in the source's next frame, at head, and reports false while
+// a stream has none decoded yet.
 func (v *voice) next() bool {
 	ch := 2
 	if v.mono {
 		ch = 1
 	}
+	if v.ring == nil {
+		v.ring = make([][2]float32, 2*ringFrames)
+	}
 	if v.inPos >= v.inLen {
 		if v.end >= 0 {
 			// Past the end, silence.
-			v.shift(0, 0)
 			if v.st != nil {
-				v.st.push(v.st.next)
+				v.st.push(v.head, v.st.next)
 			}
+			v.push(0, 0)
 			return true
 		}
 		var n int
@@ -245,12 +256,11 @@ func (v *voice) next() bool {
 			if !ended {
 				return false
 			}
-			// The frame coming in would be at idx+3.
-			v.end = v.idx + 3
-			v.shift(0, 0)
+			v.end = v.head
 			if v.st != nil {
-				v.st.push(v.st.next)
+				v.st.push(v.head, v.st.next)
 			}
+			v.push(0, 0)
 			return true
 		}
 	}
@@ -260,17 +270,19 @@ func (v *voice) next() bool {
 		r = v.in[v.inPos+1]
 	}
 	if st := v.st; st != nil {
-		st.push(st.tag0 + float64(v.inPos/ch)*st.tagStep)
+		st.push(v.head, st.tag0+float64(v.inPos/ch)*st.tagStep)
 	}
 	v.inPos += ch
-	v.shift(l, r)
+	v.push(l, r)
 	return true
 }
 
-func (v *voice) shift(l, r float32) {
-	v.hist[0], v.hist[1], v.hist[2] = v.hist[1], v.hist[2], v.hist[3]
-	v.hist[3] = [2]float32{l, r}
-	v.idx++
+// push puts frame head into the ring.
+func (v *voice) push(l, r float32) {
+	k := v.head & (ringFrames - 1)
+	v.ring[k] = [2]float32{l, r}
+	v.ring[k+ringFrames] = [2]float32{l, r}
+	v.head++
 }
 
 // gains returns the matrix of the voice's volume and pan, and the master
@@ -333,14 +345,22 @@ func (v *voice) play(out []float32, master float64) (int, bool) {
 		// Stretched to the speed already.
 		step = v.rate / sampleRate
 	}
+	// The spline reaches 2 frames ahead, the sinc further the faster.
+	reach := 2
+	if step > 1 {
+		v.bank.set(step)
+		reach = v.bank.reach
+	}
 	for i := 0; i < len(out); i += 2 {
-		for v.phase >= 1 {
+		n := int64(v.phase)
+		for v.head <= v.idx+n+int64(reach) {
 			if !v.next() {
 				// The stream is late: silence until it catches up.
 				return i / 2, true
 			}
-			v.phase--
 		}
+		v.idx += n
+		v.phase -= float64(n)
 		if v.ended() {
 			v.atEnd = v.atEnd || v.playing
 			v.playing = false
@@ -358,7 +378,12 @@ func (v *voice) play(out []float32, master float64) (int, bool) {
 			// Faded out.
 			return i / 2, false
 		}
-		l, r := v.sample()
+		var l, r float32
+		if step > 1 {
+			l, r = v.sinc()
+		} else {
+			l, r = v.sample()
+		}
 		out[i] += l*v.gain[0] + r*v.gain[2]
 		out[i+1] += l*v.gain[1] + r*v.gain[3]
 		v.phase += step
@@ -366,11 +391,12 @@ func (v *voice) play(out []float32, master float64) (int, bool) {
 	return len(out) / 2, true
 }
 
-// sample interpolates between the second and third frames with a
-// Catmull-Rom spline.
+// sample interpolates between frames idx and idx+1 with a Catmull-Rom
+// spline through the frames either side.
 func (v *voice) sample() (l, r float32) {
 	t := float32(v.phase)
-	h := &v.hist
+	o := (v.idx - 1) & (ringFrames - 1)
+	h := v.ring[o : o+4]
 	cr := func(p0, p1, p2, p3 float32) float32 {
 		return p1 + 0.5*t*(p2-p0+t*(2*p0-5*p1+4*p2-p3+t*(3*(p1-p2)+p3-p0)))
 	}
