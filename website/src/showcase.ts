@@ -332,7 +332,7 @@ export const showcase: ShowcaseApp[] = [
   {
     name: "Golder",
     description:
-      "An open-source coding agent for macOS, Windows and Linux. Its native desktop app brings project chats, file and Git review, an integrated terminal, browser and computer use together, with model choice and configurable approval boundaries.",
+      "An open-source AI coding agent in Go for macOS, Windows and Linux, with a native desktop app and a terminal/CLI. The desktop app brings project chats, file and Git review, an integrated terminal and browser together, with configurable approvals and experimental computer use.",
     url: "https://github.com/getan/golder",
     author: "getan",
     mode: "native",
