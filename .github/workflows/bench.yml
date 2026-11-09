@@ -43,19 +43,24 @@ jobs:
         if: inputs.ref
         env:
           REF: ${{ inputs.ref }}
-        # The tools are this commit's: the script, and idlemem.
+        # The tools are this commit's: the script, idlemem, and the version of
+        # Bun that runs the script.
         run: |
           cp scripts/bench.ts "$RUNNER_TEMP/bench.ts"
           cp -R internal/idlemem "$RUNNER_TEMP/idlemem"
+          cp .bun-version "$RUNNER_TEMP/.bun-version"
           git fetch --depth 1 origin "$REF"
           git checkout --detach FETCH_HEAD
           mkdir -p scripts && cp "$RUNNER_TEMP/bench.ts" scripts/bench.ts
           rm -rf internal/idlemem && cp -R "$RUNNER_TEMP/idlemem" internal/idlemem
+          cp "$RUNNER_TEMP/.bun-version" .bun-version
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
       # Bun runs the script, which needs no packages.
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
       - name: Install WebKitGTK and a virtual display
         if: runner.os == 'Linux'
         run: |
@@ -88,6 +93,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
       - uses: actions/download-artifact@v8
         with:
           pattern: bench-*

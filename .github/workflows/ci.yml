@@ -44,7 +44,12 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+      # setup-bun keeps a pinned Bun in the Actions cache, and downloads the
+      # latest from GitHub's releases, which answer 504 now and then, on
+      # every job.
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
       # Ubuntu's mirrors are slow now and then (9 minutes for these packages
       # once), so the packages are kept in the Actions cache, under a key of
       # the files apt would download for them.
