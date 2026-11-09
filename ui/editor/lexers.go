@@ -6,7 +6,7 @@ import (
 
 // Lexers for languages the general lexer does not fit: JSON's keys,
 // TOML's tables, CSS, markup with the scripts and styles inside it,
-// Markdown with the code of its fenced blocks, and diffs.
+// ERB's Ruby, Markdown with the code of its fenced blocks, and diffs.
 
 // relabel gives the tokens of line covering start to end kind k,
 // splitting those that reach past them.
@@ -108,6 +108,127 @@ func (t *tomlLexer) Tokenize(line string, state uint64, tokens []Token) ([]Token
 		}
 	}
 	return append(tokens[:n0], toks...), next
+}
+
+// templateLexer lexes a template: text in a host language with code in
+// tags, as ERB's <% %> or Jinja's {{ }} and {% %}, and comments in others.
+// Outside a tag its state is the host's. In a tag that goes on to the next
+// line, it is the code's state (bits 0-39), the host's without the state of
+// a script or style in it (bits 40-55), and one more than the tag's index
+// (bits 62-63).
+type templateLexer struct {
+	// host lexes the text outside tags; without one, it is plain text.
+	host, code Tokenizer
+	// tags are tried in order where one opens, so a longer opener goes
+	// before one it starts with, as <%# before <%. All their openers
+	// start with the same byte, and there are at most three.
+	tags []templateTag
+	// marks are characters after an opener that belong to it, as = and -
+	// in <%= and <%-; trims before a closer, as - in -%>.
+	marks, trims string
+	// escape is an opener written out as text, as <%% in ERB.
+	escape string
+}
+
+type templateTag struct {
+	open, close string
+	comment     bool
+}
+
+func (t *templateLexer) Tokenize(line string, state uint64, tokens []Token) ([]Token, uint64) {
+	out := lexOut{toks: tokens}
+	n := len(line)
+	tag := int(state >> 62) // the open tag's index plus 1; 0 outside one
+	hostState, codeState := state, uint64(0)
+	if tag != 0 {
+		codeState, hostState = state&(1<<40-1), state>>40&0xffff
+	}
+	// sub lexes line[from:to] with tk, from state.
+	sub := func(tk Tokenizer, from, to int, state uint64) uint64 {
+		if from >= to {
+			return state
+		}
+		if tk == nil {
+			out.add(to, TokenText)
+			return state
+		}
+		// Lexed into the room after the line's tokens, and each written
+		// back behind where it is read.
+		toks, next := tk.Tokenize(line[from:to], state, out.toks[len(out.toks):])
+		for _, tk := range toks {
+			out.add(from+tk.End, tk.Kind)
+		}
+		return next
+	}
+	for i := 0; i < n; {
+		if tag == 0 {
+			j, k := t.opener(line, i)
+			hostState = sub(t.host, i, j, hostState)
+			if j == n {
+				break
+			}
+			e := j + len(t.tags[k].open)
+			if t.tags[k].comment {
+				out.add(e, TokenComment)
+			} else {
+				if e < n && strings.IndexByte(t.marks, line[e]) >= 0 {
+					e++
+				}
+				out.add(e, TokenMeta)
+			}
+			i, tag, codeState = e, k+1, 0
+			continue
+		}
+		tg := t.tags[tag-1]
+		end := strings.Index(line[i:], tg.close)
+		stop := n
+		if end >= 0 {
+			stop = i + end
+		}
+		if tg.comment {
+			out.add(min(stop+len(tg.close), n), TokenComment)
+		} else {
+			code := stop
+			if end >= 0 && code > i && strings.IndexByte(t.trims, line[code-1]) >= 0 {
+				code--
+			}
+			codeState = sub(t.code, i, code, codeState)
+			if end >= 0 {
+				out.add(stop+len(tg.close), TokenMeta)
+			}
+		}
+		if end < 0 {
+			break
+		}
+		i, tag, codeState = stop+len(tg.close), 0, 0
+	}
+	if tag != 0 {
+		return out.toks, uint64(tag)<<62 | (hostState&0xffff)<<40 | codeState&(1<<40-1)
+	}
+	return out.toks, hostState
+}
+
+// opener returns where the next tag opens in line from i, and which tag,
+// skipping escapes; len(line) when none does.
+func (t *templateLexer) opener(line string, i int) (int, int) {
+	c := t.tags[0].open[0]
+	for j := i; ; {
+		k := strings.IndexByte(line[j:], c)
+		if k < 0 {
+			return len(line), 0
+		}
+		j += k
+		if t.escape != "" && strings.HasPrefix(line[j:], t.escape) {
+			j += len(t.escape)
+			continue
+		}
+		for k, tg := range t.tags {
+			if strings.HasPrefix(line[j:], tg.open) {
+				return j, k
+			}
+		}
+		j++
+	}
 }
 
 // cssLexer lexes CSS, SCSS and Less: selectors, at-rules, properties and

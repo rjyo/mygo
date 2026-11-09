@@ -117,6 +117,8 @@ func languageAlias(name string) string {
 		return "shell"
 	case "yml":
 		return "yaml"
+	case "eruby":
+		return "erb"
 	case "md":
 		return "markdown"
 	case "rs":
@@ -554,6 +556,28 @@ func makeLanguages() {
 	}
 	// HTML's tokenizer highlights the scripts and styles inside it.
 	html.Tokenizer = &markupLexer{html: true, script: javascript.Tokenizer, style: css.Tokenizer}
+	erb := &Language{
+		Name: "ERB", Extensions: []string{".erb", ".rhtml", ".tt"}, BlockComment: html.BlockComment,
+		Brackets: html.Brackets, AutoClose: html.AutoClose, WordChars: "-", TabSize: 2,
+		IncreaseIndent: html.IncreaseIndent, DecreaseIndent: html.DecreaseIndent,
+		Tokenizer: &templateLexer{host: html.Tokenizer, code: ruby.Tokenizer,
+			tags: []templateTag{{open: "<%#", close: "%>", comment: true}, {open: "<%", close: "%>"}}, marks: "=-", trims: "-", escape: "<%%"},
+	}
+	// Jinja's text is plain: a template's name, as nginx.conf.j2, says
+	// what it makes, but the tags may cut its syntax anywhere.
+	jinja := &Language{
+		Name: "Jinja", Extensions: []string{".j2", ".jinja", ".jinja2"}, BlockComment: [2]string{"{#", "#}"},
+		Brackets: cBrackets, AutoClose: cAutoClose("\"", "'"), TabSize: 2,
+		Tokenizer: &templateLexer{
+			code: &lexer{strings: []lexString{cString("\""), cString("'")},
+				words: words(TokenKeyword, "for in if elif else endif endfor set endset macro endmacro call endcall block endblock "+
+					"extends include import from as with endwith without context filter endfilter raw endraw autoescape endautoescape "+
+					"trans endtrans pluralize do continue break and or not is recursive scoped required ignore missing",
+					TokenConstant, "true false none True False None"),
+				calls: true, operators: "+-*/%=<>!|~:?"},
+			tags:  []templateTag{{open: "{#", close: "#}", comment: true}, {open: "{{", close: "}}"}, {open: "{%", close: "%}"}},
+			marks: "-+", trims: "-+"},
+	}
 	languageList = []*Language{goLang, javascript, typescript, json, python, rust, c, cpp, java, kotlin, scala, swift, dart, csharp,
-		shell, yaml, toml, sql, rLang, ruby, lua, php, css, html, xml, markdown, diffLang, dockerfile, makefile, protobuf, graphql, zig, nix}
+		shell, yaml, toml, sql, rLang, ruby, lua, php, css, html, erb, xml, markdown, diffLang, dockerfile, makefile, protobuf, graphql, zig, nix, jinja}
 }
