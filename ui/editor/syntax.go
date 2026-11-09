@@ -82,6 +82,10 @@ type Language struct {
 	// "Makefile" (LanguageFor).
 	Extensions []string
 	Filenames  []string
+	// Interpreters are the programs a script's #! line runs it with, as
+	// "python" or "bash", without a version: LanguageForText finds the
+	// language of a file its name does not tell by them.
+	Interpreters []string
 	// LineComment starts a comment to the end of the line, as "//";
 	// BlockComment encloses one, as {"/*", "*/"}. Toggling comments uses
 	// the first, else the second.

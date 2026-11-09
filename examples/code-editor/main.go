@@ -44,7 +44,7 @@ type app struct {
 func newFile(name, text string) *file {
 	f := &file{name: name, original: editor.NewBuffer(text)}
 	buf := editor.NewBuffer(text)
-	lang := editor.LanguageFor(name)
+	lang := editor.LanguageForText(name, text)
 	buf.SetLanguage(lang)
 	f.original.SetLanguage(lang)
 	f.editor = &editor.State{Buffer: buf, DiffBase: f.original, WrapGuides: []int{100}}
