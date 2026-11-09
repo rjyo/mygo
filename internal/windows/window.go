@@ -1102,6 +1102,10 @@ func (w *window) SetAlwaysOnTop(v bool) {
 func (w *window) IsAlwaysOnTop() bool { return windowLong(w.hwnd, gwlExStyle)&wsExTopmost != 0 }
 
 func (w *window) Show() {
+	if w.surface != nil && w.surface.cloaked && w.surface.drawn && !w.IsVisible() {
+		w.surface.uncloak()
+		defer w.surface.fillUnder()
+	}
 	if f := w.opts.Flyout; f != nil && !f.Focusable {
 		procShowWindow.Call(w.hwnd, swShowNoActivate)
 		return
@@ -1116,6 +1120,10 @@ func (w *window) Show() {
 }
 
 func (w *window) ShowInactive() {
+	if w.surface != nil && w.surface.cloaked && w.surface.drawn && !w.IsVisible() {
+		w.surface.uncloak()
+		defer w.surface.fillUnder()
+	}
 	if w.showMaximized {
 		// Maximizing activates the window; there is no inactive variant.
 		w.showMaximized = false
