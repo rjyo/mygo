@@ -5,6 +5,7 @@ import (
 	"math"
 	"sort"
 	"strconv"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -180,7 +181,6 @@ func (s *diffSide) paintDeleted(p *ui.Painter, ed *editor, b *block, r ui.Rect) 
 	d := s.d
 	ov := &d.oldView
 	ov.setTheme(ed.theme)
-	ov.advanceSyntax(b.to, 0)
 	dc := s.colors(ed)
 	lh := ed.view.lineHeight
 	ox := r.X + ed.textX - ed.scrollX
@@ -188,21 +188,32 @@ func (s *diffSide) paintDeleted(p *ui.Painter, ed *editor, b *block, r ui.Rect) 
 	var cc runColors
 	var rects []ui.Rect
 	words := d.model.wordsOf(b.hunk, d.Inline)
-	// Each line's top, and the lines in the clip.
+	// The lines in the clip, from the first whose rows or annotations
+	// reach into it, by the tops prepare kept: a run as long as a file
+	// deleted is not laid out from its first line.
 	type placed struct {
 		line int
 		y, h float32
 		l    *lineLayout
 	}
 	var lines []placed
-	y := r.Y
-	for line := b.from; line < b.to && y <= p.Visible().Y+p.Visible().H; line++ {
+	tops := d.deletedTops[b.hunk]
+	vis := p.Visible()
+	y0, y1 := float64(vis.Y-r.Y), float64(vis.Y+vis.H-r.Y)
+	first := b.from + max(0, sort.Search(len(tops), func(i int) bool { return tops[i] > y0 })-1)
+	last := first
+	for last < b.to && tops[last-b.from] <= y1 {
+		last++
+	}
+	ready := ov.advanceSyntax(last, 4*time.Millisecond)
+	ov.approx = false
+	for line := first; line < last; line++ {
 		l := ov.line(line)
+		y := r.Y + float32(tops[line-b.from])
 		h := float32(len(l.rows)) * lh
-		if y+h >= p.Visible().Y {
+		if y+h >= vis.Y {
 			lines = append(lines, placed{line, y, h, l})
 		}
-		y += h + d.annotationHeight(DiffOld, line)
 	}
 	for _, pl := range lines {
 		if !d.NoBackground {
@@ -252,6 +263,11 @@ func (s *diffSide) paintDeleted(p *ui.Painter, ed *editor, b *block, r ui.Rect) 
 			}
 		}
 	})
+	// Frames go on while the highlighter works, or the lines show its
+	// guesses, as the editor's own lines do.
+	if !ready || ov.approx {
+		p.AnimationFrame()
+	}
 }
 
 // paintSign paints a classic + or - before a line.
@@ -277,16 +293,10 @@ func (s *diffSide) blockInput(ed *editor, b *block, ev ui.InputEvent, r ui.Rect)
 		case blockDeleted:
 			// Lines of the old text: their numbers select them.
 			if ev.X < ed.gutterW && d.LineSelection && ev.Kind == ui.InputPointerDown {
-				// The line by the heights of its rows and annotations.
-				lh := ed.view.lineHeight
-				y, line := r.Y, b.to-1
-				for l := b.from; l < b.to; l++ {
-					y += float32(d.oldView.heights.wraps.rows(l))*lh + d.annotationHeight(DiffOld, l)
-					if ev.Y < y {
-						line = l
-						break
-					}
-				}
+				// The line by the tops of the lines, its annotations its own.
+				tops := d.deletedTops[b.hunk]
+				i := sort.Search(len(tops), func(i int) bool { return tops[i] > float64(ev.Y-r.Y) })
+				line := b.from + min(max(i-1, 0), b.to-b.from-1)
 				d.selectLine(DiffOld, line, ev.Mods&ui.Shift != 0)
 				return true
 			}
@@ -368,14 +378,9 @@ func (s *diffSide) buildBlocks(c *ui.Context, ed *editor) {
 						}
 						for _, b := range blks {
 							if b.kind == blockDeleted && a.Line >= b.from && a.Line < b.to {
-								off := bt
-								for l := b.from; l <= a.Line; l++ {
-									off += float64(float32(d.oldView.heights.wraps.rows(l)) * v.lineHeight)
-									if l < a.Line {
-										off += float64(d.annotationHeight(DiffOld, l))
-									}
-								}
-								top, found = off, true
+								// Under the line's rows.
+								rows := float64(float32(d.oldView.heights.wraps.rows(a.Line)) * v.lineHeight)
+								top, found = bt+d.deletedTops[b.hunk][a.Line-b.from]+rows, true
 								break
 							}
 							bt += float64(b.height)

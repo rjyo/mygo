@@ -124,12 +124,22 @@ func (d *DiffState) prepare() {
 	}
 	rowsOf := func(v *view, line int) float32 { return float32(v.heights.wraps.rows(line)) * lh }
 	if unified {
+		// The tops of the deleted lines, which painting them starts at the
+		// first in view with, rather than at the first of a run as long as
+		// a file deleted.
+		d.deletedTops = slices.Grow(d.deletedTops[:0], len(d.model.hunks))[:len(d.model.hunks)]
 		for hi, h := range d.model.hunks {
+			tops := d.deletedTops[hi][:0]
 			if h.A1 > h.A0 {
 				var height float32
+				var top float64
 				for i := h.A0; i < h.A1; i++ {
-					height += rowsOf(viewA, i) + anns[DiffOld][i]
+					tops = append(tops, top)
+					dy := rowsOf(viewA, i) + anns[DiffOld][i]
+					height += dy
+					top += float64(dy)
 				}
+				tops = append(tops, top)
 				b := block{kind: blockDeleted, height: height, from: h.A0, to: h.A1, hunk: hi}
 				if h.B0 < viewB.text.LineCount() {
 					b.line = h.B0
@@ -138,6 +148,7 @@ func (d *DiffState) prepare() {
 				}
 				blkB = append(blkB, b)
 			}
+			d.deletedTops[hi] = tops
 		}
 		// The old text's annotations on unchanged lines go under the same
 		// lines of the new text, as only those show.

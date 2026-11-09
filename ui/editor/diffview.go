@@ -101,8 +101,12 @@ type DiffState struct {
 	eds     [2]editor // the old side's and the new side's
 	sides   [2]diffSide
 	oldView view // the old text, for its lines in a unified view
-	scroll  sharedScroll
-	split   diffSplit
+	// deletedTops are, for each hunk, the tops of its deleted lines in a
+	// unified view from the top of their block, and the block's bottom
+	// last, as prepare placed them.
+	deletedTops [][]float64
+	scroll      sharedScroll
+	split       diffSplit
 	// revealed are the unchanged lines expanded, in the old text, which
 	// edits of the new text leave where they are; revealedVer is the old
 	// text's version they are of.
@@ -440,14 +444,17 @@ func (d *DiffState) deletedTop(line int) float64 {
 		if at < 0 {
 			return 0
 		}
-		top, ok := blockTop(h, at, below, func(b *block) bool { return b.kind == blockDeleted && b.hunk == i })
-		if !ok {
+		// The line's top in the block by the tops prepare kept with it,
+		// which an edit since the last frame leaves as they were.
+		var blk block
+		top, ok := blockTop(h, at, below, func(b *block) bool {
+			blk = *b
+			return b.kind == blockDeleted && b.hunk == i
+		})
+		if !ok || line < blk.from || line >= blk.to {
 			return h.geometry(at).rows
 		}
-		for l := hk.A0; l < line; l++ {
-			top += float64(float32(d.oldView.heights.wraps.rows(l))*ed.view.lineHeight + d.annotationHeight(DiffOld, l))
-		}
-		return top
+		return top + d.deletedTops[blk.hunk][line-blk.from]
 	}
 	return h.total()
 }

@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"math"
 	"strconv"
 	"strings"
 	"testing"
@@ -217,5 +218,29 @@ func BenchmarkDiffFitFrame(b *testing.B) {
 	b.ReportAllocs()
 	for i := 0; b.Loop(); i++ {
 		tt.Move(700, float32(400+i%2))
+	}
+}
+
+// BenchmarkDiffDeletedFileScroll scrolls near the end of a unified diff of
+// a deleted Go file of 20,000 lines: one run of deleted lines, most of
+// it above the view.
+func BenchmarkDiffDeletedFileScroll(b *testing.B) {
+	d := &DiffState{Old: NewBuffer(bigGo(20_000)), New: NewBuffer(""), Layout: DiffUnified}
+	d.Old.SetLanguage(LanguageNamed("go"))
+	tt := ui.NewTester(func(c *ui.Context) {
+		DiffView(c, d).Fill()
+	}, 1400, 800)
+	tt.SetScale(2)
+	tt.Frame()
+	d.SetScrollY(math.MaxFloat64)
+	tt.Frame()
+	tt.Move(700, 400)
+	b.ReportAllocs()
+	for i := 0; b.Loop(); i++ {
+		dy := float32(-61)
+		if i%2 == 1 {
+			dy = 61
+		}
+		tt.Scroll(700, 400, 0, dy)
 	}
 }

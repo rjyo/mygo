@@ -1292,3 +1292,33 @@ func TestDiffViewEmptySide(t *testing.T) {
 		})
 	}
 }
+
+// A unified view lays out the deleted lines it shows of a long run, as of
+// a file deleted, not those above them, and gives their highlighter the
+// frames it asks for.
+func TestDiffViewDeletedRunInView(t *testing.T) {
+	var lines []string
+	for i := range 5000 {
+		lines = append(lines, "fn line"+strconv.Itoa(i))
+	}
+	var hl *parserHighlighter
+	lang := &Language{Name: "Parsed", Highlighter: func(text Snapshot, invalidate func()) Highlighter {
+		hl = &parserHighlighter{text: text, invalidate: invalidate, pending: 10}
+		return hl
+	}}
+	d := &DiffState{Old: NewBuffer(strings.Join(lines, "\n")), New: NewBuffer(""), Layout: DiffUnified}
+	d.Old.SetLanguage(lang)
+	tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).Fill() }, 600, 300)
+	tt.Frame()
+	d.SetScrollY(math.MaxFloat64)
+	tt.Frame()
+	if n := len(d.oldView.lines.m); n > 100 {
+		t.Fatalf("%d deleted lines laid out to show the last few", n)
+	}
+	if hl == nil || hl.pending > 0 {
+		t.Fatal("the deleted lines' highlighter got no frames to finish in")
+	}
+	if l := d.oldView.line(len(lines) - 1); !l.exact || len(l.toks) == 0 || l.toks[0].Kind != TokenKeyword {
+		t.Fatalf("the last deleted line's tokens: %+v, final %v", l.toks, l.exact)
+	}
+}
