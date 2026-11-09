@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 
@@ -107,5 +108,52 @@ func TestCellWidthKeepsFittedGlyphs(t *testing.T) {
 		if got := advance(width); got != fitted {
 			t.Errorf("a glyph too wide for its cell is %v wide in cells %g times as wide, %v in the font's", got, width, fitted)
 		}
+	}
+}
+
+// A glyph that shrinks to fit its cell stays in the middle of the line,
+// where it would be at its own size, rather than sink to the baseline.
+func TestCellWidthShrinksToTheMiddle(t *testing.T) {
+	loadLib(t)
+	if err := ui.RegisterFont(goregular.TTF, "MyGo Cell Width Sans"); err != nil {
+		t.Fatal(err)
+	}
+	term, err := New(Options{Conn: newPipe(), Theme: LightTheme(), Font: Font{Family: "MyGo Cell Width Sans", Size: 40}, NoBlink: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	tt := ui.NewTester(func(c *ui.Context) { View(c, term).Fill() }, 800, 200)
+	// Go Regular draws the digraph Ǳ wider than any of its ASCII glyphs,
+	// and D and Z, which make it, each fit a cell.
+	term.Feed([]byte("\x1b[38;2;255;0;0mǱ DZ"))
+	tt.Frame()
+	term.mu.Lock()
+	v := term.v
+	term.mu.Unlock()
+	img := tt.Image()
+	// The middle of the ink in columns col0 to col1.
+	middle := func(col0, col1 int) float64 {
+		top, bottom := -1, -1
+		for y := range v.cellH {
+			for x := col0 * v.cellW; x < (col1+1)*v.cellW; x++ {
+				if c := img.RGBAAt(v.ox+x, v.oy+y); c.R > 200 && c.G < 150 && c.B < 150 {
+					if top < 0 {
+						top = y
+					}
+					bottom = y
+					break
+				}
+			}
+		}
+		if top < 0 {
+			t.Fatalf("no ink in columns %d to %d", col0, col1)
+		}
+		return float64(top+bottom) / 2
+	}
+	shrunk, full := middle(0, 0), middle(2, 3)
+	t.Logf("cell %d×%d, middle %.1f shrunk, %.1f at full size", v.cellW, v.cellH, shrunk, full)
+	if math.Abs(shrunk-full) > 1 {
+		t.Errorf("a shrunk glyph's middle is %.1f pixels from the top of its cell, %.1f at full size", shrunk, full)
 	}
 }
