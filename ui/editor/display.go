@@ -222,12 +222,12 @@ func (h *heights) isHidden(line int) bool {
 }
 
 // update makes the entries again after the hidden lines or the blocks
-// changed.
+// changed, and the first time, as the zero heights has made none.
 func (h *heights) update() {
 	if h.wraps.on && len(h.hidden) > 0 && h.wrapsSeen != h.wraps.version {
 		h.dirty = true
 	}
-	if !h.dirty {
+	if !h.dirty && h.prefix != nil {
 		return
 	}
 	h.dirty = false

@@ -834,3 +834,14 @@ func TestCodeEditorNoScrollbarsCancelsDrag(t *testing.T) {
 	}
 	ct.tt.Release(x, 300)
 }
+
+// The zero heights measures as empty before anything marks it changed.
+func TestHeightsZeroValue(t *testing.T) {
+	var h heights
+	if got := h.total(); got != 0 {
+		t.Fatalf("total of the zero heights = %v, want 0", got)
+	}
+	if got := h.lineAt(10); got != 0 {
+		t.Fatalf("lineAt of the zero heights = %d, want 0", got)
+	}
+}

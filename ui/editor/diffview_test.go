@@ -1213,3 +1213,17 @@ func TestDiffSplitAligned(t *testing.T) {
 		}
 	}
 }
+
+// A diff whose state is reset between frames, as an app does while it
+// reads the next file's texts, can get a pointer move before the next
+// frame lays its editors out. The move must not panic.
+func TestDiffViewPointerMoveAfterReset(t *testing.T) {
+	st := &DiffState{Old: NewBuffer("a\nb\n"), New: NewBuffer("a\nc\n")}
+	tt := ui.NewTester(func(c *ui.Context) { DiffView(c, st).Fill() }, 600, 300)
+	tt.Frame()
+	ed := &st.eds[1]
+	x, y := ed.r.X+ed.r.W/2, ed.r.Y+ed.r.H/2
+	tt.Move(x, y)
+	*st = DiffState{}
+	tt.Move(x+1, y+1)
+}
