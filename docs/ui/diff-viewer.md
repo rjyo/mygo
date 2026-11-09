@@ -32,6 +32,10 @@ diffing again only the lines around it. `New` can be the buffer of an
 editor too, as a file's, so that the diff shows its changes as they are
 typed.
 
+An empty text has no lines, as `git diff` counts them: the side of a file
+added or deleted, or emptied, shows no line numbers, and its gutter selects
+no line and offers no button.
+
 ## Layout
 
 - `Layout` shows the old text on the left and the new on the right, their

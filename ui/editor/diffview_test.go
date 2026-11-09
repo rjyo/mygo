@@ -1227,3 +1227,68 @@ func TestDiffViewPointerMoveAfterReset(t *testing.T) {
 	*st = DiffState{}
 	tt.Move(x+1, y+1)
 }
+
+// An empty side of a diff, as of a file added or deleted, has no lines,
+// as git shows it: the line its editor keeps is not numbered, selected
+// by its number or commented on.
+func TestDiffViewEmptySide(t *testing.T) {
+	added, _ := ParsePatch("diff --git a/x.go b/x.go\nnew file mode 100644\n--- /dev/null\n+++ b/x.go\n@@ -0,0 +1,2 @@\n+a\n+b\n")
+	for _, c := range []struct {
+		name  string
+		st    *DiffState
+		empty DiffSide
+	}{
+		{"added", &DiffState{New: NewBuffer("a\nb\n")}, DiffOld},
+		{"deleted", &DiffState{Old: NewBuffer("a\nb\n")}, DiffNew},
+		{"deleted unified", &DiffState{Old: NewBuffer("a\nb\n"), Layout: DiffUnified}, DiffNew},
+		{"emptied", &DiffState{Old: NewBuffer("a\nb\n"), New: NewBuffer("")}, DiffNew},
+		{"added patch", func() *DiffState { d := &DiffState{}; d.SetPatch(added[0]); return d }(), DiffOld},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			d := c.st
+			var selected, commented []DiffLineRange
+			d.LineSelection = true
+			d.OnLineSelection = func(r DiffLineRange) { selected = append(selected, r) }
+			d.OnGutterButton = func(r DiffLineRange) { commented = append(commented, r) }
+			d.RenderGutterButton = func(c *ui.Context, btn ui.Element, line DiffLineRange) { btn.Label("Comment") }
+			tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).Fill() }, 600, 300)
+			tt.Frame()
+			// inked reports whether the gutter of line 0 of a side shows
+			// anything but its background.
+			inked := func(side DiffSide) bool {
+				ed := &d.eds[side]
+				lh := ed.view.lineHeight
+				y := ed.r.Y + float32(ed.view.heights.geometry(0).rows-ed.scrollY)
+				img := tt.Image()
+				s := float32(img.Bounds().Dx()) / 600
+				first := img.RGBAAt(int((ed.r.X+1)*s), int((y+1)*s))
+				for py := int((y + 1) * s); py < int((y+lh-1)*s); py++ {
+					for px := int((ed.r.X + 1) * s); px < int((ed.r.X+ed.gutterW-1)*s); px++ {
+						if img.RGBAAt(px, py) != first {
+							return true
+						}
+					}
+				}
+				return false
+			}
+			if inked(c.empty) {
+				t.Fatal("the empty side's line is numbered")
+			}
+			if d.Layout == DiffSplit && !inked(1-c.empty) {
+				t.Fatal("the other side's first line is not numbered")
+			}
+			// Its gutter selects nothing and offers no button.
+			ed := &d.eds[c.empty]
+			y := ed.r.Y + float32(ed.view.heights.geometry(0).rows-ed.scrollY) + ed.view.lineHeight/2
+			tt.Move(ed.r.X+ed.gutterW/2, y)
+			tt.Frame()
+			if tt.HasText("Comment") {
+				t.Fatal("the empty side's line has a gutter button")
+			}
+			tt.ClickAt(ed.r.X+ed.gutterW-8, y)
+			if _, ok := d.SelectedLines(); ok || len(selected) > 0 || len(commented) > 0 {
+				t.Fatalf("selected %+v, commented %+v on the empty side", selected, commented)
+			}
+		})
+	}
+}

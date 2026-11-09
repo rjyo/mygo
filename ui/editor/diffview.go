@@ -16,7 +16,8 @@ import (
 type DiffState struct {
 	// Old and New are the texts compared; empty buffers are made when
 	// nil. New is the one edited when Editable, and can be the buffer of
-	// an editor's too: an edit in either shows in both.
+	// an editor's too: an edit in either shows in both. An empty text has
+	// no lines, as of a file added or deleted: its side numbers none.
 	Old, New *Buffer
 	// Layout shows the texts side by side, or one over the other.
 	Layout DiffLayout

@@ -39,6 +39,16 @@ func (s *diffSide) hunkOf(line int) int {
 	return -1
 }
 
+// empty reports whether the side's text is empty, as of a file added or
+// deleted: the hunks count no lines of it, as git does, though its
+// editor keeps one, which is not numbered, selected or commented on.
+func (s *diffSide) empty() bool {
+	if s.old {
+		return s.d.eds[0].view.text.Len() == 0
+	}
+	return s.d.eds[1].view.text.Len() == 0
+}
+
 func (s *diffSide) colors(ed *editor) diffColors { return ed.theme.diff(isDark(ed.theme.Background)) }
 
 func (s *diffSide) lineStyle(line int) lineLook {
@@ -102,6 +112,9 @@ func (s *diffSide) words(line int) []diffRange {
 }
 
 func (s *diffSide) number(line int) int {
+	if s.empty() {
+		return -1
+	}
 	if pt := s.d.partial; pt != nil {
 		return pt.fileLine(s.old || false, line) + 1
 	}
@@ -287,7 +300,7 @@ func (s *diffSide) blockInput(ed *editor, b *block, ev ui.InputEvent, r ui.Rect)
 	}
 	_, cy := ed.toContent(ev.X, ev.Y)
 	line := ed.view.heights.lineAt(cy)
-	if d.LineSelection {
+	if d.LineSelection && !s.empty() {
 		d.selectLine(side, line, ev.Mods&ui.Shift != 0)
 		return true
 	}
@@ -431,7 +444,7 @@ func (s *diffSide) buildBlocks(c *ui.Context, ed *editor) {
 		}
 	}
 	// The gutter's button, on the line under the pointer.
-	if d.OnGutterButton != nil && ed.pointerIn && ed.hoverLine >= 0 && ed.hoverLine < v.text.LineCount() && ed.pointer.X < ed.gutterW+40 {
+	if d.OnGutterButton != nil && !s.empty() && ed.pointerIn && ed.hoverLine >= 0 && ed.hoverLine < v.text.LineCount() && ed.pointer.X < ed.gutterW+40 {
 		g := h.geometry(ed.hoverLine)
 		if !g.hidden {
 			line := DiffLineRange{Side: side, Start: ed.hoverLine, End: ed.hoverLine}
