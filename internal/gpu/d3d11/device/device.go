@@ -30,7 +30,14 @@ func SystemDir() string {
 // or, when there is none, with Windows' software rasterizer (WARP), which
 // software reports. The caller releases the device and the context.
 func New() (device, context uintptr, software bool, err error) {
-	return create(0)
+	return create(0, hardware, warp)
+}
+
+// NewOnGPU is New for a device on the GPU only: it fails where New would
+// make one with WARP.
+func NewOnGPU() (device, context uintptr, err error) {
+	device, context, _, err = create(0, hardware)
+	return device, context, err
 }
 
 // NewForVideo is New for a device that decodes and converts video, as
@@ -38,21 +45,23 @@ func New() (device, context uintptr, software bool, err error) {
 // GPU has it, else as New.
 func NewForVideo() (device, context uintptr, software bool, err error) {
 	const videoSupport = 0x800
-	if d, c, sw, err := create(videoSupport); err == nil {
+	if d, c, sw, err := create(videoSupport, hardware, warp); err == nil {
 		return d, c, sw, nil
 	}
-	return create(0)
+	return create(0, hardware, warp)
 }
 
-func create(flags uintptr) (device, context uintptr, software bool, err error) {
+// The drivers create tries, in order.
+const hardware, warp = 1, 5
+
+func create(flags uintptr, drivers ...uintptr) (device, context uintptr, software bool, err error) {
 	if err := procD3D11CreateDevice.Find(); err != nil {
 		return 0, 0, false, err
 	}
 	levels := []uint32{0xb000, 0xa100, 0xa000} // 11_0, 10_1, 10_0
 	const bgraSupport = 0x20
-	const hardware, warp = 1, 5
 	var hr uintptr
-	for _, driver := range []uintptr{hardware, warp} {
+	for _, driver := range drivers {
 		var level uint32
 		hr, _, _ = procD3D11CreateDevice.Call(0, driver, 0, bgraSupport|flags,
 			uintptr(unsafe.Pointer(&levels[0])), uintptr(len(levels)), 7,

@@ -16,7 +16,6 @@ import (
 	"errors"
 	"fmt"
 	"image"
-	"math"
 	"os"
 	"sync"
 	"syscall"
@@ -281,7 +280,11 @@ type canvasTexture struct {
 
 // Renderer draws scenes into a window.
 type Renderer struct {
-	hwnd      uintptr
+	hwnd uintptr
+	// dev is the device the renderers share (shared.go), whose objects
+	// device, ctx, ctx1, factory, the shaders, the input layout, the states
+	// and classes are, held by dev, never released by the renderer.
+	dev       *sharedDevice
 	device    uintptr
 	ctx       uintptr
 	factory   uintptr
@@ -334,9 +337,9 @@ type Renderer struct {
 	// writing one color (classes.hlsl), which blend by its alpha.
 	overBlend, overHoleBlend uintptr
 	// classes holds what the batches of each set of classes (gpu.Batch.Classes)
-	// draw with, made as first drawn, and compileClasses that it compiles
-	// classes.hlsl, as shaders.go is older.
-	classes        [1 << gpu.NumClasses]*classPipe
+	// draw with, made as first drawn, the device's, and compileClasses that it
+	// compiles classes.hlsl, as shaders.go is older.
+	classes        *[1 << gpu.NumClasses]*classPipe
 	compileClasses bool
 	cbuf           uintptr
 	instBuf        uintptr
@@ -422,10 +425,11 @@ func newRenderer(hwnd uintptr, composed bool) (*Renderer, error) {
 		return nil, errors.New("d3d11: no window")
 	}
 	r := &Renderer{hwnd: hwnd, composed: composed, images: map[uint64]*texture{}}
-	var err error
-	if r.device, r.ctx, r.warp, err = device.New(); err != nil {
+	d, err := acquireDevice()
+	if err != nil {
 		return nil, err
 	}
+	r.useDevice(d)
 	if err := r.init(); err != nil {
 		r.Release()
 		return nil, err
@@ -434,97 +438,10 @@ func newRenderer(hwnd uintptr, composed bool) (*Renderer, error) {
 }
 
 func (r *Renderer) init() error {
-	// The factory that made the device's adapter makes the swap chain.
-	var dxgiDev, adapter uintptr
-	if failed(call(r.device, 0, uintptr(unsafe.Pointer(&iidIDXGIDevice)), uintptr(unsafe.Pointer(&dxgiDev)))) {
-		return errors.New("d3d11: no DXGI device")
-	}
-	defer free(&dxgiDev)
-	// One frame queued ahead of the screen, not three: a frame shows the
-	// input of when it was drawn while frames follow each other, as when
-	// scrolling or animating.
-	var dxgiDev1 uintptr
-	if !failed(call(r.device, 0, uintptr(unsafe.Pointer(&iidIDXGIDevice1)), uintptr(unsafe.Pointer(&dxgiDev1)))) {
-		call(dxgiDev1, dxgiDevSetMaxLatency, 1)
-		free(&dxgiDev1)
-	}
-	if noPartial || failed(call(r.ctx, 0, uintptr(unsafe.Pointer(&iidID3D11DeviceContext1)), uintptr(unsafe.Pointer(&r.ctx1)))) {
-		r.ctx1 = 0
-	}
 	// Quads reach a pixel out of their shapes, glyphs half a pixel more, as
 	// they draw at whole pixels.
 	r.diff.Reach = 2
-	if failed(call(dxgiDev, dxgiDevGetAdapter, uintptr(unsafe.Pointer(&adapter)))) {
-		return errors.New("d3d11: no adapter")
-	}
-	defer free(&adapter)
-	if failed(call(adapter, dxgiGetParent, uintptr(unsafe.Pointer(&iidIDXGIFactory2)), uintptr(unsafe.Pointer(&r.factory)))) {
-		return errors.New("d3d11: DXGI 1.2 is required")
-	}
-
-	code, err := shaderCode()
-	if err != nil {
-		return err
-	}
-	r.compileClasses = sourceSum() != shaderSum || compileShaders
-	vsCode := code.vs
-	for _, s := range []struct {
-		code []byte
-		out  *uintptr
-		vtbl int
-		name string
-	}{{code.vs, &r.vs, devCreateVertexShader, "vertex"}, {code.ps, &r.ps, devCreatePixelShader, "pixel"},
-		{code.passVS, &r.passVS, devCreateVertexShader, "pass vertex"}, {code.down, &r.downPS, devCreatePixelShader, "down"},
-		{code.blur, &r.blurPS, devCreatePixelShader, "blur"}} {
-		if len(s.code) == 0 || failed(call(r.device, s.vtbl, uintptr(unsafe.Pointer(&s.code[0])), uintptr(len(s.code)), 0, uintptr(unsafe.Pointer(s.out)))) {
-			return fmt.Errorf("d3d11: cannot create the %s shader", s.name)
-		}
-	}
-	names := []string{"RECT", "RADII", "INNER", "COLOR", "COLOR", "COLOR", "GRAD", "UV", "CLIP", "CLIPR", "PARAMS", "TRANSFORM", "TRANSFORM", "TRANSFORM"}
-	indices := []uint32{0, 0, 0, 0, 1, 2, 0, 0, 0, 0, 0, 0, 1, 2}
-	elems := make([]inputElement, len(names))
-	cstr := make([][]byte, len(names))
-	for i, n := range names {
-		cstr[i] = append([]byte(n), 0)
-		elems[i] = inputElement{SemanticName: &cstr[i][0], SemanticIndex: indices[i], Format: formatR32G32B32A32Float,
-			AlignedByteOffset: uint32(16 * i), InputSlotClass: 1, InstanceDataStepRate: 1}
-	}
-	if failed(call(r.device, devCreateInputLayout, uintptr(unsafe.Pointer(&elems[0])), uintptr(len(elems)),
-		uintptr(unsafe.Pointer(&vsCode[0])), uintptr(len(vsCode)), uintptr(unsafe.Pointer(&r.layout)))) {
-		return errors.New("d3d11: cannot create the input layout")
-	}
-
-	// Dual-source blending: the destination times one minus the shader's
-	// second color, the source's alpha of each channel (D3D11_BLEND_ONE,
-	// D3D11_BLEND_INV_SRC1_COLOR and D3D11_BLEND_INV_SRC1_ALPHA).
-	bd := blendDesc{}
-	bd.RenderTarget[0] = rtBlend{BlendEnable: 1, SrcBlend: 2, DestBlend: 17, BlendOp: 1, SrcBlendAlpha: 2, DestBlendAlpha: 19, BlendOpAlpha: 1, WriteMask: 0xf}
-	if failed(call(r.device, devCreateBlendState, uintptr(unsafe.Pointer(&bd)), uintptr(unsafe.Pointer(&r.blend)))) {
-		return errors.New("d3d11: cannot create the blend state")
-	}
-	// Holes take none of the source (D3D11_BLEND_ZERO).
-	bd.RenderTarget[0].SrcBlend, bd.RenderTarget[0].SrcBlendAlpha = 1, 1
-	if failed(call(r.device, devCreateBlendState, uintptr(unsafe.Pointer(&bd)), uintptr(unsafe.Pointer(&r.holeBlend)))) {
-		return errors.New("d3d11: cannot create the blend state of holes")
-	}
-	// One color: its alpha is the source's (D3D11_BLEND_INV_SRC_ALPHA).
-	bd.RenderTarget[0].SrcBlend, bd.RenderTarget[0].DestBlend, bd.RenderTarget[0].SrcBlendAlpha, bd.RenderTarget[0].DestBlendAlpha = 2, 6, 2, 6
-	if failed(call(r.device, devCreateBlendState, uintptr(unsafe.Pointer(&bd)), uintptr(unsafe.Pointer(&r.overBlend)))) {
-		return errors.New("d3d11: cannot create the blend state of one color")
-	}
-	bd.RenderTarget[0].SrcBlend, bd.RenderTarget[0].SrcBlendAlpha = 1, 1
-	if failed(call(r.device, devCreateBlendState, uintptr(unsafe.Pointer(&bd)), uintptr(unsafe.Pointer(&r.overHoleBlend)))) {
-		return errors.New("d3d11: cannot create the blend state of holes of one color")
-	}
 	r.b.Classes = true
-	rd := rasterizerDesc{FillMode: 3, CullMode: 1, DepthClip: 1, Scissor: 1}
-	if failed(call(r.device, devCreateRasterizerState, uintptr(unsafe.Pointer(&rd)), uintptr(unsafe.Pointer(&r.raster)))) {
-		return errors.New("d3d11: cannot create the rasterizer state")
-	}
-	sd := samplerDesc{Filter: 0x15, AddressU: 3, AddressV: 3, AddressW: 3, ComparisonFunc: 1, MaxLOD: math.MaxFloat32}
-	if failed(call(r.device, devCreateSamplerState, uintptr(unsafe.Pointer(&sd)), uintptr(unsafe.Pointer(&r.samp)))) {
-		return errors.New("d3d11: cannot create the sampler")
-	}
 	cd := bufferDesc{ByteWidth: 16, Usage: usageDefault, BindFlags: bindConstantBuffer}
 	if failed(call(r.device, devCreateBuffer, uintptr(unsafe.Pointer(&cd)), 0, uintptr(unsafe.Pointer(&r.cbuf)))) {
 		return errors.New("d3d11: cannot create the constant buffer")
@@ -836,12 +753,6 @@ func (r *Renderer) Release() {
 	for _, p := range r.effects {
 		free(&p.ps)
 	}
-	for _, s := range classShaders {
-		if p := r.classes[s.classes]; p != nil {
-			free(&p.vs)
-			free(&p.ps)
-		}
-	}
 	free(&r.shaderCB)
 	for i := range r.blurred {
 		t := &r.blurred[i]
@@ -857,10 +768,10 @@ func (r *Renderer) Release() {
 	}
 	// The target goes first: a window has one at most, which another
 	// renderer of it then makes.
-	for _, p := range []*uintptr{&r.visual, &r.target, &r.dcomp, &r.rtv, &r.swapChain2, &r.swapChain, &r.instBuf, &r.cbuf, &r.passCB, &r.samp, &r.raster, &r.overHoleBlend, &r.overBlend, &r.holeBlend, &r.blend, &r.layout,
-		&r.blurPS, &r.downPS, &r.passVS, &r.ps, &r.vs, &r.factory, &r.ctx1, &r.ctx, &r.device} {
+	for _, p := range []*uintptr{&r.visual, &r.target, &r.dcomp, &r.rtv, &r.swapChain2, &r.swapChain, &r.instBuf, &r.cbuf, &r.passCB} {
 		free(p)
 	}
+	r.dropDevice()
 }
 
 // newTexture creates a texture of w×h pixels from pix.
@@ -960,6 +871,11 @@ func (r *Renderer) imageView(img *scene.Image) uintptr {
 
 // Render draws s into the window and presents it.
 func (r *Renderer) Render(s *scene.Scene) error {
+	if r.dev.replaced() {
+		// Another renderer made the device anew (shared.go): this one is
+		// made again on it.
+		return errDeviceReplaced
+	}
 	if s.Width <= 0 || s.Height <= 0 {
 		return nil
 	}

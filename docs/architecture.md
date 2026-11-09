@@ -4955,7 +4955,21 @@ either.
     the general shader's 3,627. A set of classes draws with the first of
     `classShaders` holding them, made as first drawn: each class, the sets that
     small batches join most, and all of them, which still costs less than the
-    general shader, which only transformed instances and effects need. It draws
+    general shader, which only transformed instances and effects need. The
+    renderers of a process share one Direct3D 11 device and its immediate
+    context (`shared.go`), with the shaders, input layout and states, which
+    never change: a device costs the driver tens of megabytes, which a
+    window each would multiply (#1517). Each keeps its swap chain and what
+    its frames change, and the device goes with the last of them. They draw
+    on the main thread, each frame binding all it draws with; the device is
+    multithread protected (`ID3D10Multithread`) all the same, so that DXGI's
+    calls on a swap chain from another thread are serialized with the
+    context's. A renderer made after the device was removed makes a new
+    one; those holding the old one fail their next frame (`Render`), and
+    their windows make them again on the new one, as after any failed
+    frame. A device made with WARP gives way the same way to one on the GPU
+    once a renderer made can make one, as a window drawing in software
+    tries from time to time. It draws
     into a flip-model swap
     chain on the surface's window, or, over a material, one for
     DirectComposition shown on it, with WARP when no hardware device
