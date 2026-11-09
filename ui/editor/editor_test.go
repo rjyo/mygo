@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/egoist/mygo/internal/rope"
@@ -710,6 +711,190 @@ func TestCodeEditorWrapLongLines(t *testing.T) {
 	for calls := 2; !v.measureWraps(0, -1); calls++ {
 		if calls > v.text.LineCount() {
 			t.Fatalf("lines not all measured after %d calls", calls)
+		}
+	}
+}
+
+// contextSpaced shapes as Core Text does text in Chinese, the app's
+// language, in ways a character shaped alone does not show: it leaves a
+// quarter of an em between Han and Latin letters, given to the advance of
+// the one before as penAdvances does, and CJK punctuation that ends a
+// text takes half its width. on tells whether it does.
+func contextSpaced(on func() bool) func(text.Params) *text.Layout {
+	han := func(r rune) bool { return r >= 0x4e00 && r <= 0x9fff }
+	latin := func(r rune) bool { return r < 0x80 && (unicode.IsLetter(r) || unicode.IsDigit(r)) }
+	return func(p text.Params) *text.Layout {
+		l := text.Shared().Shape(p)
+		if !on() {
+			return l
+		}
+		out := *l
+		out.Lines = slices.Clone(l.Lines)
+		out.Width = 0
+		room := p.Style.FontSize() / 4
+		for li := range out.Lines {
+			line := &out.Lines[li]
+			gs := slices.Clone(line.Glyphs)
+			shift := float32(0)
+			for k := range gs {
+				g := &gs[k]
+				g.X += shift
+				r := l.Runes[g.Cluster]
+				if k+1 < len(gs) {
+					if next := l.Runes[gs[k+1].Cluster]; han(r) && latin(next) || latin(r) && han(next) {
+						g.Advance += room
+						shift += room
+					}
+				} else if strings.ContainsRune("，。、；：！？", r) {
+					g.Advance /= 2
+					shift -= g.Advance
+				}
+			}
+			line.Glyphs = gs
+			line.Width += shift
+			out.Width = max(out.Width, line.X+line.Width)
+		}
+		return &out
+	}
+}
+
+// useShaper shapes the editors' text with shape until the test ends.
+func useShaper(t *testing.T, shape func(text.Params) *text.Layout) {
+	old := shapeText
+	shapeText = shape
+	t.Cleanup(func() { shapeText = old })
+}
+
+// checkRowsFit fails when a row of a line of v, shaped as it is painted,
+// is wider than the editor.
+func checkRowsFit(t *testing.T, v *view) {
+	t.Helper()
+	for n := range v.text.LineCount() {
+		l := v.line(n)
+		for ri := range l.rows {
+			r := &l.rows[ri]
+			for pi := range r.pieces {
+				p := &r.pieces[pi]
+				if end := r.indent + p.x + v.piece(l, p).Width; end > v.wrapWidth+1e-3 {
+					t.Errorf("at %v: row %d of line %d, %q, ends at %v", v.wrapWidth, ri, n, l.disp[r.from:r.to], end)
+				}
+			}
+		}
+	}
+}
+
+// chineseText is Chinese text of #1576: Han characters alone, prose with
+// punctuation, Han and Latin letters mixed, and those indented.
+const chineseText = "城城城城城城城城城城城城城城城城城城城城城城城城城城城城城城城城城城城城城城城城城城城城城城城城城城城城\n" +
+	"这是一段用于测试软换行的中文文本，每一行都含有若干标点符号。逗号、顿号和句号在中文排版中占一个全角字宽；分号与冒号：同样如此。标点越多，行尾超出编辑器右边界的部分就越明显，最后几个字会被裁掉。\n" +
+	"城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a\n" +
+	"    城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a城a"
+
+// The room the text engine leaves between characters in context, as Core
+// Text does between Han and Latin letters and around CJK punctuation in
+// Chinese text, which no character shaped alone has, keeps wrapped rows
+// within the editor (#1576).
+func TestCodeEditorWrapContextSpacing(t *testing.T) {
+	useShaper(t, contextSpaced(func() bool { return true }))
+	ct := newEditorTest(t, "", chineseText)
+	ct.st.SoftWrap = true
+	v := &ct.st.ed.view
+	for w := 300; w <= 600; w += 23 {
+		ct.tt.SetSize(w, 400)
+		ct.tt.Frame()
+		if len(v.line(2).rows) < 2 {
+			t.Fatalf("at %v: line 2 is not wrapped", v.wrapWidth)
+		}
+		checkRowsFit(t, v)
+	}
+}
+
+// Text without a language of its own, as the editor's, is shaped in the
+// app's language: when it changes, the rows are measured and shaped
+// again, in the spacing of the new one.
+func TestCodeEditorWrapLanguageChange(t *testing.T) {
+	sys := text.Shared()
+	t.Cleanup(func() { sys.SetLanguage("") })
+	sys.SetLanguage("")
+	useShaper(t, contextSpaced(func() bool { return sys.Language() == "zh-Hans" }))
+	ct := newEditorTest(t, "", strings.Repeat("城a", 80))
+	ct.st.SoftWrap = true
+	ct.tt.Frame()
+	v := &ct.st.ed.view
+	before := len(v.line(0).rows)
+	sys.SetLanguage("zh-Hans")
+	ct.tt.Frame()
+	if after := len(v.line(0).rows); after <= before {
+		t.Errorf("in Chinese, the line takes %d rows, as many as before (%d)", after, before)
+	}
+	checkRowsFit(t, v)
+}
+
+// Closing punctuation does not start a row, nor opening punctuation end
+// one: the row ends a character earlier (kinsoku).
+func TestCodeEditorWrapKinsoku(t *testing.T) {
+	ct := newEditorTest(t, "", strings.Repeat("城", 200))
+	ct.st.SoftWrap = true
+	ct.tt.Frame()
+	v := &ct.st.ed.view
+	l := v.line(0)
+	if len(l.rows) < 2 {
+		t.Fatal("not wrapped")
+	}
+	n := utf8.RuneCountInString(l.disp[:l.rows[0].to]) // Han characters a row holds
+	// Punctuation is narrower than a Han character in some fonts (as
+	// Windows' fallback for 「), so it is put a few places around the
+	// first break: at one of them a row would otherwise end before the
+	// closing punctuation, or after the opening one.
+	for _, c := range []struct {
+		punct string
+		// moved tells that the break was moved for the punctuation, from
+		// what the second row starts with.
+		moved func(second string) bool
+	}{
+		{"，", func(s string) bool { return strings.HasPrefix(s, "城，") }},
+		{"。」", func(s string) bool { return strings.HasPrefix(s, "城。」") }},
+		{"「", func(s string) bool { return strings.HasPrefix(s, "「城") }},
+		{",", func(s string) bool { return strings.HasPrefix(s, "城,") }},
+	} {
+		seen := false
+		for k := n - 3; k <= n+1; k++ {
+			src := strings.Repeat("城", k) + c.punct + "城城城"
+			ct.st.Buffer = NewBuffer(src)
+			ct.tt.Frame()
+			l := v.line(0)
+			if len(l.rows) < 2 {
+				continue
+			}
+			for ri, r := range l.rows {
+				row := l.disp[r.from:r.to]
+				first, _ := utf8.DecodeRuneInString(row)
+				last, _ := utf8.DecodeLastRuneInString(row)
+				if ri > 0 && (closing(first) || first == ',') || ri < len(l.rows)-1 && opening(last) {
+					t.Errorf("%q: row %d is %q", src, ri, row)
+				}
+			}
+			if c.moved(l.disp[l.rows[1].from:]) {
+				seen = true
+			}
+		}
+		if !seen {
+			t.Errorf("%q: no break was moved for it", c.punct)
+		}
+	}
+	const prose = "这是一段用于测试软换行的中文文本，每一行都含有若干标点符号。逗号、顿号和句号在中文排版中占一个全角字宽；分号与冒号：同样如此。“引号”与（括号）、《书名号》和【方括号】也不例外！"
+	ct.st.Buffer = NewBuffer(prose)
+	for w := 200; w <= 600; w += 7 {
+		ct.tt.SetSize(w, 400)
+		ct.tt.Frame()
+		l := v.line(0)
+		for ri, r := range l.rows {
+			row := l.disp[r.from:r.to]
+			first, _ := utf8.DecodeRuneInString(row)
+			last, _ := utf8.DecodeLastRuneInString(row)
+			if ri > 0 && closing(first) || ri < len(l.rows)-1 && opening(last) {
+				t.Errorf("at %v: row %d is %q", v.wrapWidth, ri, row)
+			}
 		}
 	}
 }

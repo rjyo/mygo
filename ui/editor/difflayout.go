@@ -317,7 +317,8 @@ func (d *DiffState) setSide(i int, hide []lineSpan, blks []block) {
 }
 
 // wrapLineNow measures the wraps of a line, if not yet, as laying it out
-// would, with its faces, but without shaping it: a diff measures the lines
+// would, with its faces, but without shaping it (wrapBreaks without fit,
+// which laying it out may find a row more than): a diff measures the lines
 // of all its changes at each width the window is resized through, most of
 // them out of view, and shaping them took most of the time. A line laid
 // out already keeps its rows.
@@ -337,7 +338,7 @@ func (v *view) wrapLineNow(i int) {
 	if v.styled {
 		l.faces = v.facesOf(l, nil)
 	}
-	w.set(i, len(v.wrapBreaks(l.disp, l.faces))+1)
+	w.set(i, len(v.wrapBreaks(l.disp, l.faces, false))+1)
 }
 
 // gaps returns the runs of unchanged lines and which of them collapse.

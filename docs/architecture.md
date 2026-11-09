@@ -3852,6 +3852,15 @@ either.
     for two frames as Zed's line layout cache is. Wraps are measured with
     cached advances of characters (monospaced ASCII is arithmetic) near
     the view first, a frame's budget at a time, and estimated elsewhere.
+    A character shaped alone misses the room the text engine leaves
+    around it in context, as Core Text does between Han and Latin
+    letters and around CJK punctuation in the app's language when it is
+    Chinese or Japanese (`System.SetLanguage`): laying a line out shapes
+    each row as it is painted, and ends it at an earlier place to break
+    while it is wider than the editor (`fitRow`), so lines out of view
+    may count a row too few until they show. Closing CJK punctuation
+    starts no row, nor opening punctuation ends one (`canBreak`). A new
+    generation of the text system measures and shapes everything anew.
   - *Highlighting* (`syntax.go`). A `Highlighter` follows the buffer's
     edits and gives tokens per line; the default tokenizes lines from the
     state the line above ended in (`lexer.go`, `lexers.go`), keeping the

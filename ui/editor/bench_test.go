@@ -244,3 +244,37 @@ func BenchmarkDiffDeletedFileScroll(b *testing.B) {
 		tt.Scroll(700, 400, 0, dy)
 	}
 }
+
+// bigChinese is Chinese prose of n lines, with Latin words, numbers and
+// punctuation, each a few rows wide.
+func bigChinese(n int) string {
+	var b strings.Builder
+	for i := range n {
+		b.WriteString("这是第" + strconv.Itoa(i) + "行，用于测试软换行的中文文本：每一行都含有若干标点符号、English words 和数字 42。逗号、顿号和句号在中文排版中占一个全角字宽；分号与冒号同样如此。\n")
+	}
+	return b.String()
+}
+
+// BenchmarkCodeEditorWrapChinese measures the soft wraps of all the
+// lines of Chinese prose of 20,000 lines, as each width of a resize does.
+func BenchmarkCodeEditorWrapChinese(b *testing.B) {
+	st, _ := newBenchEditor(b, bigChinese(20_000), true)
+	v := &st.ed.view
+	width := v.wrapWidth
+	b.ReportAllocs()
+	for i := 0; b.Loop(); i++ {
+		v.setWrap(true, width-float32(i%2*10))
+		for !v.measureWraps(0, time.Hour) {
+		}
+	}
+}
+
+// BenchmarkCodeEditorScrollWrapChinese scrolls Chinese prose of 20,000
+// lines with soft wraps, whose rows are shaped to fit as they show.
+func BenchmarkCodeEditorScrollWrapChinese(b *testing.B) {
+	_, tt := newBenchEditor(b, bigChinese(20_000), true)
+	b.ReportAllocs()
+	for b.Loop() {
+		tt.Scroll(600, 400, 0, 61)
+	}
+}

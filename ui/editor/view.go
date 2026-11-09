@@ -33,6 +33,7 @@ type view struct {
 	ascent     float32
 	descent    float32
 	charWidth  float32 // the advance of "0", for columns
+	textGen    uint64  // the text system's generation the widths are of
 	tabSize    int
 	wrap       bool
 	wrapWidth  float32
@@ -176,10 +177,14 @@ func (c *shapeCache) getSpans(s, spans string, style text.Style) *text.Layout {
 		c.cur[k] = l
 		return l
 	}
-	l := text.Shared().Shape(text.Params{Text: s, Style: style, NoWrap: true, KeepSpaces: true, Spans: spans})
+	l := shapeText(text.Params{Text: s, Style: style, NoWrap: true, KeepSpaces: true, Spans: spans})
 	c.cur[k] = l
 	return l
 }
+
+// shapeText shapes text for the view: text.Shared().Shape, which tests
+// replace with a shaper of their own.
+var shapeText = func(p text.Params) *text.Layout { return text.Shared().Shape(p) }
 
 func (c *shapeCache) endFrame() {
 	c.prev, c.cur = c.cur, c.prev
@@ -189,7 +194,11 @@ func (c *shapeCache) endFrame() {
 }
 
 // charWidths measures characters for soft wraps and long lines
-// without shaping them, as Zed's LineWrapper sums cached advances.
+// without shaping them, as Zed's LineWrapper sums cached advances. A
+// character shaped alone misses the room the text engine leaves around
+// it in context, as Core Text does between Han and Latin letters and
+// around CJK punctuation in Chinese and Japanese: the rows a line is laid
+// out in are shaped to fit (wrapBreaks).
 type charWidths struct {
 	style text.Style
 	ascii [128]float32
@@ -205,7 +214,7 @@ func (w *charWidths) reset(style text.Style) {
 	for i := range w.ascii {
 		w.ascii[i] = -1
 	}
-	l := text.Shared().Shape(text.Params{Text: asciiPrintableCode, Style: style, NoWrap: true, KeepSpaces: true})
+	l := shapeText(text.Params{Text: asciiPrintableCode, Style: style, NoWrap: true, KeepSpaces: true})
 	mono := float32(-1)
 	if len(l.Lines) == 1 {
 		line := l.Lines[0]
@@ -240,7 +249,7 @@ func (w *charWidths) of(r rune) float32 {
 	if v, ok := w.other[r]; ok {
 		return v
 	}
-	l := text.Shared().Shape(text.Params{Text: string(r), Style: w.style, NoWrap: true, KeepSpaces: true})
+	l := shapeText(text.Params{Text: string(r), Style: w.style, NoWrap: true, KeepSpaces: true})
 	v := l.Width
 	if len(w.other) < 4096 {
 		w.other[r] = v
@@ -336,10 +345,20 @@ func (v *view) setStyle(f ui.Font, lineHeight, scale float32, tabSize int) {
 	}
 	lh := float32(math.Round(float64(f.Size*lineHeight*scale))) / scale
 	tabSize = max(1, min(tabSize, 16))
-	if v.style == style && v.lineHeight == lh && v.tabSize == tabSize && v.scale == scale {
+	// A new generation of the text system shapes text anew, as when the
+	// language the app shows changes, which the editor's text, naming
+	// none, is shaped in: what was measured and shaped is to be again.
+	gen := text.Shared().Generation()
+	if v.style == style && v.lineHeight == lh && v.tabSize == tabSize && v.scale == scale && v.textGen == gen {
 		return
 	}
-	fontChanged := v.style != style || v.scale != scale
+	fontChanged := v.style != style || v.scale != scale || v.textGen != gen
+	if v.textGen != gen {
+		v.textGen = gen
+		v.widths.other = nil
+		v.faceWidths = [4]charWidths{}
+		v.shaped.prev, v.shaped.cur = nil, nil
+	}
 	v.font, v.style, v.lineHeight, v.tabSize, v.scale = f, style, lh, tabSize, scale
 	v.heights.lh = lh
 	v.heights.dirty = true
@@ -612,19 +631,25 @@ func regularFaces(runs []faceRun, a, b int) []faceRun {
 // spansOf returns the spans of the faces of displayed bytes a to b of
 // l, for text.Params, "" when they are all regular.
 func (v *view) spansOf(l *lineLayout, a, b int) string {
-	if len(l.faces) == 0 {
+	return v.spansIn(l.disp, l.faces, a, b)
+}
+
+// spansIn returns the spans of the faces of bytes a to b of the displayed
+// text s, whose faces are faces.
+func (v *view) spansIn(s string, faces []faceRun, a, b int) string {
+	if len(faces) == 0 {
 		return ""
 	}
 	spans := v.spanScratch[:0]
 	styled := false
 	runes, prev := 0, 0
-	for _, r := range l.faces {
+	for _, r := range faces {
 		from, to := max(prev, a), min(r.end, b)
 		prev = r.end
 		if from >= to {
 			continue
 		}
-		runes += utf8.RuneCountInString(l.disp[from:to])
+		runes += utf8.RuneCountInString(s[from:to])
 		sp := text.Span{End: runes, Italic: r.face&faceItalic != 0}
 		if r.face&faceBold != 0 {
 			sp.Weight = v.boldWeight()
@@ -782,7 +807,8 @@ func (l *lineLayout) fromDisp(d int) int {
 // layoutRows wraps the displayed text of l into rows and shapes them.
 func (v *view) layoutRows(l *lineLayout) {
 	l.rows = l.rows[:0]
-	breaks := v.wrapBreaks(l.disp, l.faces)
+	fit := len(l.disp) <= fitBytes
+	breaks := v.wrapBreaks(l.disp, l.faces, fit)
 	indent := float32(0)
 	if len(breaks) > 0 {
 		indent = v.wrapIndent(l.disp)
@@ -798,8 +824,8 @@ func (v *view) layoutRows(l *lineLayout) {
 			row.indent = indent
 		}
 		// The rows of a wrapped line are shaped as they show, not all
-		// of a long line's at once.
-		v.shapeRow(l, &row, len(breaks) > 0)
+		// of a long line's at once, but those wrapBreaks shaped to fit.
+		v.shapeRow(l, &row, len(breaks) > 0, fit)
 		l.rows = append(l.rows, row)
 		l.width = max(l.width, row.indent+row.width)
 		from = to
@@ -811,10 +837,14 @@ func (v *view) layoutRows(l *lineLayout) {
 
 // shapeRow shapes a row of l, in pieces of at most pieceBytes, placed by
 // their widths: only the first piece of the row is shaped at once when
-// the row is long, the others as they show (piece).
-func (v *view) shapeRow(l *lineLayout, row *rowLayout, lazy bool) {
+// the row is long, the others as they show (piece). A row of a wrapped
+// line is shaped as it shows too (lazy), unless it was to fit (fitted).
+func (v *view) shapeRow(l *lineLayout, row *rowLayout, lazy, fitted bool) {
 	s := l.disp
 	text := s[row.from:row.to]
+	if lazy && fitted && !v.summed(s, l.faces, row.from, row.to) {
+		lazy = false
+	}
 	if len(text) <= pieceBytes && lazy {
 		w := v.runsWidth(s, l.faces, row.from, row.to)
 		row.pieces = append(row.pieces[:0], rowPiece{from: row.from, to: row.to, ascii: isASCII(text), width: w})
@@ -853,25 +883,53 @@ func (v *view) piece(l *lineLayout, p *rowPiece) *text.Layout {
 // wrapBreaks returns where the displayed text s breaks into rows when
 // wrapping, as Zed's LineWrapper: summing the advances of characters,
 // breaking after whitespace or between a word and what is not, anywhere
-// in CJK, and inside a word too long for a row. faces are those of s,
-// if known.
-func (v *view) wrapBreaks(s string, faces []faceRun) []int {
+// in CJK but before closing punctuation and after opening punctuation,
+// and inside a word too long for a row. faces are those of s, if known.
+//
+// With fit, a row is then shaped as it is painted, and ends at a place
+// to break before while it is wider than the wrap width: the room the
+// text engine leaves between characters in context, as Core Text does
+// between Han and Latin letters and around CJK punctuation in Chinese
+// and Japanese text, is in no character shaped alone. Laying a line out
+// fits its rows, which it shapes to paint them anyway; measuring the
+// wraps of lines out of view only sums, and may count too few rows until
+// they show.
+func (v *view) wrapBreaks(s string, faces []faceRun, fit bool) []int {
 	if !v.wrap || v.wrapWidth <= 0 {
 		return nil
 	}
-	width := v.wrapWidth
-	if len(faces) == 0 && v.widths.mono > 0 && float32(len(s))*v.widths.mono <= width {
+	if len(faces) == 0 && v.widths.mono > 0 && float32(len(s))*v.widths.mono <= v.wrapWidth && (!fit || isASCII(s)) {
 		return nil
 	}
-	fi := 0
-	cw := &v.widths
 	var breaks []int
 	indent := float32(0)
-	x := float32(0)
-	start := 0
+	for start := 0; ; {
+		end := v.rowEnd(s, faces, start, indent)
+		if fit {
+			end = v.fitRow(s, faces, start, end, indent)
+		}
+		if end >= len(s) {
+			return breaks
+		}
+		if len(breaks) == 0 {
+			indent = v.wrapIndent(s)
+		}
+		breaks = append(breaks, end)
+		start = end
+	}
+}
+
+// rowEnd returns where the row of s from start ends, x into it after
+// its indent, by the advances of its characters: at the last place to
+// break before the first character past the wrap width, else before that
+// character, or at the end of s.
+func (v *view) rowEnd(s string, faces []faceRun, start int, x float32) int {
+	fi := sort.Search(len(faces), func(k int) bool { return faces[k].end > start })
+	cw := &v.widths
 	last := -1 // the last place to break
 	var prev rune
-	for i, r := range s {
+	for i, r := range s[start:] {
+		i += start
 		if i > start && canBreak(prev, r) {
 			last = i
 		}
@@ -885,23 +943,74 @@ func (v *view) wrapBreaks(s string, faces []faceRun) []int {
 			}
 		}
 		w := cw.of(r)
-		if x+w > width && i > start {
-			at := i
+		if x+w > v.wrapWidth && i > start {
 			if last > start {
-				at = last
+				return last
 			}
-			breaks = append(breaks, at)
-			if indent == 0 {
-				indent = v.wrapIndent(s)
-			}
-			// Measure the new row from its start, after the indent.
-			x = indent + v.runsWidth(s, faces, at, i)
-			start, last = at, -1
+			return i
 		}
 		x += w
 		prev = r
 	}
-	return breaks
+	return len(s)
+}
+
+// fitBytes is the longest line whose rows are shaped to fit as it is laid
+// out: the rows of longer ones are shaped only as they show.
+const fitBytes = 16 << 10
+
+// fitRow returns where the row of s from start to end ends so that,
+// shaped as it is painted, it fits in the wrap width after indent: end,
+// else the last place to break before, else a character before. Rows of
+// monospaced ASCII are as wide as their advances sum to.
+func (v *view) fitRow(s string, faces []faceRun, start, end int, indent float32) int {
+	for end-start <= pieceBytes && !v.summed(s, faces, start, end) {
+		l := v.shaped.getSpans(s[start:end], v.spansIn(s, faces, start, end), v.style)
+		if indent+l.Width <= v.wrapWidth {
+			break
+		}
+		at := lastBreak(s, start, end)
+		if at <= start {
+			_, n := utf8.DecodeLastRuneInString(s[start:end])
+			if end-n <= start {
+				break
+			}
+			at = end - n
+		}
+		end = at
+	}
+	return end
+}
+
+// summed tells whether bytes a to b of s, whose faces are faces, are as
+// wide as their characters' advances sum to: monospaced ASCII, whose
+// shaping needs no context.
+func (v *view) summed(s string, faces []faceRun, a, b int) bool {
+	if v.widths.mono <= 0 || !isASCII(s[a:b]) {
+		return false
+	}
+	prev := 0
+	for _, r := range faces {
+		if r.end > a && prev < b && r.face != 0 && v.widthsOf(r.face).mono <= 0 {
+			return false
+		}
+		prev = r.end
+	}
+	return true
+}
+
+// lastBreak returns the last place to break in s between start and end,
+// or -1.
+func lastBreak(s string, start, end int) int {
+	last := -1
+	var prev rune
+	for i, r := range s[start:end] {
+		if i > 0 && canBreak(prev, r) {
+			last = start + i
+		}
+		prev = r
+	}
+	return last
 }
 
 // wrapIndent is how far rows after the first are indented: as far as the
@@ -913,13 +1022,54 @@ func (v *view) wrapIndent(s string) float32 {
 }
 
 func canBreak(prev, r rune) bool {
+	// Kinsoku: closing punctuation does not start a row, nor opening
+	// punctuation end one.
+	if closing(r) || opening(prev) {
+		return false
+	}
 	if prev == ' ' || prev == '\t' {
 		return r != ' ' && r != '\t'
 	}
 	if isCJK(r) || isCJK(prev) {
-		return true
+		// Nor ASCII punctuation, next to CJK.
+		return !(r < utf8.RuneSelf && strings.ContainsRune(".,;:!?)]}", r)) && !(prev < utf8.RuneSelf && strings.ContainsRune("([{", prev))
 	}
 	return isWordRune(prev) != isWordRune(r) && r != ' ' && r != '\t' && !strings.ContainsRune(".,;:)]}>'\"", r)
+}
+
+// closing tells whether r is punctuation that does not start a row:
+// CJK commas, stops and closing brackets, the right quotation marks,
+// ellipses and middle dots, as JIS X 4051 and the Chinese rules of
+// line breaking have them.
+func closing(r rune) bool {
+	if !maybePunct(r) {
+		return false
+	}
+	switch r {
+	case '、', '。', '，', '．', '：', '；', '？', '！', '）', '］', '｝', '」', '』', '】', '〕', '〉', '》', '〗', '〙', '〛', '｠', '〞', '〟',
+		'’', '”', '・', '･', '…', '‥', '｡', '､', '｣':
+		return true
+	}
+	return false
+}
+
+// maybePunct tells whether r is in the blocks of the punctuation that
+// closing and opening know, which Han characters and ASCII are not.
+func maybePunct(r rune) bool {
+	return r >= '‘' && r <= '…' || r >= '、' && r <= '〟' || r == '・' || r >= '！' && r <= '･'
+}
+
+// opening tells whether r is punctuation that does not end a row: CJK
+// opening brackets and the left quotation marks.
+func opening(r rune) bool {
+	if !maybePunct(r) {
+		return false
+	}
+	switch r {
+	case '（', '［', '｛', '「', '『', '【', '〔', '〈', '《', '〖', '〘', '〚', '｟', '〝', '‘', '“', '｢':
+		return true
+	}
+	return false
 }
 
 func isCJK(r rune) bool {
@@ -957,7 +1107,7 @@ func (v *view) measureWraps(near int, budget time.Duration) bool {
 			v.display(l)
 			disp = l.disp
 		}
-		w.set(i, len(v.wrapBreaks(disp, nil))+1)
+		w.set(i, len(v.wrapBreaks(disp, nil, false))+1)
 		return true
 	}
 	// Those around near first, so what shows is right at once.

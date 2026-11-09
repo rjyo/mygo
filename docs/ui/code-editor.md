@@ -177,7 +177,9 @@ app.code.OnInput = func(ev ui.InputEvent) bool {
 ## Options
 
 - `SoftWrap` wraps lines at the editor's width, or at `WrapColumn` columns
-  when narrower; wrapped rows keep the line's indentation.
+  when narrower; wrapped rows keep the line's indentation. CJK text wraps
+  between any two characters, but closing punctuation such as `，` and `。`
+  starts no row, and opening punctuation such as `（` and `「` ends none.
 - `LineNumbers` shows the gutter's numbers, absolute, relative to the
   caret's line, or not at all; `GutterMarks` put dots of a color by lines,
   as breakpoints, and `OnGutterClick` reports clicks on numbers.
