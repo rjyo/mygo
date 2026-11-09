@@ -346,6 +346,7 @@ var elementChains = map[string]bool{
 	"ScrollSnap":           true,
 	"ScrollWith":           true,
 	"ScrollbarInsets":      true,
+	"ScrollbarStyle":       true,
 	"Scrollbars":           true,
 	"Search":               true,
 	"Selectable":           true,

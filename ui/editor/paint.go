@@ -115,7 +115,7 @@ func (ed *editor) paint(p *ui.Painter, r ui.Rect) {
 	y1 := ed.scrollY + float64(min(r.H, clip.Y+clip.H-r.Y))
 	// The horizontal scroll bar at the bottom of what shows, as an editor
 	// as high as its content may run far below the window's.
-	ed.hbarY = max(0, min(r.H, clip.Y+clip.H-r.Y)) - scrollbarWidth
+	ed.hbarY = max(0, min(r.H, clip.Y+clip.H-r.Y)) - ed.barWidth()
 	var f frame
 	f.first, f.last = ed.visibleLines(y0, y1)
 	ed.shown = [2]int{f.first, f.last}
@@ -877,7 +877,12 @@ func (ed *editor) paintScrollbars(p *ui.Painter, r ui.Rect, f *frame) {
 	// matches and diagnostics always.
 	shown := ed.pointerIn || ed.scrollbar.active || ed.o.keepScrollbars
 	if vertical {
-		x := r.X + r.W - scrollbarWidth
+		width := ed.barWidth()
+		x := r.X + r.W - width
+		bar := ed.barIn(r, false)
+		// The track goes under the marks of changes, matches and
+		// diagnostics, and the thumb over them.
+		p.ScrollbarTrack(bar)
 		span := float32(ed.scrollMax()) + ed.viewH
 		mark := func(y float64, h float32, x0, w float32, c ui.Color) {
 			yy := r.Y + float32(y/float64(span))*r.H
@@ -934,7 +939,7 @@ func (ed *editor) paintScrollbars(p *ui.Painter, r ui.Rect, f *frame) {
 			if i > 2000 {
 				break
 			}
-			mark(h.top(v.text.LineOf(d.Start)), v.lineHeight, 7, 3, ct.SeverityColor(d.Severity))
+			mark(h.top(v.text.LineOf(d.Start)), v.lineHeight, width-3, 3, ct.SeverityColor(d.Severity))
 		}
 		if !shown {
 			return
@@ -942,12 +947,18 @@ func (ed *editor) paintScrollbars(p *ui.Painter, r ui.Rect, f *frame) {
 		// Carets.
 		if len(ed.sels) <= 100 {
 			for _, s := range ed.sels {
-				mark(h.top(v.text.LineOf(s.head)), 2, 0, scrollbarWidth, ct.Text.Alpha(0.5))
+				mark(h.top(v.text.LineOf(s.head)), 2, 0, width, ct.Text.Alpha(0.5))
 			}
 		}
-		p.Scrollbar(ed.barIn(r, false), ui.ScrollbarState{Dragging: ed.scrollbar.active && !ed.scrollbar.horizontal})
+		p.ScrollbarThumb(bar, ui.ScrollbarState{
+			Hovered:  ed.pointerIn && ed.region == regionVScroll,
+			Dragging: ed.scrollbar.active && !ed.scrollbar.horizontal,
+		})
 	}
 	if horizontal && shown {
-		p.Scrollbar(ed.barIn(r, true), ui.ScrollbarState{Dragging: ed.scrollbar.active && ed.scrollbar.horizontal})
+		p.Scrollbar(ed.barIn(r, true), ui.ScrollbarState{
+			Hovered:  ed.pointerIn && ed.region == regionHScroll,
+			Dragging: ed.scrollbar.active && ed.scrollbar.horizontal,
+		})
 	}
 }

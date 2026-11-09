@@ -172,8 +172,8 @@ func TestThemedMetrics(t *testing.T) {
 	if text.resolvedText().size != 20 || rem != 20 {
 		t.Errorf("the text inside is %v large and Rem(1) %v, want the scope's 20", text.resolvedText().size, rem)
 	}
-	if scroll.st.barWidth != 11 {
-		t.Errorf("the scroll bars inside are %v wide, want the scope's 11", scroll.st.barWidth)
+	if style := scroll.st.scrollbarStyle(); style.ThumbWidth != 11 {
+		t.Errorf("the scroll bars inside are %v wide, want the scope's 11", style.ThumbWidth)
 	}
 }
 

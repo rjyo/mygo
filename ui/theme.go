@@ -60,9 +60,13 @@ type Theme struct {
 	Inverse     Color
 	InverseText Color
 	// Scrollbar colors scroll bar thumbs, ScrollbarWidth DIPs wide (6 by
-	// default; 0 is 6).
+	// default; 0 is 6): the defaults of ScrollbarStyle, which overrides
+	// them where it sets a field. It styles their tracks, hover and drag
+	// colors, the width of their bars and thumbs, their corners and
+	// shortest thumb; a theme that sets neither draws as it always has.
 	Scrollbar      Color
 	ScrollbarWidth float32
+	ScrollbarStyle ScrollbarStyle
 	// Radius rounds the corners of controls.
 	Radius float32
 	// Spacing is the unit of the room widgets leave inside and between

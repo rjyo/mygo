@@ -804,7 +804,7 @@ func TestScrollBoth(t *testing.T) {
 	// Drag the horizontal thumb to the end.
 	tt.Move(50, 50)
 	st := sc.st
-	g := scrollBars(Rect{st.x, st.y, st.w, st.h}, st.barInset, float32(st.contentW), float32(st.contentH), float32(st.scrollX), float32(st.scrollY), st.flags, 6, false)
+	g := scrollBars(Rect{st.x, st.y, st.w, st.h}, st.barInset, float32(st.contentW), float32(st.contentH), float32(st.scrollX), float32(st.scrollY), st.flags, testScrollbarStyle(), false)
 	if !g.horizontal || !g.vertical {
 		t.Fatalf("scroll bars %+v", g)
 	}
@@ -827,7 +827,7 @@ func TestScrollbarInsets(t *testing.T) {
 	}, 200, 200)
 	tt.Move(50, 100)
 	st := sc.st
-	g := scrollBars(Rect{st.x, st.y, st.w, st.h}, st.barInset, float32(st.contentW), float32(st.contentH), float32(st.scrollX), float32(st.scrollY), st.flags, 6, false)
+	g := scrollBars(Rect{st.x, st.y, st.w, st.h}, st.barInset, float32(st.contentW), float32(st.contentH), float32(st.scrollX), float32(st.scrollY), st.flags, testScrollbarStyle(), false)
 	// The track runs from 50 below the top to 10 above the bottom, 4 in
 	// from the right; the thumb shows a quarter of it, the content's
 	// share in view.
@@ -869,7 +869,7 @@ func TestScrollbarCursor(t *testing.T) {
 		t.Fatalf("the pointer is %v over the text", tt.Cursor())
 	}
 	st := sc.st
-	g := scrollBars(Rect{st.x, st.y, st.w, st.h}, st.barInset, float32(st.contentW), float32(st.contentH), float32(st.scrollX), float32(st.scrollY), st.flags, 6, false)
+	g := scrollBars(Rect{st.x, st.y, st.w, st.h}, st.barInset, float32(st.contentW), float32(st.contentH), float32(st.scrollX), float32(st.scrollY), st.flags, testScrollbarStyle(), false)
 	// Over the track, under the thumb and over it, the bar's arrow, not
 	// the text's I-beam.
 	if tt.Move(g.vTrack.X+1, g.vTrack.Y+g.vTrack.H-5); tt.Cursor() != CursorDefault {

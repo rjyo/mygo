@@ -209,6 +209,20 @@ app.code.OnInput = func(ev ui.InputEvent) bool {
   away, as a scroll container's `KeepScrollbars`; `NoScrollbars` takes
   the bars away, with their room, the wheel and the keys still
   scrolling.
+- `Scrollbar` styles the scroll bars, as a theme's `ScrollbarStyle`: their
+  track and thumb colors, widths, corners and shortest thumb. Its zero
+  fields follow the theme's; its `TrackWidth` is 10 DIPs when 0, unless the
+  theme's style sets one, as the editor's bar has always been. As VS
+  Code's editor:
+
+  ```go
+  st.Scrollbar = ui.ScrollbarStyle{
+      TrackWidth: 14, ThumbWidth: 14, Square: true, Flush: true, MinLength: 20,
+      Thumb: ui.RGBA(121, 121, 121, 0.4),
+      Hover: ui.RGBA(100, 100, 100, 0.7),
+      Active: ui.RGBA(191, 191, 191, 0.4),
+  }
+  ```
 - `Font` and `LineHeight` set the text: the system's monospaced font of
   13 DIPs, 1.5 times as high, by default.
 - `NoAutoClose`, `NoFolding`, `NoActiveLine` and `NoScrollPastEnd` turn

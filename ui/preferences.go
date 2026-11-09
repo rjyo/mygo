@@ -115,6 +115,17 @@ func (t *Theme) follow(p Preferences) {
 		t.TextMuted = t.TextMuted.Mix(t.Text, 0.4)
 		t.Focus.A = 255
 		t.Scrollbar = t.Scrollbar.Alpha(1.6)
+		// A style's own colors are as faint as Scrollbar's were; those it
+		// leaves zero take the Scrollbar above.
+		alpha := func(c Color) Color {
+			if c.A == 0 {
+				return c
+			}
+			return c.Alpha(1.6)
+		}
+		t.ScrollbarStyle.Thumb = alpha(t.ScrollbarStyle.Thumb)
+		t.ScrollbarStyle.Hover = alpha(t.ScrollbarStyle.Hover)
+		t.ScrollbarStyle.Active = alpha(t.ScrollbarStyle.Active)
 	}
 	if s := p.TextScale; s > 0 && s != 1 {
 		t.FontSize *= s

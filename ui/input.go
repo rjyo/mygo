@@ -402,7 +402,7 @@ func (rt *engine) hoverScrolled() {
 func (rt *engine) pointerMove(x, y float32) {
 	if d := &rt.scrollDrag; d.st != nil {
 		s := d.st
-		g := d.bars(s.barWidth)
+		g := d.bars(s.scrollbarStyle())
 		lx, ly := s.local(x, y)
 		lx += s.x
 		ly += s.y
@@ -935,9 +935,9 @@ func dragTo(from float64, moved, travel float32, reach, now float64) float64 {
 
 // bars returns the scroll bars of the container being dragged, with the
 // content's size as the drag started.
-func (d *scrollDrag) bars(width float32) scrollGeometry {
+func (d *scrollDrag) bars(style ScrollbarStyle) scrollGeometry {
 	s := d.st
-	return scrollBars(Rect{s.x, s.y, s.w, s.h}, s.barInset, float32(d.contentW), float32(d.contentH), float32(s.scrollX), float32(s.scrollY), s.flags, width, s.rtl)
+	return scrollBars(Rect{s.x, s.y, s.w, s.h}, s.barInset, float32(d.contentW), float32(d.contentH), float32(s.scrollX), float32(s.scrollY), s.flags, style, s.rtl)
 }
 
 // scrollBy scrolls a container by dx, dy within its content, and reports
@@ -2064,7 +2064,7 @@ func (rt *engine) scrollbarPress(chain []uint64, x, y float32) bool {
 		lx, ly := s.local(x, y)
 		lx += s.x
 		ly += s.y
-		g := scrollBars(Rect{s.x, s.y, s.w, s.h}, s.barInset, float32(s.contentW), float32(s.contentH), float32(s.scrollX), float32(s.scrollY), s.flags, s.barWidth, s.rtl)
+		g := scrollBars(Rect{s.x, s.y, s.w, s.h}, s.barInset, float32(s.contentW), float32(s.contentH), float32(s.scrollX), float32(s.scrollY), s.flags, s.scrollbarStyle(), s.rtl)
 		d := &rt.scrollDrag
 		w, h := float64(s.w), float64(s.h)
 		s.wheel = nil

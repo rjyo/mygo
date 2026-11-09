@@ -167,7 +167,7 @@ func TestScrollbarPressStartsOver(t *testing.T) {
 			break
 		}
 	}
-	bars := scrollBars(Rect{st.x, st.y, st.w, st.h}, st.barInset, float32(st.contentW), float32(st.contentH), 0, float32(st.scrollY), st.flags, tt.rt.c.theme.scrollbarWidth(), false)
+	bars := scrollBars(Rect{st.x, st.y, st.w, st.h}, st.barInset, float32(st.contentW), float32(st.contentH), 0, float32(st.scrollY), st.flags, ScrollbarStyle{}.Resolve(tt.rt.c.theme), false)
 	content, bar, y := bars.vTrack.X-1, bars.vTrack.X+4, bars.v.Y+2
 	tt.Move(content, y)
 	tt.ClickAt(content, y)
@@ -199,7 +199,7 @@ func TestHiddenScrollbarPassesPress(t *testing.T) {
 	defer tt.rt.close()
 	tt.Frame()
 	st := sc.st
-	g := scrollBars(Rect{st.x, st.y, st.w, st.h}, st.barInset, float32(st.contentW), float32(st.contentH), 0, 0, st.flags, tt.rt.c.theme.scrollbarWidth(), false)
+	g := scrollBars(Rect{st.x, st.y, st.w, st.h}, st.barInset, float32(st.contentW), float32(st.contentH), 0, 0, st.flags, ScrollbarStyle{}.Resolve(tt.rt.c.theme), false)
 	// On the track, below the thumb.
 	x, y := g.vTrack.X+g.vTrack.W/2, g.v.Y+g.v.H+20
 	press := func() {

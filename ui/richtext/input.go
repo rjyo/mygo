@@ -709,12 +709,16 @@ func (v *view) taskBox(x float32, y float64) (int, bool) {
 
 // overScrollbar reports whether x of the element is on the scroll bar.
 func (v *view) overScrollbar(x float32) bool {
-	return v.hs.top(len(v.paras)) > float64(v.viewH) && x >= v.rect.W-scrollbarWidth
+	width := v.barStyle.TrackWidth
+	if width <= 0 {
+		width = scrollbarWidth
+	}
+	return v.hs.top(len(v.paras)) > float64(v.viewH) && x >= v.rect.W-width
 }
 
 // bar returns the scroll bar, in the element.
 func (v *view) bar() ui.Scrollbar {
-	return ui.Scrollbar{Box: ui.Rect{W: v.rect.W, H: v.rect.H}, View: v.viewH, Content: float32(v.hs.top(len(v.paras))), Offset: float32(v.scroll)}
+	return ui.Scrollbar{Box: ui.Rect{W: v.rect.W, H: v.rect.H}, View: v.viewH, Content: float32(v.hs.top(len(v.paras))), Offset: float32(v.scroll), Style: v.barStyle}
 }
 
 // thumbBox returns the top and the height of the scroll bar's thumb, in

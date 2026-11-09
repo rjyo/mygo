@@ -375,7 +375,7 @@ func TestRTLPopups(t *testing.T) {
 // TestRTLScrollBars puts the vertical scroll bar on the left right to
 // left, and the horizontal thumb at the right at the start.
 func TestRTLScrollBars(t *testing.T) {
-	g := scrollBars(Rect{0, 0, 200, 100}, [4]float32{}, 400, 300, 0, 0, flagScrollX|flagScrollY, 6, true)
+	g := scrollBars(Rect{0, 0, 200, 100}, [4]float32{}, 400, 300, 0, 0, flagScrollX|flagScrollY, testScrollbarStyle(), true)
 	if g.v.X > 10 {
 		t.Errorf("right to left, the vertical thumb is at %v, want at the left", g.v.X)
 	}
@@ -385,7 +385,7 @@ func TestRTLScrollBars(t *testing.T) {
 	if g.hTrack.X < g.v.X+g.v.W {
 		t.Errorf("right to left, the horizontal track starts at %v, under the vertical bar ending at %v", g.hTrack.X, g.v.X+g.v.W)
 	}
-	ltr := scrollBars(Rect{0, 0, 200, 100}, [4]float32{}, 400, 300, 0, 0, flagScrollX|flagScrollY, 6, false)
+	ltr := scrollBars(Rect{0, 0, 200, 100}, [4]float32{}, 400, 300, 0, 0, flagScrollX|flagScrollY, testScrollbarStyle(), false)
 	if ltr.v.X < 190 || ltr.h.X > 10 {
 		t.Errorf("left to right, the thumbs are at %v and %v", ltr.v.X, ltr.h.X)
 	}

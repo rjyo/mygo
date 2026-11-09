@@ -1538,7 +1538,12 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 	if e.flags&(flagScrollX|flagScrollY) != 0 {
 		s.contentW, s.contentH = e.contentW, e.contentH
 		s.barInset = e.barInset
-		s.barWidth = e.theme().scrollbarWidth()
+		if s.barStyle == nil {
+			// Allocated once: a scroll container resolves its style every
+			// frame, and a steady frame allocates nothing.
+			s.barStyle = new(ScrollbarStyle)
+		}
+		*s.barStyle = e.scrollbarStyle().Resolve(e.theme())
 	}
 	s.hideScrollbars, _ = e.scrollbars()
 	// What is invisible keeps its box but takes neither the pointer nor
@@ -1731,7 +1736,7 @@ func (rt *engine) overScrollbar(id uint64) bool {
 	x, y := s.local(rt.pointerX, rt.pointerY)
 	x += s.x
 	y += s.y
-	g := scrollBars(Rect{s.x, s.y, s.w, s.h}, s.barInset, float32(s.contentW), float32(s.contentH), float32(s.scrollX), float32(s.scrollY), s.flags, s.barWidth, s.rtl)
+	g := scrollBars(Rect{s.x, s.y, s.w, s.h}, s.barInset, float32(s.contentW), float32(s.contentH), float32(s.scrollX), float32(s.scrollY), s.flags, s.scrollbarStyle(), s.rtl)
 	return g.vertical && g.vTrack.Contains(x, y) || g.horizontal && g.hTrack.Contains(x, y)
 }
 

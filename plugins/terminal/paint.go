@@ -140,6 +140,7 @@ func (v *view) paint(p *ui.Painter, r ui.Rect) {
 		t.rs.BeginUpdate(t.term)
 	}
 	v.scrollbar = t.term.Scrollbar()
+	v.barStyle = ui.ScrollbarStyle{}.Resolve(p.Theme())
 	contrast := t.opts.MinimumContrast
 	tc, tr := t.term.Size()
 	v.matches, v.matchBuf = t.viewportMatches(v.matches, v.matchBuf, tc, tr)
@@ -844,7 +845,9 @@ func (v *view) drawScrollbar(p *ui.Painter, r ui.Rect) {
 	if !v.inView && !v.barHeld {
 		return
 	}
-	p.Scrollbar(bar(v.scrollbar, r), ui.ScrollbarState{Dragging: v.barHeld, Color: color(v.colors.Foreground)})
+	b := bar(v.scrollbar, r)
+	b.Style = v.barStyle
+	p.Scrollbar(b, ui.ScrollbarState{Hovered: v.barHover, Dragging: v.barHeld, Color: color(v.colors.Foreground)})
 }
 
 // bar returns the scroll bar of the scrollback sb, along the right edge of

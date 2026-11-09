@@ -69,6 +69,12 @@ type State struct {
 	// text; the wheel, the keys and SetScrollY still scroll it.
 	KeepScrollbars bool
 	NoScrollbars   bool
+	// Scrollbar styles the editor's scroll bars, as a theme's
+	// ScrollbarStyle does: their track and thumb colors, the widths of
+	// their bars and thumbs, their corners and shortest thumb. Its zero
+	// fields follow the theme's; its TrackWidth, 0, is 10 DIPs unless the
+	// theme's style sets one, as the editor's bar has always been.
+	Scrollbar ui.ScrollbarStyle
 	// Placeholder shows while the buffer is empty.
 	Placeholder string
 	// Label names the editor for assistive technology.
@@ -228,7 +234,7 @@ func (st *State) options() options {
 		readOnly: st.ReadOnly, font: st.Font, lineHeight: st.LineHeight, tabSize: st.TabSize, indent: st.Indent,
 		wrap: st.SoftWrap, wrapColumn: st.WrapColumn, lineNumbers: st.LineNumbers, whitespace: st.Whitespace,
 		wrapGuides: st.WrapGuides, indentGuides: !st.NoIndentGuides, scrollPastEnd: !st.NoScrollPastEnd && !st.FitContent,
-		keepScrollbars: st.KeepScrollbars, hideScrollbars: st.NoScrollbars,
+		keepScrollbars: st.KeepScrollbars, hideScrollbars: st.NoScrollbars, scrollbar: st.Scrollbar,
 		autoClose: !st.NoAutoClose, folding: !st.NoFolding, activeLine: !st.NoActiveLine, cursorShape: st.CursorShape, fitContent: st.FitContent,
 		placeholder: st.Placeholder, label: st.Label, theme: st.Theme, bindings: st.Bindings, gutterMarks: st.GutterMarks,
 		backgrounds: st.LineBackgrounds, textBgs: st.TextBackgrounds, diffBase: st.DiffBase, onCompletion: st.OnCompletion, onHover: st.OnHover, onDefinition: st.OnDefinition,

@@ -153,10 +153,10 @@ const (
 
 func (ed *editor) regionAt(x, y float32) region {
 	vertical, horizontal := ed.scrollbars()
-	if vertical && x >= ed.r.W-scrollbarWidth {
+	if vertical && x >= ed.r.W-ed.barWidth() {
 		return regionVScroll
 	}
-	if horizontal && y >= ed.hbarY && y < ed.hbarY+scrollbarWidth {
+	if horizontal && y >= ed.hbarY && y < ed.hbarY+ed.barWidth() {
 		return regionHScroll
 	}
 	if x < ed.gutterW {
@@ -424,8 +424,12 @@ func (ed *editor) trackWidth() float32 {
 	if ed.o.fitContent || ed.o.hideScrollbars {
 		return 0
 	}
-	return scrollbarWidth
+	return ed.barWidth()
 }
+
+// barWidth is how wide the editor's scroll bars are, as State.Scrollbar
+// says and its theme fills in: 10 DIPs unless it says otherwise.
+func (ed *editor) barWidth() float32 { return ed.barStyle.TrackWidth }
 
 // scrollbars reports which scroll bars the editor shows, and takes
 // presses on: the vertical one while it scrolls, as it does past the end
@@ -493,16 +497,19 @@ func (ed *editor) setScrollShared(y float64) {
 // one along its right edge, the horizontal one under the text, at the
 // bottom of what shows (hbarY), short of the vertical one's track.
 func (ed *editor) bar(horizontal bool) ui.Scrollbar {
+	style := ed.barStyle
 	if horizontal {
 		return ui.Scrollbar{
-			Box:        ui.Rect{X: ed.textX, W: ed.hTrack(), H: ed.hbarY + scrollbarWidth},
+			Box:        ui.Rect{X: ed.textX, W: ed.hTrack(), H: ed.hbarY + style.TrackWidth},
 			Horizontal: true,
 			View:       ed.r.W - ed.textX, Content: ed.view.maxLine + ed.view.charWidth*4, Offset: ed.scrollX,
+			Style: style,
 		}
 	}
 	return ui.Scrollbar{
 		Box:  ui.Rect{W: ed.r.W, H: ed.viewH},
 		View: ed.viewH, Content: float32(ed.scrollMax()) + ed.viewH, Offset: float32(ed.scrollY),
+		Style: style,
 	}
 }
 

@@ -709,7 +709,7 @@ func TestListScrollBarDragReachesTheEnd(t *testing.T) {
 	}, 300, 400)
 	tt.Move(150, 200)
 	st := listStateOf(&s)
-	g := scrollBars(Rect{st.x, st.y, st.w, st.h}, st.barInset, float32(st.contentH), float32(st.contentH), 0, float32(st.scrollY), st.flags, 6, false)
+	g := scrollBars(Rect{st.x, st.y, st.w, st.h}, st.barInset, float32(st.contentH), float32(st.contentH), 0, float32(st.scrollY), st.flags, testScrollbarStyle(), false)
 	x, y := g.v.X+g.v.W/2, g.v.Y+g.v.H/2
 	tt.Move(x, y)
 	tt.Press(x, y)
@@ -740,7 +740,7 @@ func TestListScrollBarDragFollowsThePointerAsEstimatesChange(t *testing.T) {
 	}, 300, 400)
 	tt.Move(150, 200)
 	st := listStateOf(&s)
-	g := scrollBars(Rect{st.x, st.y, st.w, st.h}, st.barInset, float32(st.contentH), float32(st.contentH), 0, float32(st.scrollY), st.flags, 6, false)
+	g := scrollBars(Rect{st.x, st.y, st.w, st.h}, st.barInset, float32(st.contentH), float32(st.contentH), 0, float32(st.scrollY), st.flags, testScrollbarStyle(), false)
 	x, y := g.v.X+g.v.W/2, g.v.Y+g.v.H/2
 	travel := g.vTrack.H - 4 - g.v.H
 	tt.Move(x, y)

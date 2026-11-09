@@ -255,6 +255,10 @@ copy:
 t := *c.Theme() // the default, which follows the system
 t.Accent, t.Radius = ui.Hex("#7c3aed"), 8
 t.Spacing = 3 // compact
+// A square bar, as VS Code's editor.
+t.ScrollbarStyle = ui.ScrollbarStyle{
+	TrackWidth: 14, ThumbWidth: 14, Square: true, Flush: true, MinLength: 20,
+}
 c.SetTheme(&t)
 ```
 
@@ -262,7 +266,9 @@ c.SetTheme(&t)
 and the sizes of check boxes, switches, sliders and the rows of tables and
 trees, are multiples of it. It is 4 by default; 3 makes every widget
 compact, 5 roomy. `FontSize` sizes their text, `Radius` rounds their
-corners, and `ScrollbarWidth` sets the width of scroll bars. On macOS,
+corners, and `Scrollbar` and `ScrollbarWidth` color and size scroll bar
+thumbs, which `ScrollbarStyle` styles further: tracks, hover and drag
+colors, widths, corners and the shortest thumb. On macOS,
 rounded corners, the widgets' and your elements', curve continuously as
 AppKit's and SwiftUI's do, and elsewhere as quarter circles, as Windows
 and GTK draw them. Size your own
@@ -342,9 +348,10 @@ ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
 Inside, everything is as in a window of `t`: `c.Theme()` returns it while
 the children build, and `Painter.Theme()` while they paint, so widgets of
 your own follow too; the widgets take its colors and its metrics
-(`Spacing`, `Radius`, `FontSize`, `ScrollbarWidth`, so `t.Space` and
-`t.Rem`); and the popovers, menus, tooltips and dialogs opened from inside
-take it, though they show above the window. The column paints `t`'s
+(`Spacing`, `Radius`, `FontSize`, `ScrollbarWidth`, `ScrollbarStyle`, so
+`t.Space` and `t.Rem`); and the popovers, menus, tooltips and dialogs
+opened from inside take it, though they show above the window. The column
+paints `t`'s
 `Background`, and its text takes `t`'s `Text` color, `FontSize` and
 `Font`, as the root does the window's theme's; `.Background(ui.Transparent)`
 leaves what is behind it showing instead, as for the root. The root, and

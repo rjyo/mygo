@@ -2,6 +2,7 @@ package editor
 
 import (
 	"bytes"
+	"fmt"
 	"math"
 	"slices"
 	"strings"
@@ -209,6 +210,92 @@ func TestCodeEditorScrollbar(t *testing.T) {
 		t.Fatal("dragging the horizontal scroll bar did not scroll")
 	}
 	ct.want("|" + strings.Repeat("x", 200))
+}
+
+// A State's Scrollbar styles the editor's bar: its width and thumb, and
+// the thumb's rest, hover and drag colors, as a scroll container's.
+func TestCodeEditorScrollbarStyle(t *testing.T) {
+	ct := newEditorTest(t, "go", "|"+strings.Repeat("line\n", 200))
+	thumb, hover, active := ui.RGB(240, 20, 30), ui.RGB(20, 240, 30), ui.RGB(20, 30, 240)
+	ct.st.Scrollbar = ui.ScrollbarStyle{TrackWidth: 20, ThumbWidth: 8, Thumb: thumb, Hover: hover, Active: active}
+	ct.tt.Move(300, 200)
+	ct.tt.Frame()
+	if got := ct.st.ed.barWidth(); got != 20 {
+		t.Fatalf("the bar is %v DIPs wide, want 20", got)
+	}
+	if got := ct.st.ed.trackWidth(); got != 20 {
+		t.Fatalf("the bar takes %v DIPs of the text, want 20", got)
+	}
+	pixel := func(x, y float32) ui.Color {
+		img := ct.tt.Image()
+		s := float32(img.Bounds().Dx()) / 600
+		c := img.RGBAAt(int(x*s), int(y*s))
+		return ui.Color{R: c.R, G: c.G, B: c.B, A: c.A}
+	}
+	// The 20 DIP bar is at x 580 to 600; the 8 DIP thumb is centered in
+	// it, x 586 to 594, from y 2 to 26.
+	if got := pixel(590, 10); got != thumb {
+		t.Errorf("the thumb is %v, want %v", got, thumb)
+	}
+	ct.tt.Move(590, 200)
+	ct.tt.Frame()
+	if got := pixel(590, 10); got != hover {
+		t.Errorf("the hovered thumb is %v, want %v", got, hover)
+	}
+	ct.tt.Press(590, 10)
+	ct.tt.Frame()
+	if got := pixel(590, 10); got != active {
+		t.Errorf("the dragged thumb is %v, want %v", got, active)
+	}
+	ct.tt.Release(590, 10)
+}
+
+// A theme's ScrollbarStyle width reaches the editor's bar, though the
+// editor is 10 DIPs wide by default.
+func TestCodeEditorScrollbarThemeWidth(t *testing.T) {
+	st := &State{Buffer: NewBuffer(strings.Repeat("line\n", 200))}
+	tt := ui.NewTester(func(c *ui.Context) {
+		th := *c.Theme()
+		th.ScrollbarStyle.TrackWidth = 16
+		c.SetTheme(&th)
+		View(c, st).Fill()
+	}, 600, 400)
+	tt.Frame()
+	if got := st.ed.barWidth(); got != 16 {
+		t.Fatalf("the bar is %v DIPs wide, want the theme's 16", got)
+	}
+}
+
+// A track under the marks of changes leaves them showing: the editor
+// paints the track, then the marks, then the thumb.
+func TestCodeEditorScrollbarTrackUnderMarks(t *testing.T) {
+	var old, nw strings.Builder
+	for i := 0; i < 200; i++ {
+		line := fmt.Sprintf("line %d\n", i)
+		old.WriteString(line)
+		if i == 150 {
+			line = "changed\n"
+		}
+		nw.WriteString(line)
+	}
+	st := &State{Buffer: NewBuffer(nw.String()), DiffBase: NewBuffer(old.String())}
+	track := ui.RGB(0, 0, 255)
+	st.Scrollbar = ui.ScrollbarStyle{TrackWidth: 14, ThumbWidth: 10, Track: track}
+	tt := ui.NewTester(func(c *ui.Context) { View(c, st).Fill() }, 800, 500)
+	tt.SetScale(1)
+	tt.Frame()
+	ed := st.ed
+	img := tt.Image()
+	span := float32(ed.scrollMax()) + ed.viewH
+	y := int(float32(ed.view.heights.top(150))/span*500) + 1
+	// The change's mark is the first 3 DIPs of the 14 DIP bar.
+	if got := img.RGBAAt(800-14+1, y); (ui.Color{R: got.R, G: got.G, B: got.B, A: got.A}) == track {
+		t.Fatalf("the track covers the change's mark at y %d", y)
+	}
+	// Below the change, the track shows.
+	if got := img.RGBAAt(800-14+1, 400); (ui.Color{R: got.R, G: got.G, B: got.B, A: got.A}) != track {
+		t.Errorf("the track at y 400 is %v, want %v", got, track)
+	}
 }
 
 // TestCodeEditorAutoscroll checks that a selection dragged past the

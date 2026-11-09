@@ -149,10 +149,13 @@ type view struct {
 	pressPoint ui.Point
 	// cursor is the pointer's shape where it hovers: an arrow over task
 	// boxes and the scroll bar, a hand over links, an I-beam over text.
-	cursor     ui.Cursor
-	thumb      bool
-	inView     bool // the pointer is over the editor, which shows the scroll bar
-	thumbGrab  float32
+	cursor    ui.Cursor
+	thumb     bool
+	inView    bool // the pointer is over the editor, which shows the scroll bar
+	thumbGrab float32
+	// barStyle is how the scroll bar looks, the theme's as of the last
+	// paint.
+	barStyle   ui.ScrollbarStyle
 	focused    bool
 	blinkStart time.Time
 	services   ui.Services

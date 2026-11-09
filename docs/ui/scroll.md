@@ -210,8 +210,49 @@ rest at once.
 
 A scroll container whose content overflows it shows the thumbs of its
 scroll bars over its content while the pointer is over it, which the user
-drags; they take no room. Right to left, the vertical bar is on the left. The theme's `ScrollbarWidth` sets their width and
-its `Scrollbar` their color.
+drags; they take no room. Right to left, the vertical bar is on the left.
+The theme's `ScrollbarWidth` sets their width and its `Scrollbar` their
+color.
+
+`ScrollbarStyle` styles them further: the color of the track behind the
+thumb, the thumb's hover and drag colors, the widths of the bar and its
+thumb, the radius of its corners, and the shortest thumb. It overrides
+`Scrollbar` and `ScrollbarWidth` where it sets a field; its own zero fields
+follow the theme, so a theme that sets neither draws as it always has.
+The defaults are MyGo's own: a 6 DIP rounded thumb in a 12 DIP bar, 2 DIPs
+clear of its ends. Set a style in a theme for every scroll bar of the app,
+on a container for its own, or on an editor's `State.Scrollbar`:
+
+```go
+t := *c.Theme()
+// As VS Code's editor: a 14 DIP square thumb in a 14 DIP bar, flush
+// with its ends.
+t.ScrollbarStyle = ui.ScrollbarStyle{
+	TrackWidth: 14, ThumbWidth: 14, Square: true, Flush: true, MinLength: 20,
+	Thumb: ui.RGBA(121, 121, 121, 0.4),
+	Hover: ui.RGBA(100, 100, 100, 0.7),
+	Active: ui.RGBA(191, 191, 191, 0.4),
+}
+c.SetTheme(&t)
+```
+
+`TrackWidth` is the width of the bar's track and hit area, in DIPs, 0 for
+`ThumbWidth` plus 6; `ThumbWidth` is the width of the thumb, 0 for the
+theme's `ScrollbarWidth`; `Radius` rounds its corners, 0 for half its
+width, and `Square` leaves them square, as VS Code's scroll bar does;
+`Flush` leaves no gap between the thumb and the ends of its track, as VS
+Code's, and otherwise 2 DIPs clear them; `MinLength` is the shortest it
+gets, 0 for 24 DIPs. `Track` fills the bar behind the thumb, and zero
+paints none. `Thumb` colors the thumb at rest, `Hover` while the pointer
+is over the bar, and `Active` while it is dragged; zero `Thumb` takes the
+theme's `Scrollbar`, and zero `Hover` and `Active` take `Thumb`. A kept
+bar (`KeepScrollbars`) shows its `Hover` color, as it looks on hover.
+
+A container's own style wins over the theme's:
+
+```go
+ui.Scroll(c).ScrollbarStyle(ui.ScrollbarStyle{TrackWidth: 14, ThumbWidth: 14, Square: true, Flush: true}).Children(func() { /* ... */ })
+```
 
 `ScrollbarInsets` moves the bars in from the container's edges, CSS style
 as `Padding`: the vertical bar runs from the top inset to the bottom one,
@@ -234,11 +275,11 @@ technology still scroll it.
 `KeepScrollbars(true)` keeps them showing while the content overflows,
 with the pointer over the container or not, for a view whose place in its
 content the user should see at a glance, as a long log or a diff filling
-the window. They look as they do on hover, the same thumb on no track, so
-nothing changes as the pointer comes over them, and take presses as they
-do then; `Scrollbars(false)` still hides them. Both apply to `Scroll`,
-`ScrollHorizontal`, `ScrollBoth`, `List` and `Table`, are left at their
-defaults by leaving them out, and are not inherited:
+the window. They look as they do on hover, on the track if the style has
+one, so nothing changes as the pointer comes over them, and take presses
+as they do then; `Scrollbars(false)` still hides them. Both apply to
+`Scroll`, `ScrollHorizontal`, `ScrollBoth`, `List` and `Table`, are left at
+their defaults by leaving them out, and are not inherited:
 
 ```go
 ui.List(c, &app.rows, len(app.lines), app.line).Fill().KeepScrollbars(true)
@@ -247,15 +288,16 @@ ui.List(c, &app.rows, len(app.lines), app.line).Fill().KeepScrollbars(true)
 An element that scrolls itself rather than through a container, as the
 code editor and the terminal do, draws its bars with `ui.Scrollbar`, so
 that they look as the containers' do and follow the theme: `Painter.Scrollbar`
-paints the thumb, and `Thumb` and `OffsetAt` map a drag of it to an
-offset. Show it as a container does, while the
-pointer is over the element or drags the thumb, or always where the app
-keeps the bars, as the code editor's `KeepScrollbars` does:
+paints the track and thumb, and `Thumb` and `OffsetAt` map a drag of it to
+an offset. A view that draws marks on its bar paints `ScrollbarTrack`,
+then the marks, then `ScrollbarThumb`. Show it as a container does, while
+the pointer is over the element or drags the thumb, or always where the
+app keeps the bars, as the code editor's `KeepScrollbars` does:
 
 ```go
 bar := ui.Scrollbar{Box: r, View: r.H, Content: contentH, Offset: scrollY}
 if hovered || dragging {
-	p.Scrollbar(bar, ui.ScrollbarState{Dragging: dragging})
+	p.Scrollbar(bar, ui.ScrollbarState{Hovered: hovered, Dragging: dragging})
 }
 ```
 

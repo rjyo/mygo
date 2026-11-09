@@ -249,6 +249,15 @@ func (e *node) followShift() float64 {
 	return e.st.scrollX
 }
 
+// scrollbarStyle returns how the container's scroll bars look, as the
+// last frame resolved them.
+func (s *state) scrollbarStyle() ScrollbarStyle {
+	if s.barStyle != nil {
+		return *s.barStyle
+	}
+	return ScrollbarStyle{}
+}
+
 // scrollTo moves the content of a scroll container, and the ScrollState
 // tracking it.
 func (s *state) scrollTo(x, y float64) {

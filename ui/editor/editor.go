@@ -67,8 +67,9 @@ type options struct {
 	noScrollbar bool
 	// keepScrollbars shows the thumbs with the pointer away, and
 	// hideScrollbars shows no bars, nor keeps their room (KeepScrollbars,
-	// NoScrollbars).
+	// NoScrollbars). scrollbar is how the bars look (Scrollbar).
 	keepScrollbars, hideScrollbars bool
+	scrollbar                      ui.ScrollbarStyle
 	// minDigits is how many digits the gutter has room for at least.
 	minDigits int
 	// sharedScroll scrolls the sides of a split diff together.
@@ -133,6 +134,9 @@ type editor struct {
 	view  view
 	o     options
 	theme *Theme
+	// barStyle is how the editor's scroll bars look, its Scrollbar with
+	// the theme's zero fields filled in.
+	barStyle ui.ScrollbarStyle
 	// texts are MyGo's strings in the window's language, as of the last
 	// frame.
 	texts l10n.Messages
@@ -257,6 +261,13 @@ type gesture struct {
 // init sets up the editor for a frame.
 func (ed *editor) init(buf *Buffer, o options, t *ui.Theme) {
 	ed.o = o
+	// The editor's bar has always been 10 DIPs wide; its style, or the
+	// theme's, may say otherwise, and the theme fills in the rest.
+	style := o.scrollbar
+	if style.TrackWidth == 0 && (t == nil || t.ScrollbarStyle.TrackWidth == 0) {
+		style.TrackWidth = scrollbarWidth
+	}
+	ed.barStyle = style.Resolve(t)
 	if o.hideScrollbars {
 		// Bars taken away while a thumb is dragged let it go, rather than
 		// scroll on under the pointer (NoScrollbars).

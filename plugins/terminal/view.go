@@ -203,7 +203,10 @@ type view struct {
 	// the bar, as of its last move, and barHover as of the last build;
 	// inView that the pointer was over the terminal, which shows the bar.
 	barHeld, overBar, barHover, inView bool
-	barGrab                            float32
+	// barStyle is how the scroll bar looks, the theme's as of the last
+	// paint.
+	barStyle ui.ScrollbarStyle
+	barGrab  float32
 	// hover is the link Command is held over, which a click opens and
 	// which shows underlined, hoverLink what it opens and hoverPath
 	// whether that is a file path (HoveredLink); linkPress: the primary
@@ -1227,8 +1230,12 @@ func (v *view) overScrollbar(x, y float32) bool {
 	if v.barHeld {
 		return true
 	}
+	width := v.barStyle.TrackWidth
+	if width <= 0 {
+		width = scrollbarStrip
+	}
 	w, h := v.size[0], v.size[1]
-	if x < w-scrollbarStrip || x >= w || y < 0 || y >= h {
+	if x < w-width || x >= w || y < 0 || y >= h {
 		return false
 	}
 	sb := v.t.term.Scrollbar()
@@ -1251,7 +1258,9 @@ func (v *view) scrollbarEvent(ev ui.InputEvent) bool {
 	case v.barHeld:
 		v.dragScrollbar(ev.Y)
 	case v.overBar && ev.Kind == ui.InputPointerDown && ev.Button == 0:
-		y, h := bar(v.t.term.Scrollbar(), ui.Rect{H: v.size[1]}).Thumb()
+		b := bar(v.t.term.Scrollbar(), ui.Rect{H: v.size[1]})
+		b.Style = v.barStyle
+		y, h := b.Thumb()
 		v.barGrab = h / 2
 		if ev.Y >= y && ev.Y < y+h {
 			v.barGrab = ev.Y - y
@@ -1272,7 +1281,9 @@ func (v *view) dragScrollbar(y float32) {
 	if sb.Total <= sb.Len {
 		return
 	}
-	to := int(math.Round(float64(bar(sb, ui.Rect{H: v.size[1]}).OffsetAt(y - v.barGrab))))
+	b := bar(sb, ui.Rect{H: v.size[1]})
+	b.Style = v.barStyle
+	to := int(math.Round(float64(b.OffsetAt(y - v.barGrab))))
 	if d := to - int(sb.Offset); d != 0 {
 		term.ScrollBy(d)
 		v.services.Invalidate()

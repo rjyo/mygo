@@ -1425,8 +1425,8 @@ func (p *Painter) scrollbars(e *node) {
 	}
 	dragging := rt.scrollDrag.st == st
 	// A press takes the bars only where the window shows them
-	// (scrollbarPress). Kept, they show as on hover, the same thumb on no
-	// track, so that the pointer coming over changes nothing.
+	// (scrollbarPress). Kept, they show as on hover, so that the pointer
+	// coming over changes nothing.
 	hide, keep := e.scrollbars()
 	if !hide && !keep {
 		// The bars show on hover (hoverNeeds).
@@ -1436,7 +1436,7 @@ func (p *Painter) scrollbars(e *node) {
 	if !st.barsShown {
 		return
 	}
-	color := theme.Scrollbar
+	style := e.scrollbarStyle().Resolve(theme)
 	w, h := e.contentW, e.contentH
 	x, y := st.scrollX, st.scrollY
 	if dragging {
@@ -1447,12 +1447,43 @@ func (p *Painter) scrollbars(e *node) {
 		x = rescale(x, e.contentW-float64(e.w), w-float64(e.w))
 		y = rescale(y, e.contentH-float64(e.h), h-float64(e.h))
 	}
-	g := scrollBars(Rect{e.x, e.y, e.w, e.h}, e.barInset, float32(w), float32(h), float32(x), float32(y), e.flags, theme.scrollbarWidth(), e.rtl())
+	g := scrollBars(Rect{e.x, e.y, e.w, e.h}, e.barInset, float32(w), float32(h), float32(x), float32(y), e.flags, style, e.rtl())
+	if style.Track.A > 0 {
+		if g.vertical {
+			p.Fill(g.vTrack, style.Track, 0)
+		}
+		if g.horizontal {
+			p.Fill(g.hTrack, style.Track, 0)
+		}
+	}
+	// Hover colors the bar the pointer is over, and both while kept, as
+	// they show as on hover.
+	var overV, overH bool
+	if hovered {
+		lx, ly := st.local(rt.pointerX, rt.pointerY)
+		lx, ly = lx+st.x, ly+st.y
+		overV = g.vertical && g.vTrack.Contains(lx, ly)
+		overH = g.horizontal && g.hTrack.Contains(lx, ly)
+	}
+	vertical, horizontal := style.Thumb, style.Thumb
+	switch {
+	case dragging && !rt.scrollDrag.horizontal:
+		vertical = style.Active
+	case keep || overV:
+		vertical = style.Hover
+	}
+	switch {
+	case dragging && rt.scrollDrag.horizontal:
+		horizontal = style.Active
+	case keep || overH:
+		horizontal = style.Hover
+	}
+	grow := style.ThumbWidth+2 <= style.TrackWidth
 	if g.vertical {
-		p.scrollThumbFill(g.v, false, dragging && !rt.scrollDrag.horizontal, color)
+		p.scrollThumbFill(g.v, false, grow && dragging && !rt.scrollDrag.horizontal, vertical, style.Radius)
 	}
 	if g.horizontal {
-		p.scrollThumbFill(g.h, true, dragging && rt.scrollDrag.horizontal, color)
+		p.scrollThumbFill(g.h, true, grow && dragging && rt.scrollDrag.horizontal, horizontal, style.Radius)
 	}
 }
 
@@ -1473,37 +1504,38 @@ type scrollGeometry struct {
 }
 
 // scrollBars returns the scroll bars of a container box scrolled by
-// (x, y) over content w×h, with thumbs width DIPs wide, moved in from its
-// edges by inset (top, right, bottom, left, ScrollbarInsets): those of the
-// directions its flags scroll that overflow, which leave each other the
-// corner where both show. Right to left (rtl), the vertical bar is on the
-// left, as in Flutter, browsers and GTK, the corner at the bottom left,
-// and x, which counts from the right, puts the horizontal thumb at the
-// right at 0.
-func scrollBars(box Rect, inset [4]float32, w, h, x, y float32, flags uint32, width float32, rtl bool) scrollGeometry {
+// (x, y) over content w×h, as style says, moved in from its edges by inset
+// (top, right, bottom, left, ScrollbarInsets): those of the directions its
+// flags scroll that overflow, which leave each other the corner where both
+// show. Right to left (rtl), the vertical bar is on the left, as in
+// Flutter, browsers and GTK, the corner at the bottom left, and x, which
+// counts from the right, puts the horizontal thumb at the right at 0.
+func scrollBars(box Rect, inset [4]float32, w, h, x, y float32, flags uint32, style ScrollbarStyle, rtl bool) scrollGeometry {
 	var g scrollGeometry
 	g.vertical = flags&flagScrollY != 0 && h > box.H+0.5
 	g.horizontal = flags&flagScrollX != 0 && w > box.W+0.5
+	width, thumb := style.TrackWidth, style.ThumbWidth
 	corner := float32(0)
 	if g.vertical && g.horizontal {
-		corner = width + 3
+		// The bars overlap by 3 DIPs, as the thumb's inset from the edge.
+		corner = max(width-3, 0)
 	}
 	top, right, bottom, left := inset[0], inset[1], inset[2], inset[3]
 	if g.vertical {
 		track := max(box.H-top-bottom-corner, 0)
-		g.vTrack = Rect{box.X + box.W - right - width - 6, box.Y + top, width + 6, track}
-		t := scrollThumb(box.Y+top, track, box.H, h, y)
-		g.v = Rect{box.X + box.W - right - width - 3, t.Y, width, t.H}
+		g.vTrack = Rect{box.X + box.W - right - width, box.Y + top, width, track}
+		t := scrollThumb(box.Y+top, track, box.H, h, y, style.MinLength, style.inset())
+		g.v = Rect{box.X + box.W - right - width + (width-thumb)/2, t.Y, thumb, t.H}
 		if rtl {
 			g.vTrack.X = box.X + left
-			g.v.X = box.X + left + 3
+			g.v.X = box.X + left + (width-thumb)/2
 		}
 	}
 	if g.horizontal {
 		track := max(box.W-left-right-corner, 0)
-		g.hTrack = Rect{box.X + left, box.Y + box.H - bottom - width - 6, track, width + 6}
-		t := scrollThumb(box.X+left, track, box.W, w, x)
-		g.h = Rect{t.Y, box.Y + box.H - bottom - width - 3, t.H, width}
+		g.hTrack = Rect{box.X + left, box.Y + box.H - bottom - width, track, width}
+		t := scrollThumb(box.X+left, track, box.W, w, x, style.MinLength, style.inset())
+		g.h = Rect{t.Y, box.Y + box.H - bottom - width + (width-thumb)/2, t.H, thumb}
 		if rtl {
 			g.hTrack.X += corner
 			// As far from the right of the track as the thumb would be
@@ -1516,16 +1548,20 @@ func scrollBars(box Rect, inset [4]float32, w, h, x, y float32, flags uint32, wi
 
 // scrollThumb returns the thumb's position (Y) and length (H) along a
 // track starting at pos, track long, for a view of content of size content
-// scrolled by offset.
-func scrollThumb(pos, track, view, content, offset float32) Rect {
-	inner := track - 4
-	thumb := min(max(inner*view/content, 24), inner)
+// scrolled by offset, no shorter than minLength, and inset from each end of
+// the track.
+func scrollThumb(pos, track, view, content, offset, minLength, inset float32) Rect {
+	if minLength <= 0 {
+		minLength = 24
+	}
+	inner := max(track-2*inset, 0)
+	thumb := min(max(inner*view/content, minLength), inner)
 	travel := inner - thumb
 	at := float32(0)
 	if content > view {
 		at = max(0, min(travel*offset/(content-view), travel))
 	}
-	return Rect{Y: pos + 2 + at, H: thumb}
+	return Rect{Y: pos + inset + at, H: thumb}
 }
 
 // Fill paints a rounded rectangle.
