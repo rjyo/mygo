@@ -329,4 +329,13 @@ export const showcase: ShowcaseApp[] = [
     mode: "native",
     image: "/showcase/myvnc.jpg",
   },
+  {
+    name: "Golder",
+    description:
+      "An open-source coding agent for macOS, Windows and Linux. Its native desktop app brings project chats, file and Git review, an integrated terminal, browser and computer use together, with model choice and configurable approval boundaries.",
+    url: "https://github.com/getan/golder",
+    author: "getan",
+    mode: "native",
+    image: "/showcase/golder.jpg",
+  },
 ]
