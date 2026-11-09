@@ -32,6 +32,9 @@ ui.ToggleGroup(c, func() {
 }).Label("Style")
 ```
 
+`FillEqually` makes a group as wide as its parent, its toggles sharing the
+width equally, as it does a [segmented control](segmented.md#full-width).
+
 For a choice of one among several, as a view mode, use a
 [segmented control](segmented.md).
 

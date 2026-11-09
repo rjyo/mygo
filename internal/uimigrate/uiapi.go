@@ -211,6 +211,7 @@ var elementChains = map[string]bool{
 	"ErrorMessage":         true,
 	"Expanded":             true,
 	"Fill":                 true,
+	"FillEqually":          true,
 	"FillHeight":           true,
 	"FillWidth":            true,
 	"Fit":                  true,
