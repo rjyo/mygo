@@ -115,6 +115,11 @@ updater.OnChange(func() {
 })
 ```
 
+`OnInstalled` calls a function on the main thread once an update is
+installed, from the update window or in the background, before the app
+relaunches into it. On Windows and Linux the app's executable is the new
+version's by then, so an app can start its helper processes on it early.
+
 Sparkle asks on the second launch whether to check automatically: apps
 that want to ask set `DisableAutomaticChecks` and call `SetAutomaticChecks`
 with the answer.

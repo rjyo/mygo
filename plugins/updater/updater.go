@@ -185,7 +185,21 @@ func AvailableVersion() string {
 // SetAutomaticChecks or SetAutomaticDownloads. A preferences page that shows
 // AutomaticChecks, AutomaticDownloads or LastCheck reads them again. It
 // returns a function that removes fn.
-func OnChange(fn func()) (off func()) { return used().onChange(fn) }
+func OnChange(fn func()) (off func()) {
+	u := used()
+	return u.add(&u.changes, fn)
+}
+
+// OnInstalled calls fn on the main thread once an update is installed,
+// whether the user installed it or it was installed in the background
+// (AutomaticDownloads), before the app relaunches into it. On Windows and
+// Linux the app's executable is then the new version's; on macOS the new
+// version is staged until the app quits. It returns a function that
+// removes fn.
+func OnInstalled(fn func()) (off func()) {
+	u := used()
+	return u.add(&u.installs, fn)
+}
 
 // active is the plugin that was used.
 var active atomic.Pointer[updater]
@@ -263,8 +277,10 @@ type updater struct {
 	mu       sync.Mutex
 	file     string // "" when the state cannot be saved
 	state    state
-	// changes are the functions of OnChange, in the order they were added.
-	changes []*func()
+	// changes are the functions of OnChange, and installs those of
+	// OnInstalled, in the order they were added.
+	changes  []*func()
+	installs []*func()
 	// running is set once the app is ready and can update itself: only
 	// then are checks scheduled.
 	running bool
@@ -349,14 +365,20 @@ func (u *updater) update(fn func(*state)) {
 		changes = slices.Clone(u.changes)
 	}
 	u.mu.Unlock()
-	if len(changes) > 0 {
-		// From a goroutine of its own: no caller waits for the main thread.
-		go runOnMain(func() {
-			for _, fn := range changes {
-				(*fn)()
-			}
-		})
+	call(changes)
+}
+
+// call calls fns on the main thread, from a goroutine of its own: no
+// caller waits for the main thread.
+func call(fns []*func()) {
+	if len(fns) == 0 {
+		return
 	}
+	go runOnMain(func() {
+		for _, fn := range fns {
+			(*fn)()
+		}
+	})
 }
 
 // save writes the state file. u.mu is held.
@@ -373,15 +395,17 @@ func (u *updater) save() {
 	}
 }
 
-func (u *updater) onChange(fn func()) (off func()) {
+// add adds fn to the functions fns, which u.mu guards, and returns a
+// function that removes it.
+func (u *updater) add(fns *[]*func(), fn func()) (off func()) {
 	p := &fn
 	u.mu.Lock()
-	u.changes = append(u.changes, p)
+	*fns = append(*fns, p)
 	u.mu.Unlock()
 	return func() {
 		u.mu.Lock()
 		defer u.mu.Unlock()
-		u.changes = slices.DeleteFunc(u.changes, func(q *func()) bool { return q == p })
+		*fns = slices.DeleteFunc(*fns, func(q *func()) bool { return q == p })
 	}
 }
 
@@ -589,7 +613,9 @@ func (u *updater) install(s *session, r *release) {
 	}
 	u.mu.Lock()
 	u.installed = r
+	installs := slices.Clone(u.installs)
 	u.mu.Unlock()
+	call(installs)
 	if s.User() || s.isShown() {
 		u.offerRelaunch(s, r)
 	}
