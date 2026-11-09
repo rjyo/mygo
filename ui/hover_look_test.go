@@ -35,9 +35,14 @@ func (v *hoverControls) view(c *ui.Context) {
 				ui.PrimaryButton(c, "Primary")
 				ui.Button(c, "Tipped").Tooltip("A tip")
 			})
+			ui.Row(c).Gap(6).Children(func() {
+				ui.SplitButton(c, "Split")
+				ui.PrimarySplitButton(c, "Run")
+			})
 			ui.Toolbar(c, func() {
 				ui.Button(c, "Cut")
 				ui.Button(c, "Copy")
+				ui.SplitButton(c, "Paste")
 			})
 			ui.TextInput(c, &v.text)
 			ui.SearchField(c, &v.query)

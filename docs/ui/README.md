@@ -121,6 +121,8 @@ UI as they read other apps (see [Accessibility](accessibility.md)).
 - [Link](link.md): text that opens a URL, or a page of a router.
 - [Menu button](menu-button.md): a button opening a menu below it, the
   system's or one MyGo draws in the window with the theme's look.
+- [Split button](split-button.md): a button joined to an arrow opening a
+  menu of related actions, as Save and Save As….
 - [Context menu](context-menu.md): a menu of the system's for any element,
   on a right click, or one MyGo draws in the window with the theme's look;
   [every menu of a window](context-menu.md#every-menu-of-a-window) drawn so,

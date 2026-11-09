@@ -77,6 +77,10 @@
   "@more": {
     "description": "Labels the button of a toolbar that opens what the toolbar hides."
   },
+  "moreOptions": "More options",
+  "@moreOptions": {
+    "description": "Labels the arrow of a split button, which opens a menu of actions related to the button's."
+  },
   "codeEditor": "Code editor",
   "@codeEditor": {
     "description": "Names the code editor to assistive technology when the app gives it no label."

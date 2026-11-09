@@ -1998,6 +1998,19 @@ func PrimaryButton(c *Context, label string) Element {
 	return wrapElement(_e)
 }
 
+// PrimarySplitButton creates a split button (SplitButton) in the accent
+// color, for the main action, as PrimaryButton is.
+func PrimarySplitButton(c *Context, label string) SplitButtonParts {
+	_ctx := c.build()
+	if _ctx == nil {
+		return SplitButtonParts{}
+	}
+	_ctx.rt.beginBuild()
+	_p := corePrimarySplitButton(_ctx, label)
+	_ctx.rt.endBuild()
+	return wrapSplitButtonParts(_p)
+}
+
 // Progress creates a progress bar filled to value between 0 and 1; a
 // negative value shows activity of unknown length. It fills from its
 // start: the right right to left (Direction). Reverse fills it from the
@@ -2462,6 +2475,46 @@ func Split(c *Context, size *float32, first func(), second func()) Element {
 	_e := coreSplit(_ctx, size, first, second)
 	_ctx.rt.endBuild()
 	return wrapElement(_e)
+}
+
+// SplitButton creates a button joined to an arrow that opens a menu of
+// related actions, as Save beside Save As…: one control drawn as Button
+// is, with the face and the border its two segments share and a line
+// between them, each lighting up apart as the pointer hovers and presses
+// it. Button, its leading segment, shows label and does the action; give
+// Arrow, its trailing segment, the menu with Menu, or with
+// PopoverMenuButton for one MyGo draws in the window, which opens below
+// the arrow as a menu button's does:
+//
+//	save := ui.SplitButton(c, "Save")
+//	save.Arrow.Menu(func(m *ui.Menu) {
+//		if m.Item("Save As…").Chosen() {
+//			app.saveAs()
+//		}
+//	})
+//	if save.Button.Clicked() {
+//		app.save()
+//	}
+//
+// It is one stop of Tab, and Left and Right move the focus between its
+// segments, the other way round right to left, where the arrow is on the
+// left. Enter and Space click Button while it has the focus, and open the
+// menu while Arrow has it, as do Up and Down; Alt+Down opens it from
+// Button too. Assistive technology sees a group of a button and a menu
+// button, named More options until Arrow's Label names it, expanded while
+// its menu shows. Disabled on Group disables the whole control, and on
+// Button the action alone, leaving the menu. In a toolbar it takes no face
+// of its own until hovered, as the toolbar's buttons. PrimarySplitButton
+// is one in the accent color.
+func SplitButton(c *Context, label string) SplitButtonParts {
+	_ctx := c.build()
+	if _ctx == nil {
+		return SplitButtonParts{}
+	}
+	_ctx.rt.beginBuild()
+	_p := coreSplitButton(_ctx, label)
+	_ctx.rt.endBuild()
+	return wrapSplitButtonParts(_p)
 }
 
 // SplitPercent is Split with *p the percentage of the room first takes,
@@ -8860,6 +8913,33 @@ func (p SelectParts[T]) resolve() *selectParts[T] {
 		return nil
 	}
 	return n.c.rt.parts[p.part].(*selectParts[T])
+}
+
+// SplitButtonParts contains checked handles for the parts of a custom widget.
+type SplitButtonParts struct {
+	Group  Element
+	Button Element
+	Arrow  Element
+	part   uint32
+}
+
+func wrapSplitButtonParts(p splitButtonParts) SplitButtonParts {
+	c := p.c
+	if c == nil {
+		return SplitButtonParts{}
+	}
+	_slot := c.rt.keepPart(&p)
+	return SplitButtonParts{part: _slot, Group: wrapElement(p.Group), Button: wrapElement(p.Button), Arrow: wrapElement(p.Arrow)}
+}
+func (p SplitButtonParts) resolve() *splitButtonParts {
+	n := p.Group.node()
+	if n == nil {
+		return nil
+	}
+	if int(p.part) >= len(n.c.rt.parts) {
+		return nil
+	}
+	return n.c.rt.parts[p.part].(*splitButtonParts)
 }
 
 // TabsParts contains checked handles for the parts of a custom widget.

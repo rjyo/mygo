@@ -298,6 +298,22 @@ func (msgs Messages) More() string {
 	return Catalog.Format(msgs.locale, "more", nil)
 }
 
+// MoreOptions says "More options"
+// in the language the app shows.
+//
+// Labels the arrow of a split button, which opens a menu of actions related
+// to the button's.
+func MoreOptions() string { return In(i18n.Locale()).MoreOptions() }
+
+// MoreOptions says "More options"
+// in the language of msgs.
+//
+// Labels the arrow of a split button, which opens a menu of actions related
+// to the button's.
+func (msgs Messages) MoreOptions() string {
+	return Catalog.Format(msgs.locale, "moreOptions", nil)
+}
+
 // CodeEditor says "Code editor"
 // in the language the app shows.
 //

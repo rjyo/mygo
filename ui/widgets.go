@@ -723,7 +723,7 @@ func coreSelect(c *context, selected *string, options []string) *node {
 	b.Justify(SpaceBetween).MinWidth(t.Space(35))
 	b.Children(func() {
 		coreText(c, *selected).SingleLine()
-		chevron(c)
+		chevron(c, t.TextMuted)
 	})
 	sel.Popup(func(panel *node) {
 		stylePanel(c, panel)
@@ -743,13 +743,14 @@ func coreSelect(c *context, selected *string, options []string) *node {
 	return b
 }
 
-// chevron draws the arrow of a button opening something below it.
-func chevron(c *context) {
+// chevron draws the arrow of a button opening something below it, in
+// color.
+func chevron(c *context, color Color) {
 	t := c.theme
 	coreBox(c).Size(t.Space(2.5), t.Space(2.5)).Shrink(0).Draw(func(p *Painter, r Rect) {
 		var path Path
 		path.MoveTo(r.X+r.W*0.1, r.Y+r.H*0.3).LineTo(r.X+r.W*0.5, r.Y+r.H*0.7).LineTo(r.X+r.W*0.9, r.Y+r.H*0.3)
-		p.StrokePath(&path, 1.5, t.TextMuted)
+		p.StrokePath(&path, 1.5, color)
 	})
 }
 
@@ -796,7 +797,7 @@ func menuButton(c *context, label string) *node {
 		if label != "" {
 			coreText(c, label).SingleLine()
 		}
-		chevron(c)
+		chevron(c, c.theme.TextMuted)
 	})
 	return b
 }

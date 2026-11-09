@@ -41,7 +41,9 @@ ui.Button(c, "").Label("More").Children(func() { ui.Icon(c, dots) }).Menu(func(m
 ```
 
 In a [toolbar](toolbar.md), a menu button takes no face of its own until
-hovered.
+hovered. For a button that does an action of its own beside a menu of
+related ones, as Save beside Save As…, use a [split
+button](split-button.md).
 
 ## Drawn in the window
 

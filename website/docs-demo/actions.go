@@ -96,6 +96,46 @@ func init() {
 	})
 }
 
+func init() {
+	last, dirty := "", true
+	demo("split-button", func(c *ui.Context) {
+		ui.Row(c).Gap(8).Children(func() {
+			save := ui.SplitButton(c, "Save")
+			save.Button.Disabled(!dirty)
+			save.Arrow.Menu(func(m *ui.Menu) {
+				if m.Item("Save As…").Chosen() {
+					last = "Saved as…"
+				}
+				if m.Item("Save a Copy…").Chosen() {
+					last = "Saved a copy"
+				}
+				if m.Item("Revert").Disabled(!dirty).Chosen() {
+					last, dirty = "Reverted", false
+				}
+			})
+			if save.Button.Clicked() {
+				last, dirty = "Saved", false
+			}
+			run := ui.PrimarySplitButton(c, "Run")
+			run.Arrow.PopoverMenuButton(func(m *ui.Menu) {
+				for _, target := range []string{"Debug", "Release", "Tests"} {
+					if m.Item("Run " + target).Chosen() {
+						last, dirty = "Ran "+target, true
+					}
+				}
+			}, ui.PopoverMenuButtonOptions{At: ui.AnchorBottomEnd, Self: ui.AnchorTopEnd})
+			if run.Button.Clicked() {
+				last, dirty = "Ran Debug", true
+			}
+		})
+		if last != "" {
+			status(c, last)
+		} else {
+			status(c, "Save, or open its menu with the arrow")
+		}
+	})
+}
+
 // actionsNote is a note of the context menu's demo.
 type actionsNote struct {
 	name, folder   string

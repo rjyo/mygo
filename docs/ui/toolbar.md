@@ -4,8 +4,8 @@
 
 `ui.Toolbar` creates a row of controls, as along the top of a window:
 buttons, [toggles](toggle.md), toggle groups, [segmented
-controls](segmented.md) and [menu buttons](menu-button.md), which take no
-face of their own until hovered. `ui.Spacer` pushes those after it to the
+controls](segmented.md), [split buttons](split-button.md) and [menu
+buttons](menu-button.md), which take no face of their own until hovered. `ui.Spacer` pushes those after it to the
 end.
 
 ```go
