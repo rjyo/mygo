@@ -613,8 +613,8 @@ func (rt *engine) animateLayout(root *node, w, h float32) {
 	}
 	now := c.now
 	still := rt.preferences().ReduceMotion
-	// Parents first: one resizing lays out its children anew, which then
-	// move themselves.
+	// Parents first: one resizing lays out its children anew, and what a
+	// child's Transition does not animate follows that layout.
 	uses = c.byDepth(uses)
 	n := 0
 	for _, u := range uses {
@@ -664,7 +664,20 @@ func (rt *engine) animateLayout(root *node, w, h float32) {
 	holding := rt.holding[:0]
 	for _, u := range uses[:n] {
 		e, r := u.e, u.r
-		next := r.next
+		// What the Transition does not animate is where the layout has it
+		// now, which a parent shown before has just changed.
+		next, props := r.next, r.properties()
+		cur := tbox{e.x, e.y, e.w, e.h, 1, 1, 0, 0}
+		if props&propPosition == 0 {
+			next.x, next.y = cur.x, cur.y
+		}
+		if props&propWidth == 0 {
+			next.w = cur.w
+		}
+		if props&propHeight == 0 {
+			next.h = cur.h
+		}
+		r.next = next
 		// An element appearing in a parent that was there comes in;
 		// whole new parts of the interface, as a page, appear at once.
 		// The overlay layer is the window's, though built only while it
@@ -692,7 +705,6 @@ func (rt *engine) animateLayout(root *node, w, h float32) {
 		case resized || still && r.moving&^moveAlpha != 0:
 			r.rest(next, now)
 		default:
-			props := r.properties()
 			// The groups of channels the Transition animates: an axis of
 			// the size it does not choose follows the layout at once.
 			var own, changed uint8

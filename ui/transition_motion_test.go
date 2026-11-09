@@ -720,3 +720,61 @@ func TestTransitionExitDelay(t *testing.T) {
 		})
 	}
 }
+
+// A child pinned to its parent's far corner follows the parent's Size
+// transition, whatever its own Transition does not animate: it goes
+// with the layout of each in-between size, and only what it animates
+// moves on its own, toward the final place.
+func TestTransitionChildFollowsParentSize(t *testing.T) {
+	const d = 100 * time.Millisecond
+	// grow runs a parent growing in the dimension (w, h) over d, and
+	// returns the child's place at 0, 25, 50 and 100 ms, and a second
+	// later.
+	grow := func(child *ElementTransition, width bool) (xs, ys [5]float32) {
+		pw, ph := float32(120), float32(44)
+		tt, now := clockTester(func(c *context) {
+			coreBox(c).Size(300, 300).Children(func() {
+				coreBox(c).Key("parent").Size(pw, ph).Transition(ElementTransition{Size: true, Duration: d, Ease: Linear}).Children(func() {
+					e := keep("child", coreBox(c).Key("child")).Size(20, 20).Absolute().Bottom(0).Right(0)
+					if child != nil {
+						e.Transition(*child)
+					}
+				})
+			})
+		}, 300, 300)
+		if width {
+			pw = 200
+		} else {
+			ph = 200
+		}
+		last := time.Duration(0)
+		for i, at := range []time.Duration{0, 25 * time.Millisecond, 50 * time.Millisecond, d, d + time.Second} {
+			*now = now.Add(at - last)
+			last = at
+			tt.Frame()
+			e := keyed(tt, "child")
+			xs[i], ys[i] = e.x, e.y
+		}
+		return xs, ys
+	}
+	follows := [5]float32{24, 63, 102, 180, 180}
+	same := func(name string, got, want [5]float32) {
+		t.Helper()
+		if got != want {
+			t.Errorf("%s: %v, not %v", name, got, want)
+		}
+	}
+	_, ys := grow(nil, false)
+	same("child without a Transition, top", ys, follows)
+	_, ys = grow(&ElementTransition{Colors: true, Duration: d}, false)
+	same("child animating colors only, top", ys, follows)
+	// A child animating its position heads for the place the layout gives
+	// it at each frame, which moves with the parent: it is not at its
+	// final place before the parent is.
+	_, ys = grow(&ElementTransition{Position: true, Duration: d, Ease: Linear}, false)
+	same("child animating position, top", ys, follows)
+	// Animating its height alone, a child pinned to the right edge still
+	// follows the parent's width.
+	xs, _ := grow(&ElementTransition{Height: true, Duration: d}, true)
+	same("child animating height only, left", xs, [5]float32{100, 120, 140, 180, 180})
+}
