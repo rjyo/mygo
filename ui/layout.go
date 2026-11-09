@@ -821,7 +821,16 @@ func flexLayout(e *node, cw, ch float32, commit bool) (usedW, usedH float32) {
 			it := &items[i]
 			c := it.e
 			if row {
-				it.cross = heightAt(c, it.main, ch)
+				if v, ok := c.height.resolve(base(ch)); ok {
+					it.cross = c.clampH(v, ch)
+				} else if c.aspect == 0 && stretches(c, align, true) && finite(ch) && !e.wrap {
+					// It stretches to its one line, as high as the row:
+					// measuring it first would change nothing, as across
+					// a column.
+					it.cross = c.clampH(ch-it.marginCr, ch)
+				} else {
+					it.cross = heightAt(c, it.main, ch)
+				}
 			} else {
 				if v, ok := c.width.resolve(base(cw)); ok {
 					it.cross = c.clampW(v, cw)
