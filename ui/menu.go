@@ -14,7 +14,8 @@ import (
 // items. The system shows it where the element is clicked with the
 // secondary button, or Control-clicked on macOS, and, while the element or
 // one inside it has the focus, below it when the menu key or Shift+F10 is
-// pressed. build runs when the menu opens, and again in the frame after an
+// pressed; in a list, while the list has the focus and the element's row
+// is chosen. build runs when the menu opens, and again in the frame after an
 // item was chosen, where the item's Chosen reports it:
 //
 //	row.ContextMenu(func(m *ui.Menu) {
@@ -729,9 +730,21 @@ func (rt *engine) menuRelease() bool {
 
 // menuKey opens the context menu of the focused element, or of the
 // innermost around it with one, for the menu key or Shift+F10: below a
-// text input's caret, or the element's top. It reports whether there was
-// one.
+// text input's caret, or the element's top. In a list, the row chosen
+// takes it, with the menu below the row, as a right-click on the row
+// would. It reports whether there was one.
 func (rt *engine) menuKey() bool {
+	if rt.listMenuKey != nil {
+		if s, row := rt.listMenuKey(rt); s != nil {
+			x, y := row.vx, row.vy+row.vh
+			if row.rtl {
+				x += row.vw
+			}
+			rt.askMenu(s, x, y, false)
+			rt.menu.key = true
+			return true
+		}
+	}
 	s := rt.menuTarget(rt.focusChain())
 	if s == nil {
 		return false

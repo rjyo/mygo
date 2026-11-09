@@ -4397,7 +4397,8 @@ func (_handle Element) ContentTransition(t ContentTransition) Element {
 // items. The system shows it where the element is clicked with the
 // secondary button, or Control-clicked on macOS, and, while the element or
 // one inside it has the focus, below it when the menu key or Shift+F10 is
-// pressed. build runs when the menu opens, and again in the frame after an
+// pressed; in a list, while the list has the focus and the element's row
+// is chosen. build runs when the menu opens, and again in the frame after an
 // item was chosen, where the item's Chosen reports it:
 //
 //	row.ContextMenu(func(m *ui.Menu) {

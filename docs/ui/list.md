@@ -158,6 +158,11 @@ is. `MenuKeepsSelection` turns this off: the menu opens on the row clicked,
 whose builder knows its row, and the choice stays. A list with `Selected`
 alone never chooses on a right-click.
 
+The menu key and Shift+F10 open the context menu of the row chosen, below
+the row, while the list has the focus: the outermost element with a
+`ContextMenu` in the row, or the list's own when no row is chosen or the
+row has none.
+
 ```go
 app.files.Selection = &app.chosen
 app.files.MenuKeepsSelection = true // the menu acts on the row clicked alone

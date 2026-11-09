@@ -348,12 +348,14 @@ type engine struct {
 	// handler ran nested, for it to apply once the press is recorded.
 	downing int
 	ups     []pendingUp
-	// listMenu and listDrag are the parts of lists a right-click and a
-	// drag reach, set as the first list builds, and cellClick and
+	// listMenu, listMenuKey and listDrag are the parts of lists a
+	// right-click, the menu key and a drag reach, set as the first list
+	// builds, and cellClick and
 	// cellInBlock the parts of tables choosing cells a click and a press
 	// reach, set as the first of those builds, so apps without them do not
 	// link them.
 	listMenu    func(rt *engine, chain []uint64, x, y float32)
+	listMenuKey func(rt *engine) (menu, row *state)
 	listDrag    func(rt *engine)
 	cellClick   func(f *listFrame, x, y float32, mods Modifiers)
 	cellInBlock func(f *listFrame, x, y float32) bool

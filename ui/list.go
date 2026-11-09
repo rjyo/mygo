@@ -515,7 +515,7 @@ func buildList(c *context, e, owner *node, s *ListState, n int, row func(i int),
 		panic("ui: a ListState shown by two Lists")
 	}
 	if rt.listMenu == nil {
-		rt.listMenu, rt.listDrag = (*engine).chooseRowAt, (*engine).scrollDragSelect
+		rt.listMenu, rt.listMenuKey, rt.listDrag = (*engine).chooseRowAt, (*engine).chosenRowMenu, (*engine).scrollDragSelect
 	}
 	if (s.DragSelect || s.CellSelect && flat) && (s.Reorder != nil || s.DragRows != nil) {
 		panic("ui: a list cannot both DragSelect (or CellSelect) and Reorder (or DragRows)")
@@ -1116,6 +1116,52 @@ func (rt *engine) chooseRowAt(chain []uint64, x, y float32) {
 		rt.requestFrame()
 		return
 	}
+}
+
+// chosenRowMenu returns, for the menu key, the outermost element with a
+// context menu in the row chosen in the focused list, where the keys
+// moved the choice, and the row's element; nil when the row does not show
+// or has no menu.
+func (rt *engine) chosenRowMenu() (menu, row *state) {
+	depth := 0
+	for i := range rt.hits {
+		// top is the outermost element with a menu on the way up, d the
+		// steps from it.
+		var top *state
+		d := 0
+		for st := rt.hits[i].st; st != nil && st.parent != 0; st = rt.states[st.parent] {
+			if st.flags&flagContextMenu != 0 && st.flags&flagDisabled == 0 {
+				top, d = st, 0
+			}
+			d++
+			if p := rt.states[st.parent]; p != nil && p.list != nil && top != nil && rt.isChosenRow(p.list, st) {
+				if menu == nil || d < depth {
+					menu, row, depth = top, st, d
+				}
+				break
+			}
+		}
+	}
+	return menu, row
+}
+
+// isChosenRow reports whether st is the element of the row of s the keys
+// are on, chosen, in the last frame, while the list has the focus.
+func (rt *engine) isChosenRow(s *ListState, st *state) bool {
+	f := &s.frame
+	if f.e == nil || f.frame != rt.frame || f.owner.id != rt.focused {
+		return false
+	}
+	c := s.cursor()
+	if c == nil || *c < 0 || *c >= f.n || f.isHeader(*c) {
+		return false
+	}
+	r, ok := s.rows[st.id]
+	if !ok || r.row != *c {
+		return false
+	}
+	k := f.key(*c)
+	return (s.Key == nil || r.key == k) && f.chosen(*c, k)
 }
 
 // pickForMenu chooses the row a right-click was on since the last frame

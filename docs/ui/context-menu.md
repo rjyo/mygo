@@ -5,7 +5,8 @@
 `ContextMenu` gives an element a menu of the system's, which opens where
 the element is right-clicked (Control-clicked on macOS), and below it when
 the menu key or Shift+F10 is pressed while it or one inside it has the
-focus. The function builds the items when the menu opens, and runs again in
+focus, or, in a list, while the list has the focus and its row is chosen.
+The function builds the items when the menu opens, and runs again in
 the frame after one was chosen, where its `Chosen` reports it:
 
 ```go
