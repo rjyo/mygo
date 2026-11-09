@@ -147,3 +147,27 @@ func TestNoBreakSpaceText(t *testing.T) {
 		t.Errorf("the space is %v wide", space.w)
 	}
 }
+
+// A box with nothing in it takes the size its parent gives it, and lays
+// out nothing. One that scrolls still has its padding box as the size of
+// its content, as Chrome's scrollWidth and scrollHeight, and one whose only
+// child is placed absolutely still places it.
+func TestEmptyBoxes(t *testing.T) {
+	var plain, scroll, holder, abs *node
+	layoutIn(t, func(c *context) {
+		plain = coreBox(c).Height(30).Padding(4, 4, 4, 4)
+		scroll = coreScroll(c).Height(50).Padding(5, 5, 5, 5)
+		holder = coreBox(c).Height(40).Children(func() {
+			abs = coreBox(c).Absolute().Left(10).Top(5).Size(20, 10)
+		})
+	})
+	wantSize(t, "the plain box", plain, 600, 30)
+	wantSize(t, "the scrolling box", scroll, 600, 50)
+	if scroll.contentW != 600 || scroll.contentH != 50 {
+		t.Errorf("the empty scrolling box's content is %v×%v, want 600×50", scroll.contentW, scroll.contentH)
+	}
+	wantSize(t, "the box of an absolute child", holder, 600, 40)
+	if x, y := abs.x-holder.x, abs.y-holder.y; x != 10 || y != 5 || abs.w != 20 || abs.h != 10 {
+		t.Errorf("the absolute child at %v,%v %v×%v in its box, want 10,5 20×10", x, y, abs.w, abs.h)
+	}
+}

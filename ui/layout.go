@@ -598,6 +598,11 @@ func computeBox(e *node, w, h float32) {
 		e.layoutList(w, h)
 		return
 	}
+	if e.first == nil && !e.scrolls() {
+		// A box with nothing in it, most of a tree: its parent gave it
+		// its size, and laying out no children would change nothing.
+		return
+	}
 	if e.overflow != nil {
 		e.layoutToolbar(cw)
 	}
