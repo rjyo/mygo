@@ -1805,6 +1805,13 @@ as in Tauri:
   `App.Run` returns → `OnQuit`. It is used for `App.Quit`, Cmd+Q, quit
   Apple Events, and SIGINT/SIGTERM alike (`signal_unix.go`; a second signal
   exits immediately).
+  When the OS ends the session instead (`AppHandler.Terminating`:
+  `WM_ENDSESSION` on Windows, `applicationWillTerminate:` on macOS), the
+  loop does not stop first: `Application.endSession` calls the same
+  listeners, with `QuitEvent.SessionEnding` set and what they prevent
+  ignored, then `finish`; it skips them when a quit's sequence ran or is
+  running (`quitting`, `stopping`). Linux has no such path: the session's
+  end arrives as SIGTERM.
 - Taskbar state on Windows (`taskbar.go`) lives on the window and is
   applied when Explorer sends `TaskbarButtonCreated` (first show, Explorer
   restarts), so progress and a hidden button set before showing stick.

@@ -1909,7 +1909,8 @@ func (w *Window) flush() {
 }
 
 // OnClose is called when the window is about to close. Call
-// e.PreventDefault to keep it open.
+// e.PreventDefault to keep it open, except when the OS ends the session
+// (see Application.OnBeforeQuit): the window closes then all the same.
 func (w *Window) OnClose(fn func(e *CloseEvent)) (off func()) { return w.onClose.add(fn, false) }
 
 // OnClosed is called after the window has been closed.

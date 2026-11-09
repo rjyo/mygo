@@ -58,8 +58,8 @@ where:
 | `OnDidBecomeActive`, `OnDidResignActive` | the app became, or stopped being, the active app |
 | `OnWindowCreated(func(w *mygo.Window))` | a window was created |
 | `OnWindowAllClosed` | the last window closed, unless the app is quitting |
-| `OnBeforeQuit(func(e *mygo.QuitEvent))` | a quit started, before the windows close; `e.PreventDefault()` cancels it |
-| `OnWillQuit(func(e *mygo.QuitEvent))` | every window has closed and the app is about to quit; it can still be canceled |
+| `OnBeforeQuit(func(e *mygo.QuitEvent))` | a quit started, before the windows close; `e.PreventDefault()` cancels it, unless the OS ends the session (`e.SessionEnding`) |
+| `OnWillQuit(func(e *mygo.QuitEvent))` | every window has closed and the app is about to quit; it can still be canceled, unless the OS ends the session |
 | `OnQuit` | the event loop stopped, right before `Run` returns |
 
 Each returns a function that removes the listener.
@@ -87,6 +87,15 @@ mygo.App.OnActivate(func(hasVisibleWindows bool) {
   then quits; `OnBeforeQuit` and `OnWillQuit` listeners can cancel it too.
   Cmd+Q, the Quit menu item and Ctrl+C in the terminal (SIGINT and SIGTERM)
   quit the same way; a second signal exits at once.
+- When the OS ends the session (logout, restart, shutdown) on Windows and
+  macOS, the quit listeners and the windows' `OnClose` run all the same,
+  in that order and before `OnQuit`, but can't cancel it: the
+  `QuitEvent`'s `SessionEnding` is set, and the process may end as soon as
+  they and `OnQuit` return. Save what must survive synchronously there,
+  without dialogs or goroutines to wait for. A quit that already ran them
+  only finishes. Linux tells MyGo of no session end: shutdown, and a
+  logout that stops the user's processes, send SIGTERM, which quits like
+  `App.Quit()`.
 - `App.Exit(code)` exits right away, without events.
 - `App.Relaunch()` quits, then starts the app again with the same
   arguments, for example after a setting that needs a restart.

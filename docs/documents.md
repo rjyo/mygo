@@ -221,6 +221,10 @@ must ask keeps the window open until the user answers; a quit waits for the
 documents, then quits, and Cancel keeps every window open. The quit's
 `OnBeforeQuit` listeners run again then.
 
+When the OS ends the session (logout, restart, shutdown on Windows and
+macOS), there is no time to ask: the documents are saved in place or kept
+at once, `AskOnQuit` or not, and come back edited at the next launch.
+
 A window destroyed without asking (`Window.Destroy`, `App.Exit`) keeps the
 recovery copy of its document's unsaved changes, which come back at the
 next launch.

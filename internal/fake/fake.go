@@ -257,6 +257,11 @@ func (b *Backend) QuitRequested() bool {
 	return false
 }
 
+// EndSession simulates the OS ending the session (WM_ENDSESSION,
+// applicationWillTerminate:): the app is told it terminates, and its event
+// loop does not stop first.
+func (b *Backend) EndSession() { b.h.Terminating() }
+
 // SetNoSessionState makes the pages keep no session state, as
 // WebView2's: SessionState returns nil and RestoreSessionState fails.
 func (b *Backend) SetNoSessionState(v bool) { b.mu.Lock(); b.noSession = v; b.mu.Unlock() }

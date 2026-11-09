@@ -519,6 +519,18 @@ func TestDocumentQuit(t *testing.T) {
 	answer("Don’t Save")
 	onMainValue(fb.QuitRequested)
 	<-quits
+
+	// The OS ends the session: kept right away, without asking or waiting,
+	// even with AskOnQuit and a listener before that tried to cancel.
+	a.Set("ask again")
+	asked = answer("Cancel")
+	e := &QuitEvent{SessionEnding: true}
+	e.PreventDefault()
+	before := a.backedUpAt()
+	onMain(func() { documentsBeforeQuit(e) })
+	if len(asked.all()) != 0 || a.backedUpAt() == before || docQuit.running {
+		t.Errorf("at the session's end: asked %q, backed up %v (was %v), waiting %v", asked.all(), a.backedUpAt(), before, docQuit.running)
+	}
 }
 
 func (b *docBase) backedUpAt() uint64 {
