@@ -43,6 +43,22 @@ type EditorOptions struct {
 	// quotations. What it leaves zero, and all of it when nil, takes the
 	// window theme's DefaultTheme.
 	Theme *Theme
+	// Menu builds the context menu in place of the editor's own, as
+	// Element.ContextMenu's function does: an app with a menu of its own
+	// opens it there, and adds nothing to show none of the system's.
+	Menu func(m *ui.Menu)
+	// OnKey is asked about a key pressed in the editor before the editor
+	// acts on it, as an app's popup over the text (a list of completions)
+	// takes the arrows, Enter and Escape: true takes the key, and the
+	// editor does nothing with it.
+	OnKey func(key ui.Key, mods ui.Modifiers) bool
+	// Spans is given the spans paragraph p (from 0) of style is drawn as
+	// and returns them as they are to be drawn: split, colored or spaced
+	// otherwise, their text the same, as an app colors a block of code by
+	// its language or spaces the letters. Change SpansVersion when what
+	// it does changes, for the paragraphs to be laid out again.
+	Spans        func(p int, style ParagraphStyle, spans []ui.Span) []ui.Span
+	SpansVersion int
 }
 
 // Editor creates an editor of doc's attributed text, as NSTextView edits
@@ -241,7 +257,11 @@ func build(c *ui.Context, doc *Document, options []EditorOptions, styled bool) u
 	e.HandleInput(v.input)
 	e.Cursor(v.cursor)
 	e.Draw(v.paint)
-	e.ContextMenu(v.menu)
+	if v.opts.Menu != nil {
+		e.ContextMenu(v.opts.Menu)
+	} else {
+		e.ContextMenu(v.menu)
+	}
 	if styled {
 		e.FocusRing(false)
 	}
@@ -408,10 +428,12 @@ type lookKey struct {
 	base  ui.Font
 	theme Theme
 	tags  bool
+	spans bool
+	ver   int
 }
 
 func (v *view) lookKey() lookKey {
-	return lookKey{base: v.base, theme: v.look.Theme, tags: v.look.tagStyle != nil}
+	return lookKey{base: v.base, theme: v.look.Theme, tags: v.look.tagStyle != nil, spans: v.opts.Spans != nil, ver: v.opts.SpansVersion}
 }
 
 // heading returns the style of headings of level, from 1.
@@ -612,6 +634,9 @@ func (v *view) paraLayout(p int) *paraView {
 	}
 	if compose != "" {
 		spans = append(spans, v.look.span(compose, typing, para.style))
+	}
+	if v.opts.Spans != nil {
+		spans = v.opts.Spans(p, para.style, spans)
 	}
 	// The indent is on the side the paragraph starts at, the right of one
 	// reading right to left.

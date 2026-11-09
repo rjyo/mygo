@@ -13,6 +13,11 @@ const scrollbarWidth = 10
 // input takes the editor's input as it comes: keys, text, edit commands,
 // the pointer and the wheel.
 func (v *view) input(ev ui.InputEvent) bool {
+	// The app is asked first, before the editor takes the document's state
+	// and gives its own back: what the app does to the document is kept.
+	if ev.Kind == ui.InputKeyDown && v.opts.OnKey != nil && v.opts.OnKey(ev.Key, ev.Mods) {
+		return true
+	}
 	v.sync()
 	defer v.publish()
 	switch ev.Kind {

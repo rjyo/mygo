@@ -687,3 +687,109 @@ func TestAttachmentLinkBounds(t *testing.T) {
 		})
 	}
 }
+
+// OnKey is asked first: a key it takes does nothing in the editor, and one it lets go is the editor's as before.
+func TestRichTextOnKey(t *testing.T) {
+	doc := NewDocument(NewText("one\ntwo"))
+	var asked []ui.Key
+	tt := ui.NewTester(func(c *ui.Context) {
+		Editor(c, doc, EditorOptions{OnKey: func(k ui.Key, _ ui.Modifiers) bool {
+			asked = append(asked, k)
+			return k == ui.KeyDown || k == ui.KeyEnter
+		}}).Fill()
+	}, 500, 400)
+	tt.Press(10, 10)
+	tt.Release(10, 10)
+	doc.SetSelection(1, 1)
+	tt.Frame()
+	tt.Key(0, ui.KeyDown)
+	tt.Key(0, ui.KeyEnter)
+	if _, c := doc.Selection(); c != 1 || doc.Text().String() != "one\ntwo" {
+		t.Fatalf("a key taken by OnKey moved or changed the text: caret %d, %q", c, doc.Text().String())
+	}
+	tt.Key(0, ui.KeyRight)
+	if _, c := doc.Selection(); c != 2 {
+		t.Fatalf("a key let go is not the editor's: caret %d", c)
+	}
+	if len(asked) != 3 {
+		t.Fatalf("asked about %v", asked)
+	}
+	// what OnKey does to the document is kept: the editor does not give its own selection back over it
+	tt2 := ui.NewTester(func(c *ui.Context) {
+		Editor(c, doc, EditorOptions{OnKey: func(k ui.Key, _ ui.Modifiers) bool {
+			if k == ui.KeyEnter {
+				doc.Edit(func(ed *Edit) { ed.Replace(0, 3, NewText("ONE")); ed.Select(1, 1) })
+				return true
+			}
+			return false
+		}}).Fill()
+	}, 500, 400)
+	tt2.Press(10, 10)
+	tt2.Release(10, 10)
+	doc.SetSelection(3, 3)
+	tt2.Frame()
+	tt2.Key(0, ui.KeyEnter)
+	tt2.Frame()
+	if _, c := doc.Selection(); c != 1 || doc.Text().String() != "ONE\ntwo" {
+		t.Fatalf("what OnKey did was undone: caret %d, %q", c, doc.Text().String())
+	}
+}
+
+// Spans is given each paragraph's spans to draw them otherwise, its text the same; the layouts it made are kept until
+// SpansVersion changes.
+func TestRichTextSpans(t *testing.T) {
+	doc := NewDocument(NewText("plain\ncolored"))
+	calls, ver, red := 0, 0, false
+	draw := func(c *ui.Context) {
+		opts := EditorOptions{SpansVersion: ver}
+		if red {
+			opts.Spans = func(_ int, st ParagraphStyle, spans []ui.Span) []ui.Span {
+				calls++
+				for i := range spans {
+					spans[i].Color = ui.RGB(220, 0, 0)
+					spans[i].LetterSpacing = 2
+				}
+				return spans
+			}
+		}
+		Editor(c, doc, opts).Fill()
+	}
+	tt := ui.NewTester(draw, 500, 300)
+	tt.Frame()
+	plain := bytes.Clone(tt.Image().Pix)
+	red = true
+	tt.Frame()
+	if calls == 0 || bytes.Equal(tt.Image().Pix, plain) {
+		t.Fatalf("the spans were not drawn otherwise: %d calls", calls)
+	}
+	was := calls
+	tt.Frame()
+	if calls != was {
+		t.Fatalf("laid out again with nothing changed: %d calls", calls-was)
+	}
+	ver++
+	tt.Frame()
+	if calls == was {
+		t.Fatal("not laid out again when the version changed")
+	}
+	if doc.Text().String() != "plain\ncolored" {
+		t.Fatal("the text changed")
+	}
+}
+
+// Menu builds the editor's context menu in place of its own: a right click shows the app's items, not the editor's.
+func TestRichTextMenu(t *testing.T) {
+	doc := NewDocument(NewText("some text"))
+	tt := ui.NewTester(func(c *ui.Context) {
+		Editor(c, doc, EditorOptions{Menu: func(m *ui.Menu) { m.Item("Ask the app") }}).Fill()
+	}, 500, 300)
+	tt.RightClickAt(40, 20)
+	if got := tt.Menu(); len(got) != 1 || got[0] != "Ask the app" {
+		t.Fatalf("the menu: %q", got)
+	}
+	plain := ui.NewTester(func(c *ui.Context) { Editor(c, NewDocument(NewText("some text"))).Fill() }, 500, 300)
+	plain.RightClickAt(40, 20)
+	if got := plain.Menu(); len(got) > 0 && got[0] == "Ask the app" {
+		t.Fatalf("without Menu, the app's item: %q", got)
+	}
+}

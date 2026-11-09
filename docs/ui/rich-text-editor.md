@@ -189,6 +189,16 @@ made through the document. `EditorOptions` set:
 - `OnLink`, to open links itself instead of the system;
 - `OnLinkCommand`, to ask for a link's URL on ⌘K, as in a popover;
 - `TagStyle`, to style the runs that carry a `Tag`.
+- `Menu`, to build the context menu in place of the editor's own, as an app
+  with a menu of its own opens it;
+- `OnKey`, asked about a key before the editor acts on it, as an app's
+  popup over the text (a list of completions) takes the arrows, Enter and
+  Escape: true takes the key;
+- `Spans`, given the spans a paragraph is drawn as and returning them
+  split, colored or spaced otherwise, their text the same, as an app colors
+  a block of code by its language or spaces the letters; change
+  `SpansVersion` when what it does changes, for the paragraphs to be laid
+  out again;
 - `Theme`, how the text looks (see [Theme](#theme)).
 
 The keys are those of word processors, with Control in place of Command off
