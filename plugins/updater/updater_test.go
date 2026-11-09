@@ -33,7 +33,7 @@ func newHarness(t *testing.T, opts Options) *harness {
 	saved := []func(){
 		func(e func() bool) func() { return func() { enabled = e } }(enabled),
 		func(c func(context.Context) (*release, error)) func() { return func() { check = c } }(check),
-		func(r func()) func() { return func() { relaunch = r } }(relaunch),
+		func(r func(...string)) func() { return func() { relaunch = r } }(relaunch),
 		func(v func() string) func() { return func() { appVersion = v } }(appVersion),
 		func(l func() string) func() { return func() { locale = l } }(locale),
 		func(d func() (string, error)) func() { return func() { stateDir = d } }(stateDir),
@@ -50,7 +50,7 @@ func newHarness(t *testing.T, opts Options) *harness {
 		h.checks.Add(1)
 		return h.result(ctx)
 	}
-	relaunch = func() { h.relaunches.Add(1) }
+	relaunch = func(...string) { h.relaunches.Add(1) }
 	appVersion = func() string { return "1.0.0" }
 	locale = func() string { return "en-US" }
 	stateDir = func() (string, error) { return h.dir, nil }

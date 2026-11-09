@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -45,6 +46,17 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	case "exit":
 		os.Exit(3)
+	case "relaunch":
+		// Like an app whose App.Relaunch passed arguments (devRelaunch in
+		// package mygo): it writes them, each ended with NUL, and exits.
+		var b []byte
+		for _, a := range []string{"--reason", "a b", ""} {
+			b = append(append(b, a...), 0)
+		}
+		if os.WriteFile(os.Getenv("MYGO_DEV_RELAUNCH"), b, 0o600) != nil {
+			os.Exit(2)
+		}
+		os.Exit(devRelaunchCode)
 	case "spawn-output-child":
 		child := fakeChild(os.Args[0], "hold-output")
 		switch os.Getenv("MYGO_FAKE_OUTPUT") {
@@ -143,6 +155,37 @@ func TestDevLaunch(t *testing.T) {
 	p.stop()
 	if p.err == nil {
 		t.Error("a build killed exited cleanly")
+	}
+}
+
+// TestDevRelaunchArgs: a build that mygo.App.Relaunch asks to start again
+// with arguments is started with them, once.
+func TestDevRelaunchArgs(t *testing.T) {
+	s := &devSession{root: t.TempDir()}
+	t.Setenv("MYGO_FAKE_APP", "relaunch")
+	p, err := s.launch(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	wait.For(t, "the build to exit", p.done)
+	var exit *exec.ExitError
+	if !errors.As(p.err, &exit) || exit.ExitCode() != devRelaunchCode {
+		t.Fatalf("exit: %v", p.err)
+	}
+	args := s.takeRelaunchArgs()
+	if want := []string{"--reason", "a b", ""}; !slices.Equal(args, want) {
+		t.Errorf("relaunch arguments %q, want %q", args, want)
+	}
+	if again := s.takeRelaunchArgs(); again != nil {
+		t.Errorf("taken twice: %q", again)
+	}
+	t.Setenv("MYGO_FAKE_APP", "exit")
+	if p, err = s.launch(os.Args[0], args...); err != nil {
+		t.Fatal(err)
+	}
+	wait.For(t, "the build to exit", p.done)
+	if !slices.Equal(p.cmd.Args[1:], args) {
+		t.Errorf("started with %q, want %q", p.cmd.Args[1:], args)
 	}
 }
 

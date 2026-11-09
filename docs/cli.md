@@ -106,7 +106,7 @@ build quits, then the new one starts, so the two never hold the same files,
 locks or web view profile at once. A build that fails to compile keeps the
 running one. Frontend changes are the dev server's to handle. Quitting the app, or
 Ctrl+C, ends mygo dev (press Ctrl+C again not to wait for the app to quit),
-and `App.Relaunch` restarts the app.
+and `App.Relaunch` restarts the app, with the arguments it passes.
 
 On a terminal, each step shows a spinner with what it does, such as the Go
 packages being compiled, then how long it took; what the dev server and the

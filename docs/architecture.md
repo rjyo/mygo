@@ -1855,9 +1855,16 @@ as in Tauri:
   `keyAELaunchedAsLogInItem` in the launch Apple Event instead.
 - `Relaunch` runs the quit sequence, then (after `OnQuit`, which releases
   the single instance lock) starts the executable again with the same
-  arguments and working directory. A development build exits with code 75
-  instead, and `mygo dev` starts the same build again, also when that
-  happens before it was ready.
+  arguments, or those passed to `Relaunch` in their place
+  (`relaunchArguments`), and the working directory it started in: on macOS
+  through `open -n <bundle> --args …`, or, with an update staged, through
+  the update's helper, which reads `open`'s arguments from the
+  `relaunch` file of its work directory (a `set --` line of the shell,
+  quoted), written only then. A development build exits with code 75
+  instead, after writing `Relaunch`'s arguments, each ended with a NUL
+  byte, in the file that `MYGO_DEV_RELAUNCH` names
+  (`.mygo/dev/relaunch-args`), and `mygo dev` starts the same build again
+  with them, also when that happens before it was ready.
 - Updates (`updater.go`, `internal/update`, `cmd/mygo/updates.go`), in pure
   Go on every platform. `mygo keygen` creates an Ed25519 key pair; with
   `updates` in the configuration (the public key, and a GitHub repository or a base
@@ -5624,7 +5631,8 @@ make it work:
   directory and renamed into place, so the running build keeps its files.
   - Builds run with `MYGO_DEV=1`, which the core takes out of its
     environment (`dev.go`): `App.Relaunch` then exits with code 75, which
-    has `mygo dev` start the same build again. Production builds ignore it.
+    has `mygo dev` start the same build again, with the arguments
+    `Relaunch` wrote in the file of `MYGO_DEV_RELAUNCH`. Production builds ignore it.
     A build counts as started once its process is: one that crashes on
     start is reported as it exits.
   - *Reload.* A change (polling every 250 ms, debounced) rebuilds;

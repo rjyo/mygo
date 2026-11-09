@@ -99,14 +99,14 @@ func TestDockMenuAndRelaunch(t *testing.T) {
 		canceled <- struct{}{}
 	})
 	defer off()
-	App.Relaunch()
+	App.Relaunch("--after-restart")
 	select {
 	case <-canceled:
 	case <-time.After(wait.Guard):
 		t.Fatal("Relaunch did not start quitting")
 	}
-	if onMainValue(func() bool { return App.relaunch }) {
-		t.Error("a canceled relaunch is still pending")
+	if onMainValue(func() bool { return App.relaunch || App.relaunchArgs != nil }) {
+		t.Error("a canceled relaunch is still pending, or its arguments")
 	}
 }
 

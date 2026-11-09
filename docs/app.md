@@ -90,6 +90,17 @@ mygo.App.OnActivate(func(hasVisibleWindows bool) {
 - `App.Exit(code)` exits right away, without events.
 - `App.Relaunch()` quits, then starts the app again with the same
   arguments, for example after a setting that needs a restart.
+  `App.Relaunch(args...)` passes other arguments instead, which replace
+  those the app started with, so that the new instance knows why it
+  starts, without a file the two would share:
+
+  ```go
+  mygo.App.Relaunch("--safe-mode")
+  ```
+
+  They reach the new instance on macOS (through Launch Services, also after
+  an update), Linux and Windows, and under `mygo dev`. In browsers
+  `Relaunch` only quits.
 
 ## A single instance
 

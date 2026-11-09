@@ -352,8 +352,9 @@ func (s *devSession) run(ctx context.Context, c *Config) error {
 			s.setApp(nil)
 			var exit *exec.ExitError
 			if errors.As(err, &exit) && exit.ExitCode() == devRelaunchCode {
-				// mygo.App.Relaunch: start the same build again.
-				p, err := s.launch(exe)
+				// mygo.App.Relaunch: start the same build again, with
+				// the arguments it passed.
+				p, err := s.launch(exe, s.takeRelaunchArgs()...)
 				if err != nil {
 					con.println("  " + red(con.sym.fail) + " Relaunching " + s.name)
 					con.details(err)
@@ -778,9 +779,15 @@ func (s *devSession) icon(c *Config) ([]byte, error) {
 	return s.icns, nil
 }
 
-// launch starts a build. MYGO_DEV=1 tells it that mygo dev runs it, which
-// mygo.App.Relaunch asks to start it again.
-func (s *devSession) launch(exe string) (*devProcess, error) {
+// launch starts a build with args. MYGO_DEV=1 tells it that mygo dev runs
+// it, which mygo.App.Relaunch asks to start it again, with the arguments
+// it writes in the file MYGO_DEV_RELAUNCH names (takeRelaunchArgs).
+func (s *devSession) launch(exe string, args ...string) (*devProcess, error) {
+	relaunch := s.relaunchFile()
+	if err := os.MkdirAll(filepath.Dir(relaunch), 0o755); err != nil {
+		return nil, err
+	}
+	_ = os.Remove(relaunch) // left by a build that did not relaunch
 	stdout, outDone, err := pipe(con.output("app", os.Stdout))
 	if err != nil {
 		return nil, err
@@ -790,10 +797,10 @@ func (s *devSession) launch(exe string) (*devProcess, error) {
 		stdout.Close()
 		return nil, err
 	}
-	cmd := exec.Command(exe)
+	cmd := exec.Command(exe, args...)
 	cmd.Dir = s.root
 	cmd.Stdout, cmd.Stderr = stdout, stderr
-	cmd.Env = append(append(os.Environ(), s.env...), "MYGO_DEV=1")
+	cmd.Env = append(append(os.Environ(), s.env...), "MYGO_DEV=1", "MYGO_DEV_RELAUNCH="+relaunch)
 	setProcessGroup(cmd)
 	err = cmd.Start()
 	stdout.Close()
@@ -818,6 +825,25 @@ func (s *devSession) launch(exe string) (*devProcess, error) {
 		close(p.done)
 	}()
 	return p, nil
+}
+
+// relaunchFile is where a build that mygo.App.Relaunch asks to start
+// again writes the arguments it passes.
+func (s *devSession) relaunchFile() string {
+	return filepath.Join(s.root, ".mygo", "dev", "relaunch-args")
+}
+
+// takeRelaunchArgs returns the arguments that the build that exited with
+// devRelaunchCode passed to mygo.App.Relaunch, each ended with a NUL
+// byte, and removes their file: none when it passed none.
+func (s *devSession) takeRelaunchArgs() []string {
+	b, err := os.ReadFile(s.relaunchFile())
+	if err != nil {
+		return nil
+	}
+	_ = os.Remove(s.relaunchFile())
+	args := strings.Split(string(b), "\x00")
+	return args[:len(args)-1]
 }
 
 // devProcess is a running development build.

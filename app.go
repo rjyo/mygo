@@ -71,6 +71,10 @@ type Application struct {
 	relaunch    bool // Relaunch: start again once quit (main thread)
 	initialized bool // Run initialized the backend (main thread)
 
+	// relaunchArgs are Relaunch's arguments, nil for the ones the app
+	// started with (main thread).
+	relaunchArgs []string
+
 	// Dock controls the Dock icon on macOS.
 	Dock *Dock
 	// JumpList controls the jump list of the taskbar button on Windows.

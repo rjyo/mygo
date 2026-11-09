@@ -18,6 +18,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -536,4 +538,67 @@ func TestWorkPattern(t *testing.T) {
 		t.Fatal(err)
 	}
 	os.Remove(dir)
+}
+
+// TestRelaunchArguments: Relaunch's arguments replace those the app
+// started with, and reach the new instance however it is started: by
+// itself, through Launch Services, after a staged update on macOS, and
+// under mygo dev.
+func TestRelaunchArguments(t *testing.T) {
+	args := []string{"--reason", "it's an update", "a b", `$HOME "quoted" \ back`, "line\nbreak", ""}
+	onMain(func() {
+		if got := relaunchArguments(); !slices.Equal(got, os.Args[1:]) {
+			t.Errorf("without arguments: %q, want the app's %q", got, os.Args[1:])
+		}
+		App.relaunchArgs = args
+		defer func() { App.relaunchArgs = nil }()
+		if got := relaunchArguments(); !slices.Equal(got, args) {
+			t.Errorf("with arguments: %q", got)
+		}
+	})
+
+	if got := openArgs("/A.app", nil); !slices.Equal(got, []string{"/A.app"}) {
+		t.Errorf("open without arguments: %q", got)
+	}
+	if got := openArgs("/A.app", args); !slices.Equal(got, append([]string{"/A.app", "--args"}, args...)) {
+		t.Errorf("open with arguments: %q", got)
+	}
+
+	dev := strings.Split(string(devRelaunchData(args)), "\x00")
+	if !slices.Equal(dev[:len(dev)-1], args) {
+		t.Errorf("for mygo dev: %q", dev)
+	}
+
+	if runtime.GOOS == "windows" {
+		return
+	}
+	// The script that installs a staged update opens the app with the
+	// arguments of open that the relaunch file sets, as Relaunch wrote
+	// them once the update was staged. It prints them here.
+	dir := t.TempDir()
+	target, bundle, work := filepath.Join(dir, "A.app"), filepath.Join(dir, "new", "A.app"), filepath.Join(dir, "work")
+	for _, d := range []string{target, bundle, work} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(work, "relaunch"), []byte(setArgs(openArgs(target, args))), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	exited := exec.Command("/bin/sh", "-c", "exit 0")
+	if err := exited.Run(); err != nil {
+		t.Fatal(err)
+	}
+	script := strings.Replace(installAfterExit, "exec /usr/bin/open", `printf '%s\0'`, 1)
+	out, err := exec.Command("/bin/sh", "-c", script, "mygo-update", strconv.Itoa(exited.Process.Pid), target, bundle, work).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Split(string(out), "\x00")
+	if want := openArgs(target, args); !slices.Equal(got[:len(got)-1], want) {
+		t.Errorf("the update opened the app with %q, want %q", got, want)
+	}
+	if _, err := os.Stat(work); !os.IsNotExist(err) {
+		t.Error("the update left its work")
+	}
 }
