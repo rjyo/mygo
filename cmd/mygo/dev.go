@@ -61,6 +61,7 @@ keep it: the app's own setting is left as it is.`)
 	port := flags.Int("port", 5174, "with -web, the port to serve the app at, or the next free one")
 	openPage := flags.Bool("open", true, "with -web, open the app in the browser")
 	lang := flags.String("lang", "", "run the app in this language (as de, or the pseudo locales en-XA and ar-XB), without keeping it")
+	background := flags.Bool("background", false, "start the app, and again after each rebuild, without bringing it to the front")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -82,6 +83,9 @@ keep it: the app's own setting is left as it is.`)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	s := &devSession{root: c.root, sign: devSign(c, *sign), name: devConfig(c).Name, env: []string{"MYGO_ENV=development"}}
+	if *background {
+		s.env = append(s.env, "MYGO_DEV_BACKGROUND=1")
+	}
 	if locale != "" {
 		// The app reads it as it starts, over the language it keeps.
 		s.env = append(s.env, "MYGO_LOCALE="+locale)

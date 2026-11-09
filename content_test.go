@@ -628,3 +628,48 @@ func (st *shotState) view(c *ui.Context) {
 		p.ImageRegion(st.bitmap, ui.Rect{}, r, ui.ImageOptions{})
 	})
 }
+
+// TestBackgroundShowsWindowsInactive checks an app `mygo dev
+// -background` launched: its windows, of native UI or pages, those
+// NewWindow shows and one made Hidden that the app shows itself, show
+// without the focus, which would bring the app to the front, until a
+// window of the app takes the focus, as the user clicks it; then as
+// before.
+func TestBackgroundShowsWindowsInactive(t *testing.T) {
+	last := func() *fake.Window { wins := fb.Windows(); return wins[len(wins)-1] }
+	show := func(content bool, title string) *fake.Window {
+		var fw *fake.Window
+		onMain(func() {
+			opts := WindowOptions{Title: title}
+			if content {
+				opts.Content = ui.View(func(c *ui.Context) { ui.Text(c, title) })
+			}
+			w := NewWindow(opts)
+			t.Cleanup(w.Destroy)
+			fw = last()
+		})
+		onMain(func() {}) // the next turn shows a window of native UI
+		return fw
+	}
+	for _, content := range []bool{true, false} {
+		onMain(func() { backgroundShow = true })
+		first, second := show(content, "First"), show(content, "Second")
+		var shown *fake.Window
+		onMain(func() {
+			w := NewWindow(WindowOptions{Title: "Shown", Hidden: true})
+			t.Cleanup(w.Destroy)
+			shown = last()
+			w.Show()
+		})
+		for _, fw := range []*fake.Window{first, second, shown} {
+			if !fw.IsVisible() || fw.IsFocused() {
+				t.Errorf("content %v: %s visible %v, focused %v; want shown without the focus", content, fw.Opts.Title, fw.IsVisible(), fw.IsFocused())
+			}
+		}
+		// The user clicks one.
+		onMain(func() { first.Focus() })
+		if third := show(content, "Third"); !third.IsVisible() || !third.IsFocused() {
+			t.Errorf("content %v: after a window took the focus, a new one visible %v, focused %v; want shown focused", content, third.IsVisible(), third.IsFocused())
+		}
+	}
+}

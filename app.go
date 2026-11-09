@@ -131,6 +131,7 @@ func (a *Application) Run() error {
 		Name:             a.Name(),
 		ActivationPolicy: string(a.ActivationPolicy()),
 		DMABUFRenderer:   string(a.dmabuf),
+		Background:       devBackground,
 	}); err != nil {
 		return err
 	}
@@ -746,7 +747,10 @@ func (appHandler) Terminating() {
 func (appHandler) Activated(visible bool) {
 	fire1(&App.onActivate, visible)
 }
-func (appHandler) DidBecomeActive() { fire(&App.onDidBecomeActive) }
+func (appHandler) DidBecomeActive() {
+	backgroundShow = false
+	fire(&App.onDidBecomeActive)
+}
 func (appHandler) DidResignActive() { fire(&App.onDidResignActive) }
 func (appHandler) OpenURLs(urls []string) {
 	for _, u := range urls {

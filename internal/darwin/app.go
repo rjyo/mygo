@@ -20,6 +20,10 @@ type Backend struct {
 	source   uintptr
 	mainLoop uintptr
 
+	// background is AppOptions.Background: the app does not come to the
+	// front as it finishes launching.
+	background bool
+
 	// Lookup tables for Objective-C callbacks. Main thread only.
 	byDelegate map[id]*window
 	byWebView  map[id]*window
@@ -101,6 +105,7 @@ func activationPolicy(p string) uintptr {
 
 func (b *Backend) Init(h platform.AppHandler, opts platform.AppOptions) error {
 	b.h = h
+	b.background = opts.Background
 	theBackend = b
 	registerClasses()
 
@@ -294,7 +299,7 @@ func registerAppDelegate() {
 		}),
 		method("applicationDidFinishLaunching:", func(self id, _ objc.SEL, n id) {
 			b := theBackend
-			if send(b.app, "activationPolicy") == nsApplicationActivationPolicyRegular {
+			if send(b.app, "activationPolicy") == nsApplicationActivationPolicyRegular && !b.background {
 				// Plain executables (go run) do not come to the front on
 				// their own.
 				send(b.app, "activateIgnoringOtherApps:", 1)

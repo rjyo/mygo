@@ -150,6 +150,7 @@ compiles. `o` opens the page again.
 | `-port` | with `-web`, the port to serve the app at, or the next free one (default: 5174) |
 | `-open` | with `-web`, opens the app in the browser (default: true) |
 | `-lang` | runs the app in a language, such as `de` or `zh-Hant`, or a pseudo locale, `en-XA` or `ar-XB`, without changing the language it keeps; see [trying a language](i18n.md#trying-a-language) |
+| `-background` | starts the app, and again after each rebuild, without bringing it to the front: its windows show without the focus until you click one, so the editor keeps it as you save (a maximized window on Windows still takes it) |
 
 ## mygo build
 

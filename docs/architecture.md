@@ -5771,6 +5771,11 @@ make it work:
     environment (`dev.go`): `App.Relaunch` then exits with code 75, which
     has `mygo dev` start the same build again, with the arguments
     `Relaunch` wrote in the file of `MYGO_DEV_RELAUNCH`. Production builds ignore it.
+    `-background` adds `MYGO_DEV_BACKGROUND=1`, taken out the same way:
+    the app does not come to the front as it launches
+    (`AppOptions.Background`, macOS), and its windows show as
+    `ShowInactive` would (`backgroundShow`) until a window takes the
+    focus or the app becomes active.
     A build counts as started once its process is: one that crashes on
     start is reported as it exits.
   - *Reload.* A change (polling every 250 ms, debounced) rebuilds;

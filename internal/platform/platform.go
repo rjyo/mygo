@@ -184,6 +184,11 @@ type AppOptions struct {
 	// DMABUFRenderer is "off" (or ""), "on" or "auto": whether WebKitGTK
 	// may draw with its DMA-BUF renderer. Only meaningful on Linux.
 	DMABUFRenderer string
+	// Background starts the app without bringing it to the front, as
+	// `mygo dev -background` asks. Only meaningful on macOS, where an
+	// executable that is no bundle is brought there as it starts; the
+	// core shows the windows without the focus everywhere.
+	Background bool
 }
 
 // AppHandler receives application level events from the backend.
