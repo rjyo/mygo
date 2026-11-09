@@ -15,6 +15,17 @@ func TestHourCycle(t *testing.T) {
 	}
 }
 
+// The current locale's change is observed under the name Foundation posts
+// it under: observed by the constant's name, it never comes, and the region
+// is read only at the time format's notification, before the current
+// locale has the new format, one change behind.
+func TestCurrentLocaleDidChangeName(t *testing.T) {
+	load()
+	if got := goString(currentLocaleDidChange()); got != "kCFLocaleCurrentLocaleDidChangeNotification" {
+		t.Errorf("NSCurrentLocaleDidChangeNotification is posted as %q", got)
+	}
+}
+
 // TestLocales reads the user's languages and formats, and keeps the app's
 // language in its own defaults, where the global languages do not see it.
 func TestLocales(t *testing.T) {
