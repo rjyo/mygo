@@ -697,6 +697,13 @@ func (rt *engine) menuPress(chain []uint64, x, y float32) bool {
 			}
 		}
 	}
+	if s.editor == nil && s.textClient != nil && rt.focused != s.id {
+		// An element of HandleTextInput takes the focus too; its
+		// HandleInput moved the caret with the press.
+		rt.focused = s.id
+		rt.focusVisible = false
+		rt.blinkStart = rt.now()
+	}
 	text := uint64(0)
 	if s.editor != nil {
 		text = s.id

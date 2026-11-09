@@ -522,6 +522,19 @@ func (v *view) editCommand(name string) bool {
 
 // press handles a press of the pointer.
 func (v *view) press(ev ui.InputEvent) bool {
+	if ev.Button == 1 && !v.overScrollbar(ev.X) {
+		// A right-click outside the selection puts the caret where it
+		// is, as in a TextArea, so that the context menu acts there; the
+		// press goes on to open the menu.
+		x, y := v.contentPoint(ev.X, ev.Y)
+		i, aff := v.positionAt(x, y)
+		if a, b := min(v.selAnchor, v.caret), max(v.selAnchor, v.caret); a == b || i < a || i > b {
+			v.commitCompose()
+			v.hasDesired = false
+			v.moveTo(i, aff, false)
+		}
+		return false
+	}
 	if ev.Button != 0 {
 		return false
 	}

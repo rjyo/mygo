@@ -822,3 +822,51 @@ func TestRichTextEditMenu(t *testing.T) {
 		t.Fatalf("the app's menu with EditItems: %q", got)
 	}
 }
+
+// A right-click outside the selection gives the editor the focus and puts
+// the caret where it is, as in a TextArea, so that the menu acts there; one
+// in the selection keeps it.
+func TestRichTextRightClickMovesCaret(t *testing.T) {
+	doc := NewDocument(NewText("first paragraph\nsecond paragraph"))
+	seen := -1
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Column(c).Fill().Children(func() {
+			ui.Button(c, "Other")
+			Editor(c, doc, EditorOptions{Menu: func(m *ui.Menu) {
+				_, seen = doc.Selection()
+				m.EditItems()
+			}}).Fill()
+		})
+	}, 500, 400)
+	doc.SetSelection(32, 32)
+	if err := tt.Click("Other"); err != nil {
+		t.Fatal(err)
+	}
+	ed, ok := tt.Find("Rich text")
+	if !ok {
+		t.Fatal("no editor")
+	}
+	p := doc.VisibleParagraphs()[0]
+	y := ed.Y + p.Top + p.Height/2
+	tt.RightClickAt(30, y)
+	if _, caret := doc.Selection(); caret <= 0 || caret >= len("first paragraph") {
+		t.Errorf("caret at %d after a right-click in the first paragraph", caret)
+	}
+	if _, caret := doc.Selection(); seen != caret {
+		t.Errorf("the menu saw the caret at %d, it is at %d", seen, caret)
+	}
+	if !tt.Focused("Rich text") {
+		t.Error("the editor did not take the focus")
+	}
+	if len(tt.Menu()) == 0 {
+		t.Error("no menu")
+	}
+
+	tt.Key(0, ui.KeyEscape)
+	doc.SetSelection(0, len("first paragraph"))
+	tt.Frame()
+	tt.RightClickAt(30, y)
+	if a, z := doc.Selection(); a != 0 || z != len("first paragraph") {
+		t.Errorf("a right-click in the selection made it %d…%d", a, z)
+	}
+}
