@@ -175,15 +175,20 @@ func styleButton(c *context, b *node, primary bool) {
 	if border.A > 0 {
 		b.Border(1, border)
 	}
-	b.styleFn = func(b *node) {
-		if b.bg != base || b.IsDisabled() {
-			return
-		}
-		if b.Pressed() {
-			b.bg = pressed
-		} else if b.Hovered() {
-			b.bg = hover
-		}
+	b.faces = [3]Color{base, hover, pressed}
+	b.styleFn = styleButtonFace
+}
+
+// styleButtonFace is a button's styleFn: its pressed or hovered background
+// over the one it was built with, unless the view gave it another.
+func styleButtonFace(b *node) {
+	if b.bg != b.faces[0] || b.IsDisabled() {
+		return
+	}
+	if b.Pressed() {
+		b.bg = b.faces[2]
+	} else if b.Hovered() {
+		b.bg = b.faces[1]
 	}
 }
 

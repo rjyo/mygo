@@ -393,7 +393,7 @@ func (rt *engine) webViewKey(v NativeWebView, mods Modifiers, key, physical Key,
 	if id == 0 {
 		return // no element shows it now
 	}
-	rt.redraw = false
+	rt.buildNext()
 	rt.input = true
 	if rt.focused != id {
 		rt.focused = id

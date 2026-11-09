@@ -92,6 +92,8 @@ func (rt *engine) repaintParts() bool {
 		sceneData(s) > 2*rt.partsBase+partsGrowth || atlasGenerations(s) != rt.atlases || rt.transient {
 		return false
 	}
+	rt.painting = true
+	defer func() { rt.painting = false }()
 	rt.partPaints++
 	n := len(s.Ops)
 	// The canvases the last frame drew are drawn: those the parts draw

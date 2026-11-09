@@ -2970,14 +2970,29 @@ either.
   their grid areas, as auto while the tracks are sized), laying out again
   only what changed since the last frame (see below); commits the boxes to the elements'
   states with the hit list in paint order, the focus order and the labels;
-  paints a `scene.Scene`; and presents it. Input between frames goes to the
+  paints a `scene.Scene`; and presents it. The pointer finds what it is
+  over in the hit list, last first (`appendHitChain`, `contains`): an
+  element whose visible part, clipped as commit found it (`state.vx`..),
+  does not hold the point is passed by before its transform is inverted,
+  unless its scroll containers moved or a pose moved it since
+  (`state.reposed`), so that a move over a large tree costs little;
+  `TestHitFilterMatches` compares with every box tested
+  (`engine.noHitFilter`). Input between frames goes to the
   states of the last frame's elements. A release that comes with moves no
   pass read waits in the element's state (`releaseLater`) for the pass
   that reads them, which applies it as it ends (`forgetInput`): the view
   sees the element still pressed where the pointer let go, and released
   in the pass after. An element's identity hashes its
   parent's with its position or `Key`, so focus, scroll offsets, editors and
-  animations survive rebuilding. `prune` drops the states the frame did
+  animations survive rebuilding. Each pass lists the states it looks up
+  (`engine.built`, `nbuilt` of them, `lookState`, less those `unlook`
+  gives back): `forgetInput` visits those alone, `prune` looks for states
+  to drop only when the pass built fewer than there are, and the formats
+  of native drop targets are gathered only in a pass that made one
+  (`noteTarget`), so that what a frame costs past building follows what
+  it built rather than every state of a map; ui's tests check the lists
+  each frame (`checkFrames`, `checkBuilt`), its benchmarks do not.
+  `prune` drops the states the frame did
   not build (but those of pages Routers keep) and recycles them; a state
   with `Local` values that are `io.Closer`s (`state.closes`, which
   `Local` fills as it makes one, so that other states cost nothing) hands
@@ -3058,14 +3073,40 @@ either.
   glyphs, stops and words than `partsGrowth` past what the whole frame
   held. `TestRepaintPartsMatchWhole` compares the frames with those
   painted whole (`engine.noParts`). Such a frame is asked for with
-  `redraw` set, which every event of the surface clears, so that the frame
-  builds anew in case the event changed what the view shows; anything
-  asking for a frame clears it too, and the frame `Painter.After` has due
-  with it, which the frame asked for replaces: `requestFrame`,
-  `Conn.Changed` (`Window.Update`, `Invalidate`, and `After`'s timer
-  through them) and a change of the appearance. An event that asks for no
-  frame, as the pointer moving over elements that do not look at it,
-  leaves that frame due. A frame of another size, or after the text
+  `redraw` set, which every event of the surface clears (`buildNext`), so
+  that the frame builds anew in case the event changed what the view
+  shows; anything asking for a frame built anew clears it too (`askBuild`),
+  and the frame `Painter.After` has due with it, which the frame asked
+  for replaces: `requestFrame`, `Conn.Changed` (`Window.Update`,
+  `Invalidate`, and `After`'s timer through them) and a change of the
+  appearance. An event that asks for no frame, as the pointer moving over
+  elements that do not look at it, leaves that frame due.
+  A hover that only changes looks paints the last frame's elements again,
+  whole, rather than building the view (`lookDue`, `askLook`), as browsers
+  restyle and repaint for `:hover` without running a page's scripts: a
+  button the pointer comes over in a window of thousands of elements costs
+  a paint, not the whole view. `Hovered` notes who reads it: the view, as
+  it builds (`state.hoverBuilt`, reset as the pass looks the state up), or
+  painting (`hoverLook`, reset as `Painter.element` paints it), as the
+  controls' styleFns pick hovered backgrounds and borders and scroll
+  containers show their bars. `hoverNeeds` looks at the elements that
+  came under the pointer or left it alone (those hovered still see no
+  change): one read as built, showing a tip, with a `Transition` (whose
+  colors move in frames built anew), or looking at its hover
+  (`flagHover`) without having told how, builds anew, as do elements
+  following the pointer (`flagTrackPointer`) anywhere in either chain and
+  a window the inspector shows; one read only as painted paints. A frame
+  built anew asked for since (`buildAsked`) shows the hover, so none is
+  asked then, and asking for one clears `lookDue`; a move bringing other
+  modifier keys builds anew, as views may show what they do. The frame
+  that builds a scroll's rows under a still pointer paints their looks
+  already (`rehover(false)`); after it presents, a hover moved by `prune`
+  asks for a frame painting (`rehover(true)`). A styleFn changes the
+  colors and opacity of its element as it paints, so painting it again
+  starts from those it was built with (`node.built`, kept as it first
+  paints, `styled`), not from what the last painting chose.
+  `TestHoverLookPaintsAsBuilt` compares each frame painted for a hover
+  with the frame built anew, over many controls. A frame of another size, or after the text
   system forgot its layouts (`text.System.Generation`, as it lets go of
   fonts the elements' layouts hold), builds anew all the same. The timers
   the last frame built armed stay; the host arms them (`afterTimer`,

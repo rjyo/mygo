@@ -440,6 +440,17 @@ func (rt *engine) containsScrolled(s *state, r Rect, x, y float32, scrolled bool
 			}
 		}
 	}
+	if !scrolled && !s.reposed && !rt.noHitFilter && r == (Rect{s.x, s.y, s.w, s.h}) {
+		// Outside what of its box showed, clipped as commit found it, the
+		// point is in none of it: most of a large tree's elements are
+		// told so at once, without inverting their transforms. The
+		// margin keeps rounding from telling apart what the test below
+		// takes.
+		const m = 0.5
+		if x < s.vx-m || y < s.vy-m || x >= s.vx+s.vw+m || y >= s.vy+s.vh+m {
+			return false
+		}
+	}
 	m, ok := s.world.Inverse()
 	if !ok {
 		return false

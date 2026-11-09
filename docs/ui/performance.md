@@ -26,6 +26,57 @@ or interaction.
 The label and list fixtures use the public API. The diff fixture uses the
 private renderer API and measures its steady-frame allocation floor.
 
+## What a frame costs
+
+A window draws a frame only when something asks for one: input that may
+change what the view shows, `Window.Update` or `Invalidate`, a timer from
+`After`, or something that moves. Most frames build the view anew: your
+view function runs whole, and MyGo compares, lays out and places every
+element it built, changed or not, before it paints what shows. Layout
+reuses what did not change, but the work grows with how many elements the
+view builds, not with how much changed. These frames were measured on
+November 9, 2026, on Apple M5 with `GOMAXPROCS=1` on a busy machine, with
+rows of a label and a button inside a `Scroll`:
+
+| What happens | Time per frame |
+|---|---:|
+| One label of 1,000 rows changes | 2.8 ms |
+| One label of 3,000 rows changes | 11 ms |
+| The 3,000 rows are asked to draw with nothing changed | 11 ms |
+| One label of 3,000 rows in a `List` changes | 0.2 ms |
+| The pointer comes over a button of the 3,000 rows | 0.3 ms |
+| The pointer goes from row to row of the 3,000 | 0.1 ms |
+| A letter is typed into a field above the 3,000 rows | 17 ms |
+
+`List` and `Table` build only the rows in view, so their frames cost what
+shows, whatever the length of the collection. Put long collections in
+them rather than in a `Scroll` that builds every row.
+
+**Hover.** The pointer coming over an element, or leaving it, asks for a
+frame only when something looks at that element's hover. The toolkit's
+controls pick their hovered look as they paint, and a scroll container
+shows its scroll bars as it paints, so the frame only paints the last
+frame's elements again, without running your view. Calling `Hovered` as
+your view builds makes the pointer coming over that element, or leaving
+it, build the whole view anew. When only a drawing changes with the
+hover, read `Hovered` in its `Draw` callback instead:
+
+```go
+card := ui.Box(c).Size(200, 120)
+card.Draw(func(p *ui.Painter, r ui.Rect) {
+	if card.Hovered() {
+		p.Fill(r, c.Theme().SurfaceHover, 8)
+	}
+})
+```
+
+**Passes.** A control applies its input as its constructor returns, as Dear
+ImGui's do, so the code after it reads the new value. The view then builds
+once more in the same frame, so that what was built before the control
+shows the new value too: typing a letter builds the view twice.
+`MYGO_FRAME_STATS` logs how many passes each frame took (see
+[Rendering](rendering.md)).
+
 ## Retained memory
 
 A warmed view containing 1,000 labels retained approximately **2.50 MB of
@@ -53,6 +104,8 @@ From the MyGo repository root:
 CGO_ENABLED=0 GOMAXPROCS=1 go test ./ui -run '^$' \
   -bench '^(BenchmarkValueFrame|BenchmarkValueList|BenchmarkDiffSteady)$' \
   -benchmem -count=6 -benchtime=300ms
+CGO_ENABLED=0 GOMAXPROCS=1 go test ./ui -run '^$' \
+  -bench '^Benchmark(LiveRows|ListRows)' -benchmem -count=6 -benchtime=300ms
 CGO_ENABLED=0 GOMAXPROCS=1 go test ./ui/markdown -run '^$' \
   -bench '^BenchmarkView' -benchmem -count=6 -benchtime=300ms
 CGO_ENABLED=0 GOMAXPROCS=1 go test ./ui \

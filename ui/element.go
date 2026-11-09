@@ -194,6 +194,14 @@ const (
 	flagClip = flagClipX | flagClipY
 )
 
+// builtStyle is what a styleFn may change of an element: its colors and
+// opacity.
+type builtStyle struct {
+	bg, border, text Color
+	opacity          float32
+	opacitySet       bool
+}
+
 type shadow struct {
 	x, y, blur, spread float32
 	color              Color
@@ -445,6 +453,17 @@ type node struct {
 	// can skip it.
 	styleFn      func(e *node)
 	paintAfterFn func(p *Painter, r Rect)
+	// faces are the backgrounds a button's styleFn (styleButtonFace)
+	// picks from as it paints: as built, hovered and pressed. They are
+	// the element's, not captured by a closure, so that building a button
+	// allocates nothing.
+	faces [3]Color
+	// built is what styleFn may change of the element as it paints, as the
+	// view built it, kept as it first paints (styled): painting it again,
+	// as a frame only painting does for a hover (lookDue), starts from
+	// it rather than from what the last painting changed.
+	built  builtStyle
+	styled bool
 
 	// Input the element takes itself (HandleInput), and where the caret of
 	// the text it takes is (TextCaret).

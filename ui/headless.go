@@ -356,7 +356,7 @@ func (t *Tester) Advance(d time.Duration) {
 		if t.asked() {
 			// Built anew after invalidate, as a window's.
 			if t.h.invalidated.Swap(false) {
-				t.rt.redraw = false
+				t.rt.buildNext()
 			}
 			t.h.requested.Store(false)
 			t.runLater()

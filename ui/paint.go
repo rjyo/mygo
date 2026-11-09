@@ -62,6 +62,8 @@ type opaqueBox struct {
 const continuousCorners = runtime.GOOS == "darwin"
 
 func (rt *engine) paint(root *node, w, h, scale float32) {
+	rt.painting = true
+	defer func() { rt.painting = false }()
 	rt.paints++
 	rt.drawn = rt.drawn[:0]
 	s := &rt.scene
@@ -262,7 +264,16 @@ func (p *Painter) element(e *node) {
 	}
 	defer func() { p.transform, p.inline, p.theme = savedTransform, savedInline, savedTheme }()
 
+	// Whether its look follows its hover, as this painting tells
+	// (Hovered): an element not painted keeps what its last did.
+	e.st.hoverLook = false
 	if e.styleFn != nil {
+		if b := &e.built; !e.styled {
+			e.styled = true
+			*b = builtStyle{e.bg, e.borderC, e.ts.color, e.opacity, e.opacitySet}
+		} else {
+			e.bg, e.borderC, e.ts.color, e.opacity, e.opacitySet = b.bg, b.border, b.text, b.opacity, b.opacitySet
+		}
 		e.styleFn(e)
 	}
 	if r := e.st.trec; r != nil && r.built == p.rt.frame && r.elem == e {
@@ -1417,6 +1428,10 @@ func (p *Painter) scrollbars(e *node) {
 	// (scrollbarPress). Kept, they show as on hover, the same thumb on no
 	// track, so that the pointer coming over changes nothing.
 	hide, keep := e.scrollbars()
+	if !hide && !keep {
+		// The bars show on hover (hoverNeeds).
+		st.hoverLook = true
+	}
 	st.barsShown = !hide && (keep || hovered || dragging)
 	if !st.barsShown {
 		return

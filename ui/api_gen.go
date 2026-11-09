@@ -5540,6 +5540,11 @@ func (_handle Element) HitTest(fn func(x float32, y float32, r Rect) bool) Eleme
 // them, as in CSS, and the others hover no more: a button that shows over
 // a row stays as it is pressed, and dragging over other elements does not
 // light them up.
+//
+// Read as the view builds, the pointer coming over the element or leaving
+// it builds the view anew, every element of it; read in a Draw callback,
+// as the window paints, it only paints the last frame's elements again,
+// as the toolkit's controls do for their hovered looks.
 func (_handle Element) Hovered() bool {
 	_node := _handle.node()
 	if _node == nil {

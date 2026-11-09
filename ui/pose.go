@@ -202,7 +202,7 @@ func (e *node) updateWorld() {
 	}
 	e.world = w
 	if e.st != nil {
-		e.st.world = w
+		e.st.world, e.st.reposed = w, true
 	}
 	for c := e.first; c != nil; c = c.next {
 		c.updateWorld()
