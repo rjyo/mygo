@@ -91,6 +91,10 @@ type window struct {
 	hiddenWithParent bool
 	hiddenRank       int
 	orderPending     bool
+	// hidMiniaturized tells that Hide ordered the window out while it
+	// was miniaturized, which it then no longer shows as (IsVisible),
+	// until it shows or deminiaturizes again.
+	hidMiniaturized bool
 	// onTop is what AlwaysOnTop asked for, which the window's level
 	// follows, or its parent's when higher (applyLevel). attached tells
 	// that a child window is an AppKit child window of its parent, which
@@ -1187,17 +1191,22 @@ func (w *window) Hide() {
 		return
 	}
 	w.hiddenWithParent = false
+	w.hidMiniaturized = w.IsMinimized()
 	// Attached, AppKit would show it again with its parent.
 	w.detach()
 	send(w.win, "orderOut:", 0)
 	w.hideChildren()
 }
 
+// IsVisible reports whether Show (or the options) showed the window and
+// Hide did not hide it since. AppKit's isVisible is false for a window
+// in the Dock, which counts as shown here, as IsWindowVisible on Windows
+// and gtk_widget_get_visible on Linux count a minimized window (#1542).
 func (w *window) IsVisible() bool {
 	if w.popover != 0 {
 		return sendBool(w.popover, "isShown")
 	}
-	return sendBool(w.win, "isVisible")
+	return sendBool(w.win, "isVisible") || !w.hidMiniaturized && w.IsMinimized()
 }
 
 func (w *window) Focus() {
@@ -1211,7 +1220,7 @@ func (w *window) Focus() {
 		w.Show() // the key window only when it takes the keyboard
 		return
 	}
-	w.hiddenWithParent = false
+	w.hiddenWithParent, w.hidMiniaturized = false, false
 	send(w.win, "makeKeyAndOrderFront:", 0)
 	if !w.opts.Panel {
 		send(w.b.app, "activateIgnoringOtherApps:", 1)
@@ -2436,6 +2445,7 @@ func registerWindowClasses() {
 			}),
 			method("windowDidDeminiaturize:", func(self id, _ objc.SEL, n id) {
 				if w := b().windowFor(self); w != nil {
+					w.hidMiniaturized = false
 					w.orderChildrenLater()
 					w.h.Restored()
 				}

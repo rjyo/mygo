@@ -215,6 +215,12 @@ win.Hide()              // Show, ShowInactive (without focusing), IsVisible
 win.Focus()             // Blur, IsFocused
 ```
 
+`IsVisible` tells whether `Show` showed the window and `Hide` did not hide
+it since: a minimized window is still visible, on every platform, as is one
+covered by others or on another desktop. `IsMinimized` tells that it is
+minimized, and in a window of native UI,
+[`Context.WindowHidden`](ui/windows.md#hidden-windows) whether any of it shows on screen.
+
 Sizes and positions are in the window's DIPs, whatever the zoom of its
 page (`Page.SetZoomFactor`) or of its [native UI](ui/windows.md#zoom):
 at a zoom of 1.25, a page area of 1000 DIPs shows 800 of the page's CSS

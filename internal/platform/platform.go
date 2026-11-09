@@ -581,6 +581,8 @@ type Window interface {
 	Show()
 	ShowInactive()
 	Hide()
+	// IsVisible reports whether Show showed the window and Hide did not
+	// hide it since: a minimized window is visible (#1542).
 	IsVisible() bool
 	Focus()
 	Blur()

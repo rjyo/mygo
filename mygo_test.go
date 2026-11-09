@@ -186,6 +186,28 @@ func TestWindowDefaults(t *testing.T) {
 	}
 }
 
+// TestMinimizedWindowIsVisible holds IsVisible to what Show and Hide set,
+// as every backend reports it (#1542): a minimized window is still shown,
+// Show does not show it again, and Hide hides it.
+func TestMinimizedWindowIsVisible(t *testing.T) {
+	w, _ := testWindow(t, WindowOptions{})
+	var shows, hides atomic.Int32
+	w.OnShow(func() { shows.Add(1) })
+	w.OnHide(func() { hides.Add(1) })
+	w.Minimize()
+	if !w.IsMinimized() || !w.IsVisible() {
+		t.Fatalf("minimized: IsMinimized %v, IsVisible %v", w.IsMinimized(), w.IsVisible())
+	}
+	w.ShowInactive()
+	if shows.Load() != 0 {
+		t.Errorf("ShowInactive on a minimized window fired OnShow %d times", shows.Load())
+	}
+	w.Hide()
+	if w.IsVisible() || hides.Load() != 1 {
+		t.Errorf("Hide on a minimized window: IsVisible %v, OnHide %d times", w.IsVisible(), hides.Load())
+	}
+}
+
 // TestGlassWindowOptions passes a floating panel's look to the backend: the
 // glass and the corners of a frameless window, a negative radius none; and
 // its active look, which SetActiveAppearance sets.

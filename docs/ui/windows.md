@@ -241,6 +241,16 @@ on another space or covered by other windows; browsers as the tab or
 the window is out of sight; Linux (on X11) and Windows as it is
 minimized. `Tester.SetWindowHidden` hides and shows it in tests.
 
+`Window.IsVisible` answers another question: whether `Show` showed the
+window and `Hide` did not hide it since, so a minimized window is still
+visible. Work outside the view, as a goroutine that polls, learns that
+the window went out of sight from the view, which builds again as it
+does:
+
+```go
+paused.Store(c.WindowHidden()) // an atomic.Bool the goroutine reads
+```
+
 ## Closing
 
 A view can close its own window, from a button's click or its callback.

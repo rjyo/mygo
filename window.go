@@ -987,7 +987,12 @@ func (w *Window) Hide() {
 // WindowOptions.Panel.
 func (w *Window) IsPanel() bool { return w.panel }
 
-// IsVisible reports whether the window is shown.
+// IsVisible reports whether the window is shown: Show or ShowInactive
+// (or WindowOptions) showed it and Hide did not hide it since. A
+// minimized window is still shown, on every platform, as is one on
+// another desktop or covered by other windows. To ask whether it is
+// minimized, use IsMinimized; whether any of a window of native UI shows
+// on screen, Context.WindowHidden in its view.
 func (w *Window) IsVisible() bool { return get(w, platform.Window.IsVisible) }
 
 // Focus focuses the window.
