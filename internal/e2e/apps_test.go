@@ -108,3 +108,58 @@ func TestInstalledApps(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 }
+
+// TestDefaultAppOfFiles asks for the app that opens a folder, a file
+// without an extension and a file its whole name tells, which GIO knows
+// from the file and not from an extension: on Linux, where the test names
+// the default apps, only where the runner points the XDG directories, as
+// TestInstalledApps.
+func TestDefaultAppOfFiles(t *testing.T) {
+	data := os.Getenv("XDG_DATA_HOME")
+	if runtime.GOOS != "linux" || data == "" {
+		t.Skip("needs Linux with XDG_DATA_HOME set, to name the default apps")
+	}
+	apps := filepath.Join(data, "applications")
+	os.MkdirAll(apps, 0o755)
+	// The defaults go where no other test writes: GLib reads a mimeapps.list
+	// beside the entries too.
+	defaults := "[Default Applications]\n"
+	entry := func(name, mime string) string {
+		id := "mygo-e2e-opens-" + name + ".desktop"
+		os.WriteFile(filepath.Join(apps, id), []byte("[Desktop Entry]\nType=Application\nName=MyGo Opens "+name+"\nExec=true %U\nMimeType="+mime+";\n"), 0o644)
+		t.Cleanup(func() { os.Remove(filepath.Join(apps, id)) })
+		defaults += mime + "=" + id + "\n"
+		return id
+	}
+	folders := entry("folders", "inode/directory")
+	texts := entry("texts", "text/plain")
+	makefiles := entry("makefiles", "text/x-makefile")
+	os.WriteFile(filepath.Join(apps, "mimeapps.list"), []byte(defaults), 0o644)
+	t.Cleanup(func() { os.Remove(filepath.Join(apps, "mimeapps.list")) })
+
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "notes"), []byte("some words\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "Makefile"), []byte("all:\n\ttrue\n"), 0o644)
+	for _, c := range []struct{ url, id string }{
+		{"file://" + dir, folders},
+		{dir, folders},
+		{"file://" + dir + "/notes", texts},           // by what it holds
+		{"file://" + dir + "/Makefile", makefiles},    // by its whole name
+		{"file://" + dir + "/no/Makefile", makefiles}, // no such file: by its name
+		{"file://" + dir + "/no/notes.txt", texts},
+	} {
+		var app mygo.InstalledApp
+		var err error
+		ok := func() bool {
+			app, err = mygo.Shell.DefaultApp(c.url)
+			return err == nil && app.ID == c.id
+		}
+		// GLib finds the entries a moment after they are written.
+		for deadline := time.Now().Add(10 * time.Second); !ok() && time.Now().Before(deadline); {
+			time.Sleep(50 * time.Millisecond)
+		}
+		if !ok() {
+			t.Errorf("DefaultApp(%q) = %q, %v; want %q", c.url, app.ID, err, c.id)
+		}
+	}
+}
