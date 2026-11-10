@@ -2,8 +2,8 @@
 
 `mygo build` turns a project into apps people install: an app bundle and a
 disk image on macOS, an executable and an installer on Windows, an
-executable, a desktop entry, an archive with its install script, a Debian
-package and a PKGBUILD for Arch Linux on Linux.
+executable, a desktop entry, an archive with its install script, Debian
+and RPM packages and a PKGBUILD for Arch Linux on Linux.
 
 ```sh
 bun run build        # mygo build, in a project with a web frontend
@@ -46,7 +46,7 @@ when cross-compiling, set `CC` to a suitable cross compiler.
 |---|---|
 | macOS | `My App.app`, signed, and `my-app-0.1.0-arm64.dmg` (`my-app-0.1.0.dmg` for `darwin/universal`), with [updates](updates.md) also `install.sh` |
 | Windows | `My App.exe`, the files of the app, and the installer `my-app-setup-0.1.0-amd64.exe`, with [updates](updates.md) also [`install.ps1`](#install-scripts-for-macos-and-windows) |
-| Linux | `my-app`, `my-app.desktop`, `my-app.png`, `my-app.xml` for the file types the app defines, the files of the app, their archive `my-app-0.1.0-linux-amd64.tar.gz` with [`install.sh`](#the-install-script), the Debian package `my-app_0.1.0_amd64.deb`, and a [`PKGBUILD`](#arch-linux) with the icons it installs, `my-app-256x256.png` and `my-app-512x512.png` |
+| Linux | `my-app`, `my-app.desktop`, `my-app.png`, `my-app.xml` for the file types the app defines, the files of the app, their archive `my-app-0.1.0-linux-amd64.tar.gz` with [`install.sh`](#the-install-script), and the packages of [`linux.formats`](#linux), by default all three: the Debian package `my-app_0.1.0_amd64.deb`, the RPM package `my-app-0.1.0-1.x86_64.rpm`, and a [`PKGBUILD`](#arch-linux) with the icons it installs, `my-app-256x256.png` and `my-app-512x512.png` |
 
 Other flags: `-debug` keeps development features such as the inspector,
 `-skip-dmg`, `-skip-notarize` and `-skip-installer` (the Windows
@@ -559,8 +559,8 @@ export default defineConfig({
 
 `mygo build` writes the executable, named after the app's
 [`slug`](configuration.md#the-app), which is its name in lower case by
-default, a desktop entry and the icon, and a Debian package, which
-installs the app in `/opt/my-app` with its desktop entry, icons, URL
+default, a desktop entry and the icon, and Debian and RPM packages, which
+install the app in `/opt/my-app` with its desktop entry, icons, URL
 schemes and file types:
 
 ```ts
@@ -569,26 +569,48 @@ export default defineConfig({
     maintainer: "Jane Doe <jane@example.com>",
     comment: "Take notes",
     categories: ["Office"],
-    depends: ["libayatana-appindicator3-1"],
+    depends: {
+      deb: ["libayatana-appindicator3-1"],
+      rpm: ["libayatana-appindicator-gtk3"],
+      arch: ["libayatana-appindicator"],
+    },
     command: "my-app",
   },
 });
 ```
 
-The package depends on GTK 3 and WebKitGTK; `depends` adds more packages.
+The packages depend on GTK 3 and WebKitGTK; `depends` adds more packages
+for each format (`deb`, `rpm` and `arch`), or takes a list of Debian
+packages, as `["libayatana-appindicator3-1"]`, mapped to the Arch Linux and
+RPM packages MyGo knows.
 An app that shows no web page, in a window or a `ui.WebView`, as an app of
 [native UI](native.md), needs GTK alone: `webview: false` leaves WebKitGTK
-out of its package, and out of what `install.sh` and `mygo doctor` (in the
+out of its packages, and out of what `install.sh` and `mygo doctor` (in the
 project) check, as the app never loads it.
 `maintainer` defaults to the `author` of package.json, else the name of
 the app.
-`comment` describes the app in its desktop entry and package, and
+`comment` describes the app in its desktop entry and packages, and
 `categories` places it in application menus (`Utility` by default).
 The app opens from the applications menu. `command` also gives it a
-command, `/usr/bin/my-app` from the package and `~/.local/bin/my-app` from
+command, `/usr/bin/my-app` from the packages and `~/.local/bin/my-app` from
 [`install.sh`](#the-install-script), or several, as `["my-app", "ma"]`,
 which adds a short name; without it, neither adds a command, which leaves
 the name to a command-line tool of the same name, such as the app's own.
+
+`formats` chooses the packages a build writes, of `deb`, `rpm` and
+`pkgbuild`, all three by default; a name it does not know is an error.
+The archive with [`install.sh`](#the-install-script) is always written:
+`install.sh` installs and [updates](updates.md) the app from it, and the
+PKGBUILD packages it. `formats: ["deb"]` writes the Debian package and
+the archive, and `formats: []` the archive alone. `SHA256SUMS` and
+`-upload` take only what the build wrote, and the build warns only about
+the `depends` of the packages it writes.
+
+```ts
+export default defineConfig({
+  linux: { formats: ["deb", "rpm"] },
+});
+```
 
 The desktop entry names the window class of the app, `StartupWMClass`,
 as the executable of `command`: an X11 session groups the window with the
@@ -598,14 +620,15 @@ name as the app id.
 Keep the slug of a released app. Its Linux files are named after it, and
 an update replaces the files of the same names: one to a version with
 another slug leaves the old executable in place, which the desktop entry
-that `install.sh` registered still runs, and the Debian package of the
+that `install.sh` registered still runs, and a Debian or RPM package of the
 new slug is another package, installed next to the old one. Choose the
 slug before the first release, as `cloud-music` for `云音乐`, whose own
 would be `yun-yin-le`.
 
 ### Arch Linux
 
-Next to the archive, every Linux build also gets a `PKGBUILD`, from which
+Next to the archive, every Linux build also gets a `PKGBUILD`, unless
+[`linux.formats`](#linux) leaves it out, from which
 `makepkg` packages the archive for Arch Linux, checked against its
 SHA-256, and installs it with pacman:
 
@@ -628,7 +651,7 @@ the archive holds the original. Its fields come from the configuration:
 | `arch` | `x86_64` of amd64, `aarch64` of arm64 |
 | `url` | `homepage` in package.json, else the repository of `updates.github` |
 | `license` | `license` in mygo.json, else in package.json, else `LicenseRef-custom` |
-| `depends` | `gtk3` and, unless `linux.webview` is `false`, `webkit2gtk-4.1`, then the Arch Linux packages of `linux.depends` that MyGo knows, as `libnotify` of `libnotify4`; the build warns about a Debian package it knows no Arch Linux package for, and leaves it out |
+| `depends` | `gtk3` and, unless `linux.webview` is `false`, `webkit2gtk-4.1`, then `linux.depends.arch`, or when `linux.depends` is a list of Debian packages, the Arch Linux packages of those MyGo knows, as `libnotify` of `libnotify4`; the build warns about a Debian package it knows no Arch Linux package for, and leaves it out |
 
 `-upload` leaves the PKGBUILD out: it packages the archive next to it, and
 every architecture has its own. Copy it, with the icons, next to the
@@ -681,7 +704,7 @@ command that installs it on Debian, Ubuntu, Fedora, Arch and openSUSE,
 unless `linux.webview` is `false`.
 When the app updates itself, it registers the desktop entry and file types
 of the new version, so a version that adds URL schemes or file types gets
-them. The Debian package suits people who want the system's package manager to
+them. The Debian and RPM packages suit people who want the system's package manager to
 update the app; `install.sh` suits the others, and is the Linux install
 that updates itself.
 
@@ -793,7 +816,7 @@ property list in XML.
 [deep links](app.md#deep-links) and [file associations](app.md#file-associations))
 are registered by each package: in the macOS app's `Info.plist`, by the
 Windows installer, and by the Linux desktop entry, install script,
-Debian package and PKGBUILD.
+Debian and RPM packages and PKGBUILD.
 
 ## Publishing
 

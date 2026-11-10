@@ -75,8 +75,9 @@ export interface Config {
    */
   publisher?: string;
   /**
-   * The SPDX license expression of the app, such as `MIT`, which the PKGBUILD
-   * of Arch Linux records (default: `license` in `package.json`).
+   * The SPDX license expression of the app, such as `MIT`, which the RPM
+   * package and the PKGBUILD of Arch Linux record (default: `license` in
+   * `package.json`).
    */
   license?: string;
   /** A square PNG, ideally 1024×1024 (default: `resources/icon.png` when it exists). */
@@ -287,26 +288,44 @@ export interface WindowsConfig {
 
 /** Linux packaging. */
 export interface LinuxConfig {
-  /** `Name <email>`, the maintainer of the Debian package and of the PKGBUILD (default: `author` in package.json, else the app's name). */
+  /** `Name <email>`, the maintainer of the Debian and RPM packages and of the PKGBUILD (default: `author` in package.json, else the app's name). */
   maintainer?: string;
-  /** A short description, for the desktop entry and the package. */
+  /** A short description, for the desktop entry and the packages. */
   comment?: string;
   /** The categories of the desktop entry (default: `["Utility"]`). */
   categories?: string[];
-  /** Debian packages the app needs besides GTK and WebKitGTK; the PKGBUILD depends on the Arch Linux packages of those MyGo knows. */
-  depends?: string[];
+  /** Packages the app needs besides GTK and WebKitGTK, by package format or as Debian packages mapped to Arch Linux and RPM where MyGo knows them. */
+  depends?: string[] | LinuxDepends;
   /**
    * `false` for an app that shows no web page, in a window or a `ui.WebView`,
-   * as an app of native UI: its Debian package and PKGBUILD depend on GTK alone, and
+   * as an app of native UI: its Debian and RPM packages and PKGBUILD depend on GTK alone, and
    * install.sh and `mygo doctor` do not ask for WebKitGTK (default: `true`).
    */
   webview?: boolean;
   /**
    * A command that runs the app, such as `my-app`, or a list of names, such
    * as `["my-app", "ma"]`, which adds a short one: a link in `/usr/bin` from
-   * the Debian package and the PKGBUILD, and in `~/.local/bin` from install.sh, for each,
+   * the Debian and RPM packages and the PKGBUILD, and in `~/.local/bin` from install.sh, for each,
    * which says to run the app by the first it links (default: none; the app
    * opens from the applications menu).
    */
   command?: string | string[];
+  /**
+   * The packages `mygo build` writes (default: all three). The archive with
+   * install.sh is always written, as install.sh updates the app from it and
+   * the PKGBUILD packages it; `[]` writes it alone.
+   */
+  formats?: ("deb" | "rpm" | "pkgbuild")[];
+}
+
+/**
+ * Extra package dependencies for Linux packages, by package format.
+ */
+export interface LinuxDepends {
+  /** Debian packages the app needs besides GTK and WebKitGTK. */
+  deb?: string[];
+  /** RPM package dependencies or library requirements besides GTK and WebKitGTK. */
+  rpm?: string[];
+  /** Arch Linux packages the app needs besides GTK and WebKitGTK. */
+  arch?: string[];
 }

@@ -32,11 +32,12 @@ at mygo://localhost/. macOS gets a signed .app bundle and a
 "<slug>-<version>-<arch>.dmg" disk image (slug in mygo.json, by default
 the name in lower case), without the arch for darwin/universal, whose
 window invites dragging the app to Applications; other platforms get an
-executable. Linux also gets a Debian
-package, the app as <slug>-<version>-linux-<arch>.tar.gz with
-install.sh, which installs it for the user in ~/.local, where it can update
-itself, and a PKGBUILD, from which makepkg -si packages the archive for
-Arch Linux and installs it. The contents of the
+executable. Linux also gets the app as
+<slug>-<version>-linux-<arch>.tar.gz with install.sh, which installs it
+for the user in ~/.local, where it can update itself, and the packages of
+linux.formats in mygo.json, by default all of them: a Debian package, an
+RPM package and a PKGBUILD, from which makepkg -si packages the archive
+for Arch Linux and installs it. The contents of the
 resources directory and the resources listed in mygo.json are copied into
 the bundle's Contents/Resources, or next to the executable, and the programs
 among them are signed with the app. Directories of resources named after a
@@ -413,28 +414,16 @@ func buildPlatform(c *Config, goos, goarch string, opts buildOptions) ([]string,
 			artifacts = append(artifacts, setup)
 		}
 	}
-	if _, ok := debArch[goarch]; goos == "linux" && ok {
-		deb, err := writeDeb(c, stage, c.slug(), goarch, installed)
-		if err != nil {
-			return nil, err
-		}
-		artifacts = append(artifacts, deb)
+	var files []string
+	if goos == "linux" {
+		files, err = writeLinuxPackages(c, stage, target, goarch, installed)
+	} else {
+		files, err = writeArchive(c, stage, target, installed)
 	}
-	files, err := writeArchive(c, stage, target, installed)
 	if err != nil {
 		return nil, err
 	}
 	artifacts = append(artifacts, files...)
-	// Arch Linux packages the app from its archive, as the Debian package
-	// has it.
-	if _, ok := archArch[goarch]; goos == "linux" && ok {
-		archive := files[slices.IndexFunc(files, func(f string) bool { return strings.HasSuffix(f, ".tar.gz") })]
-		pkg, err := writePKGBUILD(c, stage, c.slug(), goarch, installed, archive)
-		if err != nil {
-			return nil, err
-		}
-		artifacts = append(artifacts, pkg...)
-	}
 	// install.sh installs on Linux, and with updates on macOS; install.ps1
 	// runs the Windows installer of the latest version, so a build without
 	// one has none.
@@ -475,6 +464,44 @@ func buildPlatform(c *Config, goos, goarch string, opts buildOptions) ([]string,
 		}
 	}
 	return artifacts, nil
+}
+
+// writeLinuxPackages writes the Linux app in stage, the files of installed,
+// as the packages of linux.formats for goarch and their archive with its
+// update files, which install.sh installs and updates from, and returns
+// their paths.
+func writeLinuxPackages(c *Config, stage, target, goarch string, installed []string) ([]string, error) {
+	var written []string
+	if _, ok := debArch[goarch]; ok && c.Linux.builds("deb") {
+		deb, err := writeDeb(c, stage, c.slug(), goarch, installed)
+		if err != nil {
+			return nil, err
+		}
+		written = append(written, deb)
+	}
+	if _, ok := rpmArch[goarch]; ok && c.Linux.builds("rpm") {
+		rpm, err := writeRpm(c, stage, c.slug(), goarch, installed)
+		if err != nil {
+			return nil, err
+		}
+		written = append(written, rpm)
+	}
+	files, err := writeArchive(c, stage, target, installed)
+	if err != nil {
+		return nil, err
+	}
+	written = append(written, files...)
+	// Arch Linux packages the app from its archive, as the Debian package
+	// has it.
+	if _, ok := archArch[goarch]; ok && c.Linux.builds("pkgbuild") {
+		archive := files[slices.IndexFunc(files, func(f string) bool { return strings.HasSuffix(f, ".tar.gz") })]
+		pkg, err := writePKGBUILD(c, stage, c.slug(), goarch, installed, archive)
+		if err != nil {
+			return nil, err
+		}
+		written = append(written, pkg...)
+	}
+	return written, nil
 }
 
 // inspectorTag leaves the inspector of native UI out of a build (package

@@ -19,7 +19,7 @@ import (
 func TestChecksums(t *testing.T) {
 	dist := t.TempDir()
 	var artifacts []string
-	for _, name := range []string{"app-1.2.0.dmg", "app-setup-1.2.0-amd64.exe", "app-1.2.0-linux-amd64.tar.gz", "update-linux-amd64.json", "App.exe", "linux-amd64/install.sh", "linux-arm64/install.sh"} {
+	for _, name := range []string{"app-1.2.0.dmg", "app-setup-1.2.0-amd64.exe", "app-1.2.0-linux-amd64.tar.gz", "app-1.2.0-1.x86_64.rpm", "update-linux-amd64.json", "App.exe", "linux-amd64/install.sh", "linux-arm64/install.sh"} {
 		p := filepath.Join(dist, name)
 		os.MkdirAll(filepath.Dir(p), 0o755)
 		os.WriteFile(p, []byte("hello"), 0o644)
@@ -30,7 +30,7 @@ func TestChecksums(t *testing.T) {
 		t.Fatal(err)
 	}
 	const hello = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
-	want := hello + "  app-1.2.0-linux-amd64.tar.gz\n" + hello + "  app-1.2.0.dmg\n" + hello + "  app-setup-1.2.0-amd64.exe\n" + hello + "  install.sh\n"
+	want := hello + "  app-1.2.0-1.x86_64.rpm\n" + hello + "  app-1.2.0-linux-amd64.tar.gz\n" + hello + "  app-1.2.0.dmg\n" + hello + "  app-setup-1.2.0-amd64.exe\n" + hello + "  install.sh\n"
 	if b, _ := os.ReadFile(path); string(b) != want {
 		t.Errorf("SHA256SUMS:\n%s\nwant\n%s", b, want)
 	}

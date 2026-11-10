@@ -50,7 +50,7 @@ const features = [
   { title: "Pure Go, no cgo", text: "Build for every platform from any machine.", slug: "distribution" },
   {
     title: "Ready to ship",
-    text: "App bundles and disk images, Windows installers, Debian packages, code signing, notarization and signed auto-updates.",
+    text: "App bundles and disk images, Windows installers, Debian and RPM packages, code signing, notarization and signed auto-updates.",
     slug: "distribution",
   },
 ]

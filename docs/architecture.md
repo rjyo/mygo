@@ -5984,7 +5984,9 @@ make it work:
   of the app: the app in `/opt/<name>`, a `/usr/bin` link for each name
   of `linux.command`, the desktop entry (categories,
   comment, URL schemes; `Exec` is the app's path) and hicolor icons,
-  depending on GTK 3 and WebKitGTK 4.1. It also gets a `PKGBUILD`
+  depending on GTK 3 and WebKitGTK 4.1. It also gets an RPM package
+  (`rpm.go`), built with `go.digitalxero.dev/rpm`, with the same files
+  and metadata, and a `PKGBUILD`
   (`pkgbuild.go`), from which `makepkg -si` packages the archive for
   Arch Linux (`source` is its file name, with its SHA-256): its
   `package()` installs what the Debian package holds, with the same
@@ -5996,10 +5998,13 @@ make it work:
   Debian do. `pkgver` is the version without the hyphen of a
   pre-release (`1.2.0beta.1`; vercmp sorts `1.2.0_beta.1` after
   `1.2.0`, as a remainder starting with a separator wins), `depends`
-  maps the Debian dependencies through `archPackages`, warning about
-  those it lacks, and `options` keeps the executable unstripped. Every
+  takes per-format `deb`, `rpm` and `arch` lists, or maps a list of
+  Debian dependencies through `archPackages` and `rpmPackages`, warning
+  about those they lack, and `options` keeps the executable unstripped. Every
   value is quoted for the shell, and `-upload` leaves it out (`uploads`
-  takes only known kinds). Packages hold the same files as
+  takes only known kinds). `linux.formats` chooses which of the three
+  packages a build writes (`writeLinuxPackages`), all by default; the
+  archive is always written. Packages hold the same files as
   the update archive; apps installed by a package manager do not update
   themselves (`Updater.Enabled` checks that the app can write where it is
   installed). Every Linux build also gets `install.sh`
@@ -6509,7 +6514,7 @@ which npm allows only for packages that exist: the first release uses an
 | user agent | `customUserAgent`; `UserAgentSuffix` is the configuration's `applicationNameForUserAgent`, which a `window.open()` window does not inherit | `WebKitSettings:user-agent`; `UserAgentSuffix` appends application details, split at the first "/" | `ICoreWebView2Settings2`'s user agent, and a suffix appended to the settings' own user agent; a runtime without `Settings2` ignores both |
 | swipes and pinches (`SwipeNavigation`, `PinchZoom`) | `allowsBackForwardNavigationGestures` and `allowsMagnification` of the `WKWebView`, both off unless asked for | `WebKitSettings:enable-back-forward-navigation-gestures`; WebKitGTK has no setting for pinches, so the web view's `GtkGestureZoom`, which it keeps in its data as `wk-view-zoom-gesture` (2.38+), is given `GTK_PHASE_NONE` unless `PinchZoom`: it then sees neither a touchpad's pinch nor a touchscreen's | `ICoreWebView2Settings6`'s `IsSwipeNavigationEnabled` and `ICoreWebView2Settings5`'s `IsPinchZoomEnabled`, both on in WebView2 and put to the options' values in `setUp`, before the first navigation |
 | the browser's keys (reload, print, find, zoom) | none | none | WebView2's (F5, Ctrl+R, Ctrl+P, Ctrl+F, Ctrl+Plus, ...) only with the inspector (`ICoreWebView2Settings3`'s `AreBrowserAcceleratorKeysEnabled`); `AcceleratorKeyPressed` still gives the menus every key |
-| file associations | `CFBundleDocumentTypes`; files arrive with `application:openURLs:` | desktop entry `MimeType` (`%U`), a shared-mime-info package in the .deb for types the app defines (`x-`) | ProgIDs and `OpenWithProgids` written by the installer |
+| file associations | `CFBundleDocumentTypes`; files arrive with `application:openURLs:` | desktop entry `MimeType` (`%U`), a shared-mime-info package in the .deb and .rpm for types the app defines (`x-`) | ProgIDs and `OpenWithProgids` written by the installer |
 | document windows | `representedURL` (proxy icon, Command-click folder menu) and `setDocumentEdited:` (the dot), then the traffic lights are laid out again | the core puts `*` before the title | the core puts `*` before the title |
 | replacing a document's file | `-[NSFileManager replaceItemAtURL:withItemAtURL:…]` (permissions, dates, extended attributes, ACLs, identity) | rename after `chmod` and `lchown` to the target's | `ReplaceFileW`, retried on sharing violations; when it stops halfway, having removed the target, the replacement is renamed into place |
 | recent documents | `noteNewRecentDocumentURL:` / `clearRecentDocuments:` of the shared `NSDocumentController` (the Dock menu) | `gtk_recent_manager_add_item`, removing the items of `g_get_application_name()` | `SHAddToRecentDocs` (`SHARD_PATHW`), `IApplicationDestinations::RemoveAllDestinations`; the process keeps the AppUserModelID the shell derives from its path, which the installer's shortcuts have too |

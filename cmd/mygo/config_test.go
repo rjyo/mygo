@@ -142,6 +142,7 @@ func TestConfigTypes(t *testing.T) {
 		"NotarizeConfig":  reflect.TypeFor[Notarize](),
 		"WindowsConfig":   reflect.TypeFor[Windows](),
 		"LinuxConfig":     reflect.TypeFor[Linux](),
+		"LinuxDepends":    reflect.TypeFor[linuxDepends](),
 	} {
 		m := regexp.MustCompile(`(?s)export interface ` + name + ` \{\n(.*?)\n\}`).FindSubmatch(src)
 		if m == nil {

@@ -109,7 +109,7 @@ func TestPublishS3(t *testing.T) {
 
 	dist := t.TempDir()
 	var artifacts []string
-	for _, name := range []string{"update-darwin-arm64.json", "app-1.2.0.dmg", "app-1.2.0-darwin-arm64.tar.gz", "app-1.1.0-to-1.2.0-darwin-arm64.delta", "app-setup-1.2.0.exe", "App.exe", "empty.deb"} {
+	for _, name := range []string{"update-darwin-arm64.json", "app-1.2.0.dmg", "app-1.2.0-darwin-arm64.tar.gz", "app-1.1.0-to-1.2.0-darwin-arm64.delta", "app-setup-1.2.0.exe", "App.exe", "empty.deb", "app-1.2.0-1.x86_64.rpm"} {
 		p := filepath.Join(dist, name)
 		content := name
 		if name == "empty.deb" {
@@ -134,6 +134,7 @@ func TestPublishS3(t *testing.T) {
 		{"/downloads/app/app-1.1.0-to-1.2.0-darwin-arm64.delta", "application/octet-stream", ""},
 		{"/downloads/app/app-setup-1.2.0.exe", "application/vnd.microsoft.portable-executable", ""},
 		{"/downloads/app/empty.deb", "application/vnd.debian.binary-package", ""},
+		{"/downloads/app/app-1.2.0-1.x86_64.rpm", "application/x-rpm", ""},
 		{"/downloads/app/install.sh", "text/plain; charset=utf-8", "no-cache"},
 		{"/downloads/app/update-darwin-arm64.json", "application/json", "no-cache"},
 	}

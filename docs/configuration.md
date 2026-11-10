@@ -44,12 +44,12 @@ the fields of [the frontend](#development-and-the-frontend).
 | Field | Default | |
 |---|---|---|
 | `name` | the directory's name | the name users see: the app, its executable, menus, installers; Windows can show another, [`windows.displayName`](#windows) |
-| `slug` | the name in lower case, with hyphens between its words, e.g. `my-app` of `My App`; Chinese characters take their most common Mandarin reading without tones, each its own word, and kana and Hangul their romanization, e.g. `yun-yin-le` of `云音乐`, `ramen` of `ラーメン` | the name of the app's files where a name must be plain ASCII: the disk images of macOS and the installers of Windows, the Linux executable, its desktop entry, icon, Debian package and `/opt` directory, the [update archives](updates.md) of every platform, the variables of the [install scripts](distribution.md#install-scripts-for-macos-and-windows) and the MIME types the app defines; lower-case letters and digits with single hyphens between them. Set it to choose another, as `cloud-music` for `云音乐`, and keep it once the app is released (see [Linux](distribution.md#linux)) |
+| `slug` | the name in lower case, with hyphens between its words, e.g. `my-app` of `My App`; Chinese characters take their most common Mandarin reading without tones, each its own word, and kana and Hangul their romanization, e.g. `yun-yin-le` of `云音乐`, `ramen` of `ラーメン` | the name of the app's files where a name must be plain ASCII: the disk images of macOS and the installers of Windows, the Linux executable, its desktop entry, icon, Debian and RPM packages and `/opt` directory, the [update archives](updates.md) of every platform, the variables of the [install scripts](distribution.md#install-scripts-for-macos-and-windows) and the MIME types the app defines; lower-case letters and digits with single hyphens between them. Set it to choose another, as `cloud-music` for `云音乐`, and keep it once the app is released (see [Linux](distribution.md#linux)) |
 | `identifier` | `com.mygo.` and the name's letters and digits, e.g. `com.mygo.myapp` | a reverse DNS name unique to the app, e.g. `com.example.myapp`; systems key preferences, permissions and registrations on it |
 | `version` | `0.1.0` | the version of the app, which `App.Version()` returns and updates compare |
 | `copyright` | | the copyright notice of the app, in its `Info.plist` (macOS) and file properties (Windows) |
 | `publisher` | the copyright notice without its "©" and years, e.g. `Example Inc.` of `© 2026 Example Inc.` | who makes the app: the publisher that Settings > Apps lists for the installed app on Windows, and its company in the file properties |
-| `license` | `license` in package.json | the SPDX license expression of the app, such as `MIT` or `Apache-2.0 WITH LLVM-exception`, which the PKGBUILD of Arch Linux records |
+| `license` | `license` in package.json | the SPDX license expression of the app, such as `MIT` or `Apache-2.0 WITH LLVM-exception`, which the RPM package and the PKGBUILD of Arch Linux record |
 | `icon` | `resources/icon.png` when it exists | a square PNG, ideally 1024×1024; its name with `-dev`, as `icon-dev.png`, beside it is the development app's, when it exists |
 | `main` | `.` | the Go package of the app, relative to the project |
 
@@ -144,12 +144,13 @@ See [Windows](distribution.md#windows).
 
 | Field | Default | |
 |---|---|---|
-| `maintainer` | `author` in package.json, else `name` | `Name <email>`, the maintainer of the Debian package and of the PKGBUILD |
-| `comment` | | a short description, for the desktop entry and the package |
+| `maintainer` | `author` in package.json, else `name` | `Name <email>`, the maintainer of the Debian and RPM packages and of the PKGBUILD |
+| `comment` | | a short description, for the desktop entry and the packages |
 | `categories` | `["Utility"]` | the categories of the desktop entry, which place it in application menus |
-| `depends` | | Debian packages the app needs besides GTK and WebKitGTK; the PKGBUILD depends on the [Arch Linux packages](distribution.md#arch-linux) of those MyGo knows |
-| `webview` | `true` | `false` for an app that shows no web page, as one of native UI: the Debian package and the PKGBUILD depend on GTK alone, and install.sh and `mygo doctor` do not ask for WebKitGTK |
-| `command` | none | a command that runs the app, or a list of names, as `["my-app", "ma"]`, which adds a short one: `/usr/bin/<command>` from the Debian package and the PKGBUILD, `~/.local/bin/<command>` from install.sh, for each |
+| `depends` | | packages the app needs besides GTK and WebKitGTK, by package format (`deb`, `rpm` and `arch`), or as a list of Debian packages mapped to the Arch Linux and RPM packages MyGo knows |
+| `webview` | `true` | `false` for an app that shows no web page, as one of native UI: the Debian and RPM packages and the PKGBUILD depend on GTK alone, and install.sh and `mygo doctor` do not ask for WebKitGTK |
+| `command` | none | a command that runs the app, or a list of names, as `["my-app", "ma"]`, which adds a short one: `/usr/bin/<command>` from the Debian and RPM packages and the PKGBUILD, `~/.local/bin/<command>` from install.sh, for each |
+| `formats` | `["deb", "rpm", "pkgbuild"]` | the packages `mygo build` writes, of `deb`, `rpm` and `pkgbuild`; the archive with install.sh is always written, as install.sh updates the app from it and the PKGBUILD packages it, so `[]` writes it alone |
 
 See [Linux](distribution.md#linux).
 

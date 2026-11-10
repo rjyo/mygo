@@ -193,7 +193,7 @@ it when there is one, and packages it for the machine's platform in
 |---|---|
 | macOS | `My App.app`, and a disk image `my-app-0.1.0-arm64.dmg` |
 | Windows | `My App.exe`, and an installer `my-app-setup-0.1.0-amd64.exe` |
-| Linux | the executable `my-app` with its desktop entry and icon, their archive with `install.sh`, which installs it for the user, and a `.deb` package |
+| Linux | the executable `my-app` with its desktop entry and icon, their archive with `install.sh`, which installs it for the user, and `.deb` and `.rpm` packages |
 
 MyGo needs no cgo, so any machine builds for every platform:
 

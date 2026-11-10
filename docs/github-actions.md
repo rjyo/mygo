@@ -344,6 +344,7 @@ to check that the apps build:
             build/*/*.dmg
             build/*/*-setup-*.exe
             build/*/*.deb
+            build/*/*.rpm
             build/*/*.tar.gz
 ```
 
