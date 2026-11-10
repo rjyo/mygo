@@ -569,16 +569,18 @@ animate from their `Draw` only paint.
 
 While nothing of a window shows (on macOS: hidden, minimized, on another
 Space, or entirely covered by other windows; in a browser: a tab in the
-background), MyGo draws no frames for it, as browsers draw nothing for
-pages out of sight and as Apple asks of Mac apps. The view does not run,
+background; on Windows, and on Linux under X11: minimized), MyGo draws no
+frames for it, as browsers draw nothing for pages out of sight and as
+Apple asks of Mac apps. The view does not run,
 `Draw` is not called, and the frames `After` and `Painter.After` ask for
 wait. As soon as some of the window shows, it draws once, with everything
 that changed meanwhile; until then the screen shows its last frame, for
 about a refresh. A frame still builds after input (keys typed into a key
 window another app's window covers), when assistive technology turns on,
 and for `Window.CapturePage`, so that a capture shows the window as it is
-now. Windows and Linux do not tell MyGo when a window is out of sight, so
-there it draws as it always did.
+now. Windows and X11 tell MyGo of a window minimized and of no more, and
+Wayland of nothing, so a window that others cover, or one on another
+desktop, draws there as it always did.
 
 What this means for motion:
 
