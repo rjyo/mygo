@@ -870,3 +870,33 @@ func TestRichTextRightClickMovesCaret(t *testing.T) {
 		t.Errorf("a right-click in the selection made it %d…%d", a, z)
 	}
 }
+
+// Space leaves room above a paragraph, more than the theme's: the paragraphs from it down move by as much, in the
+// frame it changes, and back when it goes.
+func TestRichTextSpace(t *testing.T) {
+	doc := NewDocument(NewText("one\ntwo\nthree"))
+	var room float32
+	tt := ui.NewTester(func(c *ui.Context) {
+		Editor(c, doc, EditorOptions{Space: func(p int) float32 {
+			if p == 1 {
+				return room
+			}
+			return 0
+		}}).Fill()
+	}, 500, 400)
+	tt.Frame()
+	before := doc.VisibleParagraphs()
+	room = 40
+	tt.Frame()
+	tt.Frame()
+	after := doc.VisibleParagraphs()
+	if after[0].Top != before[0].Top || after[1].Top != before[1].Top+40 || after[2].Top != before[2].Top+40 {
+		t.Fatalf("room above the second: %+v, then %+v", before, after)
+	}
+	room = 0
+	tt.Frame()
+	tt.Frame()
+	if back := doc.VisibleParagraphs(); back[1].Top != before[1].Top || back[2].Top != before[2].Top {
+		t.Fatalf("the room gone: %+v, then %+v", before, back)
+	}
+}

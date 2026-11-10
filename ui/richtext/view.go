@@ -59,6 +59,12 @@ type EditorOptions struct {
 	// it does changes, for the paragraphs to be laid out again.
 	Spans        func(p int, style ParagraphStyle, spans []ui.Span) []ui.Span
 	SpansVersion int
+	// Space is given paragraph p (from 0) and returns the room in DIPs to
+	// leave above it, more than the theme's, as a list opens a place
+	// where an item dragged would go. It is asked as the paragraphs are
+	// laid out, each frame for those in view, so that what it returns can
+	// change from frame to frame and the paragraphs below move with it.
+	Space func(p int) float32
 }
 
 // Editor creates an editor of doc's attributed text, as NSTextView edits
@@ -510,6 +516,9 @@ func (v *view) space(p int, st ParagraphStyle) (above, below float32) {
 		if p+1 >= len(v.paras) || !v.para(p+1).style.CodeBlock {
 			below = look.size * look.CodeBlockPadding[1]
 		}
+	}
+	if v.opts.Space != nil {
+		above += max(0, v.opts.Space(p))
 	}
 	return above, below
 }
