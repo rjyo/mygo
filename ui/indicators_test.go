@@ -156,9 +156,12 @@ func TestProgressColor(t *testing.T) {
 	if n := accessNode(t, tt.h.access, platform.RoleProgress, "Storage"); n.Now != 0.25 {
 		t.Errorf("it reads %+v", n)
 	}
+	// Its place follows the clock, 1.4 s from one end to the other: half
+	// of the way there, wherever the clock started.
+	tt.Advance(time.Duration(1400+700-tt.Now().UnixMilli()%1400) * time.Millisecond)
 	value = -1
 	tt.Frame()
-	if f := fillsOf(tt, brand); len(f) != 1 || f[0].W != 60 {
+	if f := fillsOf(tt, brand); len(f) != 1 || f[0].X != 70 || f[0].W != 60 {
 		t.Errorf("of unknown length, it slides %v in its color", f)
 	}
 	value = 0.25
