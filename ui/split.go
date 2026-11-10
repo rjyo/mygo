@@ -217,7 +217,7 @@ func split(c *context, size *float32, first, second func(), vertical, inPercent 
 			dx, dy, held := handle.Dragged()
 			handle.afterInput(func() {
 				if reset != nil && reset.shownSet && handle.DoubleClicked() {
-					div.Focus()
+					div.focus(false)
 					resetTo(reset.shown)
 					return
 				}
@@ -229,7 +229,7 @@ func split(c *context, size *float32, first, second func(), vertical, inPercent 
 					}
 					return
 				}
-				div.Focus()
+				div.focus(false)
 				if dx == 0 && dy == 0 {
 					return
 				}

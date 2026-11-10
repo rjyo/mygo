@@ -211,6 +211,15 @@ button, and Space toggles a focused check box, switch, toggle or radio
 button. A focused link, or an element with `Role(ui.RoleLink)`, takes Enter
 alone, as in a web page: Space scrolls the container around it.
 
+When the focus moves to an element by the keyboard or by the app (`Focus`,
+`AutoFocus`, a [handle](#persistent-focus)'s `Focus`, or a field bound with
+[`FocusBind`](#focus-bound-to-data)), the scroll containers around it scroll
+as little as shows it, as the web's `element.focus()` does, so keyboard
+navigation of your own keeps the focus in sight. It scrolls once, as the
+focus moves: calling `Focus` in every frame leaves the user's scrolling
+alone. A click focuses an element where it is. To line it up otherwise,
+call `ScrollIntoView` with its options in the frame it takes the focus.
+
 `TabStop(false)` makes an element focusable but out of Tab's order, as
 HTML's `tabindex="-1"`: it takes the focus from a click, from `Focus` and
 `AutoFocus`, and from assistive technology, while Tab and Shift+Tab pass

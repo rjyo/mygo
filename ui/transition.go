@@ -760,7 +760,7 @@ func (rt *engine) animateLayout(root *node, w, h float32) {
 			if rt.focused == 0 {
 				// Unless the focus went elsewhere meanwhile; the next
 				// frame builds it focused.
-				e.Focus()
+				e.focus(false)
 				rt.animating = true
 			}
 		}

@@ -400,7 +400,7 @@ func tableHeader(c *context, table, h *node, j int, s *ListState, drag *tableDra
 			if f := &s.frame; h.Clicked() {
 				f.chooseAll()
 				f.chooseAllColumns()
-				table.Focus()
+				table.focus(false)
 			}
 		})
 	}

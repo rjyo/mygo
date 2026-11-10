@@ -348,7 +348,7 @@ func listRowValueInput(n *node) {
 		if !f.owner.FocusWithin() {
 			// Leave the focus on a control inside a row, such as an editor
 			// a double click opened.
-			f.owner.Focus()
+			f.owner.focus(false)
 		}
 	}
 	if n.DoubleClicked() {

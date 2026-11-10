@@ -5162,7 +5162,10 @@ func (_handle Element) FixedLineHeight(v float32) Element {
 
 // Focus gives the element the keyboard focus. Called in every frame, it
 // keeps it there; AutoFocus gives it once. A field around an input, as
-// SearchField's, gives it to its input, where typing goes.
+// SearchField's, gives it to its input, where typing goes. When the focus
+// moves to it, it scrolls the containers around it as little as shows it,
+// as Tab does and the web's focus() does; ScrollIntoView lines it up
+// otherwise.
 func (_handle Element) Focus() Element {
 	_node := _handle.node()
 	if _node == nil {

@@ -1802,22 +1802,36 @@ func (e *node) FocusWithin() bool {
 
 // Focus gives the element the keyboard focus. Called in every frame, it
 // keeps it there; AutoFocus gives it once. A field around an input, as
-// SearchField's, gives it to its input, where typing goes.
+// SearchField's, gives it to its input, where typing goes. When the focus
+// moves to it, it scrolls the containers around it as little as shows it,
+// as Tab does and the web's focus() does; ScrollIntoView lines it up
+// otherwise.
 func (e *node) Focus() *node {
+	e.focus(true)
+	return e
+}
+
+// focus gives the element the keyboard focus, as Focus does, and scrolls
+// it into view when reveal is set and the focus moves to it. A click on a
+// control focuses it where the user scrolled it, as on the web, and so does
+// the focus a page or a transition gives back.
+func (e *node) focus(reveal bool) {
 	if e != nil && e.focusTo != nil {
-		e.focusTo.Focus()
-		return e
+		e.focusTo.focus(reveal)
+		return
 	}
 	if !e.hasState() {
-		return e
+		return
 	}
 	e.flags |= flagFocusable
 	rt := e.c.rt
 	if rt.focused != e.id {
 		rt.focused = e.id
 		rt.blinkStart = rt.now()
+		if reveal {
+			rt.reveal(e.id)
+		}
 	}
-	return e
 }
 
 // AutoFocus gives the element the keyboard focus in the frame it appears,

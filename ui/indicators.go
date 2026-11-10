@@ -153,7 +153,7 @@ func coreRating(c *context, value *int, max int) *node {
 					} else {
 						set(i + 1)
 					}
-					e.Focus()
+					e.focus(false)
 				}
 			})
 			if star.Hovered() {
@@ -272,7 +272,7 @@ func coreStepper(c *context, value *float64, lo, hi, step float64) *node {
 							set(*value - step)
 						}
 					}
-					e.Focus()
+					e.focus(false)
 					c.After(80 * time.Millisecond)
 				} else {
 					arrow.st.holding = false
@@ -413,7 +413,7 @@ func coreRangeSlider(c *context, low, high *float64, lo, hi, step float64) *node
 			} else {
 				set(high, x, *low, hi)
 			}
-			knobs[*dragging].Focus()
+			knobs[*dragging].focus(false)
 		}
 
 	})

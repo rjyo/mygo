@@ -758,7 +758,7 @@ func (r *Router) focusPage(c *context, page *node, cur *routeEntry) {
 		rt.blinkStart = rt.now()
 		return
 	}
-	page.Focus()
+	page.focus(false)
 }
 
 // backdrop returns the color behind an element: the background of the
