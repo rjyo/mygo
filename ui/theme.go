@@ -83,7 +83,14 @@ type Theme struct {
 	// another tip goes, as the pointer moves along a toolbar, the next one
 	// shows at once: 0.4 seconds by default.
 	TooltipDelay time.Duration
+
+	// followed is what WithPreferences changed, nil where it has not.
+	followed *followedTheme
 }
+
+// followedTheme is a theme before and after following the desktop's
+// preferences.
+type followedTheme struct{ from, to Theme }
 
 // Space returns n units of the theme's Spacing, to size elements of your
 // own in step with the widgets: ui.Column(c).Gap(t.Space(2)).

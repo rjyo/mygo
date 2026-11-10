@@ -669,8 +669,7 @@ func (rt *engine) defaultTheme() *Theme {
 		if rt.dark {
 			t = DarkTheme()
 		}
-		t.follow(rt.preferences())
-		rt.theme, rt.themeOK = *t, true
+		rt.theme, rt.themeOK = *t.WithPreferences(rt.preferences()), true
 	}
 	rt.passTheme = rt.theme
 	return &rt.passTheme

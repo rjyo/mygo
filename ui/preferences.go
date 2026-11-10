@@ -90,25 +90,95 @@ func (rt *engine) preferences() Preferences {
 	return rt.prefs
 }
 
+// WithAccent returns a copy of the theme in the accent a, as the default
+// theme takes the desktop's: AccentHover, AccentPressed, Selection and
+// Focus are shades of a for the theme's appearance, lighter in the dark,
+// and AccentText is white, or near black on an accent as light as
+// yellow. a is made opaque; with an A of 0 the copy keeps the theme's
+// accent, as where the desktop has none. A theme of the app's can take
+// the desktop's accent this way:
+//
+//	c.SetTheme(ui.DarkTheme().WithAccent(c.Preferences().Accent))
+func (t *Theme) WithAccent(a Color) *Theme {
+	u := *t
+	if a.A > 0 {
+		u.setAccent(a)
+	}
+	return &u
+}
+
+// setAccent sets the accent a and its shades.
+func (t *Theme) setAccent(a Color) {
+	a.A = 255
+	black, white := Color{A: 255}, Color{R: 255, G: 255, B: 255, A: 255}
+	t.Accent = a
+	if t.Dark {
+		t.AccentHover, t.AccentPressed = a.Mix(white, 0.2), a.Mix(black, 0.15)
+		t.Selection, t.Focus = a.Alpha(0.4), a.Mix(white, 0.2).Alpha(0.6)
+	} else {
+		t.AccentHover, t.AccentPressed = a.Mix(black, 0.12), a.Mix(black, 0.25)
+		t.Selection, t.Focus = a.Alpha(0.25), a.Alpha(0.55)
+	}
+	// Text on the accent is black where white would not stand out, as on
+	// yellow.
+	t.AccentText = white
+	if l := a.gray().R; l > 165 {
+		t.AccentText = Color{R: 24, G: 24, B: 27, A: 255}
+	}
+}
+
+// WithPreferences returns a copy of the theme that follows the desktop's
+// settings p as the default theme does: in p's accent (WithAccent), with
+// borders and secondary text stronger and the focus ring opaque under
+// HighContrast, and FontSize TextScale times larger. A theme that already
+// follows them, as the default theme (Context.Theme) and those
+// WithPreferences returns do, follows p in their place: what they changed
+// goes back first, and what was set since stays.
+//
+//	t := *c.Theme()
+//	t.Background = ui.Hex("#18181b")
+//	c.SetTheme(t.WithPreferences(c.Preferences()))
+func (t *Theme) WithPreferences(p Preferences) *Theme {
+	u := *t
+	if f := u.followed; f != nil {
+		u.unfollow(f)
+		u.followed = nil
+	}
+	from := u
+	u.follow(p)
+	u.followed = &followedTheme{from: from, to: u}
+	return &u
+}
+
+// unfollow puts back what following f changed, keeping what was set
+// since. It covers each field follow changes.
+func (t *Theme) unfollow(f *followedTheme) {
+	back := func(c *Color, from, to Color) {
+		if *c == to {
+			*c = from
+		}
+	}
+	back(&t.Accent, f.from.Accent, f.to.Accent)
+	back(&t.AccentHover, f.from.AccentHover, f.to.AccentHover)
+	back(&t.AccentPressed, f.from.AccentPressed, f.to.AccentPressed)
+	back(&t.AccentText, f.from.AccentText, f.to.AccentText)
+	back(&t.Selection, f.from.Selection, f.to.Selection)
+	back(&t.Focus, f.from.Focus, f.to.Focus)
+	back(&t.Border, f.from.Border, f.to.Border)
+	back(&t.TextMuted, f.from.TextMuted, f.to.TextMuted)
+	back(&t.Scrollbar, f.from.Scrollbar, f.to.Scrollbar)
+	if t.ScrollbarStyle == f.to.ScrollbarStyle {
+		t.ScrollbarStyle = f.from.ScrollbarStyle
+	}
+	if t.FontSize == f.to.FontSize {
+		t.FontSize = f.from.FontSize
+	}
+}
+
 // follow makes the theme follow the desktop's settings.
 func (t *Theme) follow(p Preferences) {
-	if a := p.Accent; a.A > 0 {
-		a.A = 255
-		black, white := Color{A: 255}, Color{R: 255, G: 255, B: 255, A: 255}
-		t.Accent = a
-		if t.Dark {
-			t.AccentHover, t.AccentPressed = a.Mix(white, 0.2), a.Mix(black, 0.15)
-			t.Selection, t.Focus = a.Alpha(0.4), a.Mix(white, 0.2).Alpha(0.6)
-		} else {
-			t.AccentHover, t.AccentPressed = a.Mix(black, 0.12), a.Mix(black, 0.25)
-			t.Selection, t.Focus = a.Alpha(0.25), a.Alpha(0.55)
-		}
-		// Text on the accent is black where white would not stand out, as
-		// on yellow.
-		t.AccentText = white
-		if l := a.gray().R; l > 165 {
-			t.AccentText = Color{R: 24, G: 24, B: 27, A: 255}
-		}
+	if p.Accent.A > 0 {
+		t.setAccent(p.Accent)
 	}
 	if p.HighContrast {
 		t.Border = t.Border.Mix(t.Text, 0.45)
