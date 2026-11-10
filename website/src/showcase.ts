@@ -347,4 +347,13 @@ export const showcase: ShowcaseApp[] = [
     mode: "native",
     image: "/showcase/vole.jpg",
   },
+  {
+    name: "MiguWave",
+    description:
+      "A third-party Migu Music desktop client for macOS and Windows, drawn with MyGo's native UI. Discovery, charts, playlists and artist pages, scrolling lyrics, a full-screen vinyl stage with GPU-drawn effects, and Apple Music-style crossfade between tracks.",
+    url: "https://github.com/horizon0514/MiguWave",
+    author: "horizon0514",
+    mode: "native",
+    image: "/showcase/miguwave.jpg",
+  },
 ]
