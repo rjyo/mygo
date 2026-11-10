@@ -119,3 +119,51 @@ func (rt *engine) closeLocals() {
 	rt.exits = nil
 	rt.closeDropped()
 }
+
+// OnUnmount has fn run when the element goes: once, on the main thread,
+// after the first frame that no longer builds it, as a Local that is an
+// io.Closer closes, without a type to give a Close. A view stops in fn
+// the work it started, as a streaming request, a ticker or a
+// subscription:
+//
+//	e := ui.Column(c)
+//	cancel := ui.Local(e, "feed", func() context.CancelFunc {
+//		ctx, cancel := context.WithCancel(context.Background())
+//		go read(ctx, url)
+//		return cancel
+//	})
+//	e.OnUnmount(*cancel)
+//
+// Call it as the element is built, after Key: each call replaces the
+// function, and the last one given runs. A frame that does not call it
+// keeps the one given before, and a nil fn takes it away. An element
+// leaving with an exit transition runs fn once its exit ended, and every
+// element as its window closes. fn may change the app's state; ask for
+// the frame that shows it with Window.Invalidate, or Invalidate of the
+// c.Services() the view kept.
+func (e *node) OnUnmount(fn func()) *node {
+	if fn == nil {
+		if u, ok := e.st.locals[unmountKey{}].(*unmount); ok {
+			u.fn = nil
+		}
+		return e
+	}
+	coreLocal(e, unmountKey{}, newUnmount).fn = fn
+	return e
+}
+
+// unmountKey keys the Local of OnUnmount among an element's.
+type unmountKey struct{}
+
+// unmount is the Local of OnUnmount, which closes by running the function
+// given last.
+type unmount struct{ fn func() }
+
+func newUnmount() unmount { return unmount{} }
+
+func (u *unmount) Close() error {
+	if u.fn != nil {
+		u.fn()
+	}
+	return nil
+}

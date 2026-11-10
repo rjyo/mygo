@@ -3008,7 +3008,10 @@ either.
   or an ancestor's, leaves with an `Exit` wait in `engine.exits` until
   the transition's record is gone or no longer holds that copy (the
   exit ended, or the element came back), and the engine's `close` closes
-  every state's as the window closes. `Context` is stable for the window; `Element` values expire between build
+  every state's as the window closes. An element's `OnUnmount` keeps its
+  function in such a `Local`, under a key of its own (`unmount`,
+  `ui/local_close.go`), whose `Close` runs the function given last.
+  `Context` is stable for the window; `Element` values expire between build
   passes and validate their owner, slot and generation before accessing storage. `ListState` resolves
   its focus owner only for the current context, frame and pass, exposing
   focus and shortcuts without retaining an element in app state. Scroll

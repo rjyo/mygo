@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"io"
 	"slices"
 	"testing"
@@ -395,5 +396,169 @@ func TestLocalCloserFrameAllocs(t *testing.T) {
 	}
 	if len(closed) != 0 {
 		t.Fatalf("closed %d while built", len(closed))
+	}
+}
+
+// OnUnmount's function runs once, after the frame that no longer builds
+// its element, not while it is built; the one given last runs, and every
+// element's as its window closes.
+func TestOnUnmountRunsWhenElementGoes(t *testing.T) {
+	var ran []string
+	inFrame := false
+	shown, frame := true, 0
+	var rt *engine
+	tt := NewTester(func(c *Context) {
+		frame++
+		Column(c).Children(func() {
+			if shown {
+				name := fmt.Sprint("frame ", frame)
+				Box(c).Key("feed").Size(10, 10).OnUnmount(func() {
+					ran = append(ran, name)
+					inFrame = inFrame || rt.inFrame
+				})
+			}
+			Box(c).Key("other").Size(10, 10)
+		})
+	}, 100, 100)
+	rt = tt.rt
+	for range 3 {
+		tt.Frame()
+	}
+	if len(ran) != 0 {
+		t.Fatalf("ran %v while built", ran)
+	}
+	last := fmt.Sprint("frame ", frame)
+	shown = false
+	tt.Frame()
+	if !slices.Equal(ran, []string{last}) {
+		t.Fatalf("the element went: ran %v, want %v", ran, []string{last})
+	}
+	if inFrame {
+		t.Error("fn ran during the frame")
+	}
+	tt.Frame()
+	tt.Frame()
+	if len(ran) != 1 {
+		t.Fatalf("ran %d times", len(ran))
+	}
+	shown = true
+	tt.Frame()
+	if len(ran) != 1 {
+		t.Fatalf("built again: ran %v", ran)
+	}
+	tt.rt.close()
+	if len(ran) != 2 {
+		t.Fatalf("the window closed: ran %v", ran)
+	}
+	tt.rt.close()
+	if len(ran) != 2 {
+		t.Fatalf("ran twice: %v", ran)
+	}
+}
+
+// A nil function takes away the one given before, and on an element that
+// has none keeps no Local.
+func TestOnUnmountNil(t *testing.T) {
+	ran := 0
+	shown, cleared := true, false
+	var st *state
+	tt := NewTester(func(c *Context) {
+		if !shown {
+			return
+		}
+		e := Box(c).Size(10, 10)
+		Box(c).Size(10, 10).OnUnmount(nil)
+		st = e.node().st
+		if cleared {
+			e.OnUnmount(nil)
+		} else {
+			e.OnUnmount(func() { ran++ })
+		}
+	}, 100, 100)
+	cleared = true
+	tt.Frame()
+	shown = false
+	tt.Frame()
+	if ran != 0 {
+		t.Fatalf("ran %d times after nil", ran)
+	}
+	shown, cleared = true, false
+	tt.Frame()
+	if len(st.closes) != 1 {
+		t.Fatalf("%d Locals may close, want 1", len(st.closes))
+	}
+	var other *state
+	tt2 := NewTester(func(c *Context) {
+		other = Box(c).Size(10, 10).OnUnmount(nil).node().st
+	}, 100, 100)
+	tt2.Frame()
+	if len(other.locals) != 0 || len(other.closes) != 0 {
+		t.Fatalf("a nil fn kept %d Locals, %d to close", len(other.locals), len(other.closes))
+	}
+}
+
+// An element leaving with an exit transition runs its function, and its
+// children's, once its copy is gone, not as it starts leaving.
+func TestOnUnmountAfterExit(t *testing.T) {
+	var ran []string
+	shown := true
+	tr := ElementTransition{Duration: 100 * time.Millisecond, Ease: Linear, Exit: &Motion{}}
+	tt := NewTester(func(c *Context) {
+		Column(c).Children(func() {
+			if shown {
+				Box(c).Key("panel").Size(40, 40).Transition(tr).
+					OnUnmount(func() { ran = append(ran, "panel") }).
+					Children(func() {
+						Box(c).Size(10, 10).OnUnmount(func() { ran = append(ran, "child") })
+					})
+			}
+		})
+	}, 100, 100)
+	tt.Frame()
+	shown = false
+	tt.Frame()
+	if len(tt.rt.exits) == 0 {
+		t.Fatal("the element left without an exit")
+	}
+	if len(ran) != 0 {
+		t.Fatalf("ran %v as the exit started", ran)
+	}
+	tt.Advance(50 * time.Millisecond)
+	if len(ran) != 0 {
+		t.Fatalf("ran %v halfway through the exit", ran)
+	}
+	tt.Advance(100 * time.Millisecond)
+	slices.Sort(ran)
+	if !slices.Equal(ran, []string{"child", "panel"}) {
+		t.Fatalf("after the exit: ran %v", ran)
+	}
+	tt.Advance(100 * time.Millisecond)
+	if len(ran) != 2 {
+		t.Fatalf("ran %v", ran)
+	}
+}
+
+// Elements given a function each frame cost their frames nothing more
+// than those given none.
+func TestOnUnmountFrameAllocs(t *testing.T) {
+	ran := 0
+	fn := func() { ran++ }
+	allocs := func(unmount bool) float64 {
+		tt := NewTester(func(c *Context) {
+			for i := range 50 {
+				e := Box(c).Key(i).Size(2, 2)
+				if unmount {
+					e.OnUnmount(fn)
+				}
+			}
+		}, 100, 100)
+		tt.Frame()
+		return testing.AllocsPerRun(20, tt.Frame)
+	}
+	if with, without := allocs(true), allocs(false); with > without {
+		t.Fatalf("a frame allocates %.0f times with OnUnmount, %.0f without", with, without)
+	}
+	if ran != 0 {
+		t.Fatalf("ran %d times while built", ran)
 	}
 }

@@ -305,6 +305,7 @@ var elementChains = map[string]bool{
 	"OnShortcut":           true,
 	"OnSubmit":             true,
 	"OnTextKey":            true,
+	"OnUnmount":            true,
 	"Opacity":              true,
 	"Orientation":          true,
 	"Padding":              true,

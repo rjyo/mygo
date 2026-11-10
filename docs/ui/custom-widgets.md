@@ -179,6 +179,10 @@ func Feed(c *ui.Context, win *mygo.Window, app *App, url string) {
   later, and `Close`'s error is ignored.
 - A value the element must not close, as one the app shares, belongs in
   the app's state rather than in a `Local`.
+- A widget that only needs to run a function as its element goes, as
+  `cancel`, gives it to the element's `OnUnmount`, which runs it as
+  `Close` would, without a type of its own
+  ([state of an element](views.md#state-of-an-element)).
 
 A widget whose input changes what it edits reports it with `SetChanged`
 on its element, as it builds: `Changed` then returns true for it, as for

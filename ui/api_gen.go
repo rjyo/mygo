@@ -6622,6 +6622,37 @@ func (_handle Element) OnTextKey(fn func(k TextKey) bool) Element {
 	return wrapElement(_node.OnTextKey(fn))
 }
 
+// OnUnmount has fn run when the element goes: once, on the main thread,
+// after the first frame that no longer builds it, as a Local that is an
+// io.Closer closes, without a type to give a Close. A view stops in fn
+// the work it started, as a streaming request, a ticker or a
+// subscription:
+//
+//	e := ui.Column(c)
+//	cancel := ui.Local(e, "feed", func() context.CancelFunc {
+//		ctx, cancel := context.WithCancel(context.Background())
+//		go read(ctx, url)
+//		return cancel
+//	})
+//	e.OnUnmount(*cancel)
+//
+// Call it as the element is built, after Key: each call replaces the
+// function, and the last one given runs. A frame that does not call it
+// keeps the one given before, and a nil fn takes it away. An element
+// leaving with an exit transition runs fn once its exit ended, and every
+// element as its window closes. fn may change the app's state; ask for
+// the frame that shows it with Window.Invalidate, or Invalidate of the
+// c.Services() the view kept.
+func (_handle Element) OnUnmount(fn func()) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.OnUnmount(fn))
+}
+
 // Opacity makes the element and its children translucent as one group,
 // as CSS's opacity does: what they paint is composited first and then
 // faded, so that children overlapping one another, or the element's
