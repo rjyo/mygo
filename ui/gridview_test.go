@@ -106,6 +106,83 @@ func TestGridViewChoosesSeveral(t *testing.T) {
 	}
 }
 
+// TestGridViewShiftAfterItemsRemoved checks Shift with an arrow and a
+// Shift-click after the app took items out, as those chosen deleted: the
+// item Shift chose from may be past the items left, and the grid asks the
+// app for the key of none of those.
+func TestGridViewShiftAfterItemsRemoved(t *testing.T) {
+	sel := -1
+	var chosen Selection[string]
+	var names []string
+	s := GridState{Selected: &sel, Selection: &chosen, Key: func(i int) any {
+		if i < 0 || i >= len(names) {
+			t.Errorf("the grid asked for the key of item %d of %d", i, len(names))
+			return ""
+		}
+		return names[i]
+	}}
+	tt := coreNewTester(func(c *context) {
+		coreGridView(c, &s, len(names), 100, 60, func(i int) {
+			coreText(c, names[i])
+		}).Grow(1)
+	}, 448, 300)
+	click := func(mods Modifiers, name string) {
+		t.Helper()
+		r, ok := tt.Find(name)
+		if !ok {
+			t.Fatalf("no item %q", name)
+		}
+		tt.ClickAtWith(mods, r.X, r.Y)
+	}
+	all := func() {
+		names = []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"}
+		chosen.Clear()
+		tt.Frame()
+	}
+
+	// Shift chose b to j from j, which the app deletes: k, now the second
+	// item, is chosen alone, and Shift with an arrow chooses from there.
+	all()
+	click(0, "j")
+	click(Shift, "b")
+	if sel != 1 || chosen.Len() != 9 {
+		t.Fatalf("Shift-click from j to b: chose %d, %d chosen", sel, chosen.Len())
+	}
+	names = []string{"a", "k", "l"}
+	chosen.Clear()
+	tt.Frame()
+	tt.Key(Shift, KeyRight)
+	if sel != 2 || chosen.Len() != 1 || !chosen.Has("l") {
+		t.Errorf("Shift-Right after the items chosen went: chose %d, %d chosen", sel, chosen.Len())
+	}
+	tt.Key(Shift, KeyLeft)
+	if sel != 1 || chosen.Len() != 2 || !chosen.Has("k") || !chosen.Has("l") {
+		t.Errorf("Shift-Left then: chose %d, %d chosen", sel, chosen.Len())
+	}
+
+	// The item clicked is past the items left.
+	all()
+	click(0, "j")
+	names = names[:3]
+	chosen.Clear()
+	tt.Frame()
+	tt.Key(Shift, KeyRight)
+	if sel != 0 || chosen.Len() != 1 || !chosen.Has("a") {
+		t.Errorf("Shift-Right with the item chosen gone: chose %d, %d chosen", sel, chosen.Len())
+	}
+
+	// A Shift-click then.
+	all()
+	click(0, "j")
+	names = names[:3]
+	chosen.Clear()
+	tt.Frame()
+	click(Shift, "c")
+	if sel != 2 || chosen.Len() != 1 || !chosen.Has("c") {
+		t.Errorf("Shift-click with the item chosen gone: chose %d, %d chosen", sel, chosen.Len())
+	}
+}
+
 func TestGridViewResizes(t *testing.T) {
 	sel := 13
 	s := GridState{Selected: &sel}
