@@ -1021,8 +1021,10 @@ func TestVibrancyWindowControls(t *testing.T) {
 	prev := mygo.App.Menu()
 	defer mygo.App.SetMenu(prev)
 	mygo.App.SetMenu(mygo.NewMenu([]*mygo.MenuItem{{Label: "App", Submenu: []*mygo.MenuItem{{Label: "Item"}}}}))
+	// Transparency also selects the no-redirection path on Windows 10. Ask for
+	// the material alone so the check below tests whether backdrops are supported.
 	opts := mygo.WindowOptions{X: 40, Y: 40, Width: 360, Height: 200, TitleBarStyle: mygo.TitleBarHidden,
-		Vibrancy: mygo.VibrancyMica, Transparent: true}
+		Vibrancy: mygo.VibrancyMica}
 	a := newWindow(t, opts)
 	opts.X = 440
 	b := newWindow(t, opts)

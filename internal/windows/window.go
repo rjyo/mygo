@@ -4,6 +4,7 @@ package windows
 
 import (
 	"errors"
+	"log"
 	"time"
 	"unsafe"
 
@@ -173,13 +174,7 @@ func (b *Backend) NewWindow(o *platform.WindowOptions, h platform.WindowHandler)
 	// keeps its bitmap: what it shows shows, and the material does not. The
 	// style is the window's for life: Windows neither adds it nor removes it
 	// later.
-	w.noRedirect = o.Vibrancy != "" && systemBackdrops() && (!w.hiddenTitleBar && !o.Surface || b.composition() != nil)
-	if o.Flyout != nil || o.Transparent && o.Surface {
-		// What the content leaves transparent shows what is behind: native
-		// UI's frames show their alpha through DirectComposition, which an
-		// opaque redirection bitmap would cover.
-		w.noRedirect = b.composition() != nil
-	}
+	w.noRedirect = w.needsNoRedirect(b.composition)
 	var owner uintptr
 	if p, ok := o.Parent.(*window); ok && p != nil && !p.closed {
 		w.parent, owner = p, p.hwnd
@@ -254,6 +249,7 @@ func (b *Backend) NewWindow(o *platform.WindowOptions, h platform.WindowHandler)
 	if o.Vibrancy != "" {
 		w.SetVibrancy(o.Vibrancy)
 	}
+	w.applyTransparentFramePolicy()
 	if b.icon != 0 {
 		w.setIcon(b.icon)
 	}
@@ -294,6 +290,17 @@ func initialWindowBounds(o *platform.WindowOptions, s dipSpace) rect {
 		r = &p
 	}
 	return rect{int32(r.X), int32(r.Y), int32(r.X + r.Width), int32(r.Y + r.Height)}
+}
+
+// needsNoRedirect keeps transparent web pages clear without initializing MyGo's
+// compositor. Native UI, flyouts and hidden caption controls need that compositor
+// to show without a redirection bitmap; make it only when they need it.
+func (w *window) needsNoRedirect(compose func() *composition) bool {
+	o := w.opts
+	if o.Flyout != nil || o.Transparent && o.Surface {
+		return compose() != nil
+	}
+	return !o.Surface && o.Transparent || o.Vibrancy != "" && systemBackdrops() && (!w.hiddenTitleBar && !o.Surface || compose() != nil)
 }
 
 func (w *window) styles() (style, ex uint32) {
@@ -504,6 +511,14 @@ func (w *window) message(m uint32, wp, lp uintptr) (uintptr, bool) {
 		return r, true
 	}
 	switch m {
+	case wmNCPaint:
+		if w.plainTransparentFrame() {
+			return 0, true
+		}
+	case wmNCActivate:
+		if w.plainTransparentFrame() {
+			return 1, true
+		}
 	case wmClose:
 		if w.h.ShouldClose() {
 			w.destroy()
@@ -1337,6 +1352,7 @@ func (w *window) updateLayered() {
 // along the top of the client area.
 func (w *window) SetHasShadow(v bool) {
 	w.shadow = v
+	w.applyTransparentFramePolicy()
 	if !w.captionless() || w.vibrancy != "" {
 		return
 	}
@@ -1345,6 +1361,27 @@ func (w *window) SetHasShadow(v bool) {
 		m.Top = 1 // a frame the size of a pixel brings the shadow back
 	}
 	procDwmExtendFrameIntoClientArea.Call(w.hwnd, uintptr(unsafe.Pointer(&m)))
+}
+
+// Transparent web overlays keep native sizing borders for hit testing, but a
+// shadowless frameless window must not draw DWM or GDI decorations over them.
+func (w *window) plainTransparentFrame() bool {
+	return w.frameless && w.opts.Transparent && !w.opts.Surface && w.vibrancy == "" && !w.shadow
+}
+
+func (w *window) applyTransparentFramePolicy() {
+	if !w.frameless || !w.opts.Transparent || w.opts.Surface {
+		return
+	}
+	policy := int32(0) // DWMNCRP_USEWINDOWSTYLE
+	if w.plainTransparentFrame() {
+		policy = 1 // DWMNCRP_DISABLED
+	}
+	const dwmwaNCRenderingPolicy = 2
+	hr, _, _ := procDwmSetWindowAttribute.Call(w.hwnd, dwmwaNCRenderingPolicy, uintptr(unsafe.Pointer(&policy)), 4)
+	if failed(hr) {
+		log.Print(hresultError("setting the transparent window frame policy", hr))
+	}
 }
 
 func (w *window) HasShadow() bool { return w.shadow }
@@ -1418,6 +1455,7 @@ func (w *window) buttonsDark() bool {
 
 func (w *window) SetVibrancy(material string) {
 	w.vibrancy = material
+	w.applyTransparentFramePolicy()
 	backdrop := backdropFor(material)
 	w.extendGlass(true)
 	procDwmSetWindowAttribute.Call(w.hwnd, dwmwaSystemBackdropType, uintptr(unsafe.Pointer(&backdrop)), 4)
