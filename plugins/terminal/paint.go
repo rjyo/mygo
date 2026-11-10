@@ -166,13 +166,19 @@ func (v *view) paint(p *ui.Painter, r ui.Rect) {
 		full = true
 	}
 	rs.Rows()
+	changed := false
 	for y := 0; y < rows && rs.NextRow(); y++ {
 		line := &v.lines[y]
 		if full || !line.ok || rs.RowDirty() {
 			v.buildRow(line, rs, cols)
+			changed = true
 		}
 	}
 	rs.Clean()
+	if changed && len(v.hover) > 0 {
+		// A frame finds the link under the pointer in what now shows.
+		v.services.Invalidate()
+	}
 	v.draw(p, r)
 }
 
@@ -595,8 +601,10 @@ func (v *view) draw(p *ui.Painter, r ui.Rect) {
 		p.Clip(ui.Rect{X: b, Y: r.Y, W: r.X + r.W - b, H: r.H}, 0, func() { text(ui.Color{}) })
 	}
 	v.drawImages(p, aboveText, ox, oy)
-	if h := v.hover; h.on() && h.row < len(v.lines) {
-		v.drawDeco(p, deco{h.x0, h.x1, vt.UnderlineSingle, v.linkColor(&v.lines[h.row], h)}, ox, oy+float32(h.row)*ch, cw, ch, base)
+	for _, h := range v.hover {
+		if h.row < len(v.lines) {
+			v.drawDeco(p, deco{h.x0, h.x1, vt.UnderlineSingle, v.linkColor(&v.lines[h.row], h)}, ox, oy+float32(h.row)*ch, cw, ch, base)
+		}
 	}
 	if cur.W > 0 && !block {
 		if v.focused || v.cursor.Style != vt.CursorBlock {
