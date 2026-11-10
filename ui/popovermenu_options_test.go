@@ -245,3 +245,94 @@ func TestPopoverMenuButtonOptionsCount(t *testing.T) {
 	}, 200, 200)
 	tt.Frame()
 }
+
+func TestPopoverMenuButtonPanel(t *testing.T) {
+	red := RGB(200, 30, 30)
+	wide := shadow{0, 18, 50, 0, RGBA(0, 0, 0, 0.45), false}
+	var styled bool
+	// panels are the panels the build styled, by widget and level: the
+	// menu's, then each submenu's.
+	var panels []*node
+	o := PopoverMenuButtonOptions{Panel: func(panel Element) {
+		n := panel.node()
+		panels = append(panels, n)
+		n.Background(red).Radius(12).NoShadow().Shadow(wide.x, wide.y, wide.blur, wide.spread, wide.color)
+	}}
+	var theme *Theme
+	tt := coreNewTester(func(c *context) {
+		theme = c.theme
+		var opts []PopoverMenuButtonOptions
+		if styled {
+			opts = append(opts, o)
+		}
+		coreColumn(c).Padding(20).Children(func() {
+			corePopoverMenuButton(c, "Actions", func(m *Menu) {
+				m.Item("Open")
+				m.Submenu("More", func(m *Menu) { m.Item("Elsewhere") })
+			}, opts...)
+		})
+	}, 400, 400)
+	tt.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
+
+	// Without Panel, the menu keeps the theme's look.
+	tt.Click("Actions")
+	if len(panels) != 0 {
+		t.Fatalf("Panel ran %d times with no Panel set", len(panels))
+	}
+	plain, ok := tt.Find("Open")
+	if !ok {
+		t.Fatal("no menu")
+	}
+	tt.Key(0, KeyEscape)
+
+	styled = true
+	tt.Click("Actions")
+	if len(panels) == 0 {
+		t.Fatal("Panel did not run for the menu that shows")
+	}
+	menu := panels[len(panels)-1]
+	if menu.role != RoleMenu || menu.widget != "PopoverMenu" {
+		t.Errorf("Panel got role %v, widget %q, want the menu's panel", menu.role, menu.widget)
+	}
+	if menu.bg != red || menu.radius != [4]float32{12, 12, 12, 12} {
+		t.Errorf("panel background %v, radius %v: Panel's did not take the theme's place", menu.bg, menu.radius)
+	}
+	if len(menu.shadows) != 1 || menu.shadows[0] != wide {
+		t.Errorf("panel shadows %+v, want Panel's alone", menu.shadows)
+	}
+	if menu.borderC != theme.Border {
+		t.Errorf("panel border %v, want the theme's %v, which Panel left", menu.borderC, theme.Border)
+	}
+	// The items stay where the theme's panel put them, below the button.
+	if open, _ := tt.Find("Open"); open != plain {
+		t.Errorf("Open at %+v with Panel, %+v without", open, plain)
+	}
+
+	// A submenu's panel is styled so too.
+	panels = panels[:0]
+	tt.Key(0, KeyDown)
+	tt.Key(0, KeyDown)
+	tt.Key(0, KeyRight)
+	if !tt.HasText("Elsewhere") {
+		t.Fatalf("the submenu did not open: texts %q", tt.Texts())
+	}
+	var subs int
+	for _, p := range panels {
+		if p.role == RoleMenu && p.bg == red && p.label == "More" {
+			subs++
+		}
+	}
+	if subs == 0 {
+		t.Error("Panel did not style the submenu's panel")
+	}
+
+	// Without Panel again, the theme's look comes back.
+	tt.Key(0, KeyEscape)
+	tt.Key(0, KeyEscape)
+	styled = false
+	panels = panels[:0]
+	tt.Click("Actions")
+	if len(panels) != 0 {
+		t.Errorf("Panel ran %d times once taken away", len(panels))
+	}
+}

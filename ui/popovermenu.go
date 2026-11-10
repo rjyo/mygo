@@ -79,10 +79,10 @@ func (e *node) PopoverMenu(build func(m *Menu)) *node {
 // such a menu, as MenuButton is one with a menu of the system's, and
 // MenuBase a menu button without a look.
 //
-// Its options place the menu elsewhere along the button, and let the app
-// open and close it (PopoverMenuButtonOptions): the menu of a toolbar's
-// button at the window's end lines up with the button's end, and closes
-// from an event of the app's:
+// Its options place the menu elsewhere along the button, let the app open
+// and close it, and style its panel (PopoverMenuButtonOptions): the menu
+// of a toolbar's button at the window's end lines up with the button's
+// end, and closes from an event of the app's:
 //
 //	more.PopoverMenuButton(build, ui.PopoverMenuButtonOptions{
 //		At: ui.AnchorBottomEnd, Self: ui.AnchorTopEnd, Open: &app.moreOpen,
@@ -123,6 +123,7 @@ func (e *node) PopoverMenuButton(build func(m *Menu), options ...PopoverMenuButt
 		if o.At != 0 || o.Self != 0 {
 			d.menu.attach = attachment(1 + min(o.At, AnchorBottomEnd)*15 + min(o.Self, AnchorBottomEnd))
 		}
+		d.panel = o.Panel
 	}
 	rt.drawMenu(e, build)
 	if synced != nil {
@@ -159,6 +160,19 @@ type PopoverMenuButtonOptions struct {
 	// closes it, which sets *Open to false, as a disabled button, which
 	// opens none, does.
 	Open *bool
+	// Panel, when set, styles the panel of the menu and of each submenu
+	// that opens, after the theme's look and with the same calls, so the
+	// app's background, border, radius or padding take its place, and its
+	// shadow too after NoShadow, as Shadow adds one:
+	//
+	//	ui.PopoverMenuButtonOptions{Panel: func(panel ui.Element) {
+	//		panel.Background(app.menuColor).Radius(12).
+	//			NoShadow().Shadow(0, 18, 50, 0, ui.RGBA(0, 0, 0, 0.45))
+	//	}}
+	//
+	// The menu keeps its place, its gap from the button and its items'
+	// look: Panel sets no margin and adds no children.
+	Panel func(panel Element)
 }
 
 type menuOpenKey struct{}
@@ -856,6 +870,9 @@ type drawnMenu struct {
 	// icons are the bitmaps of its items' icons, by image and tint, as the
 	// menu builds in every frame it shows.
 	icons map[drawnIcon]*Bitmap
+	// panel styles its panels after the theme's look, as the menu button
+	// asked in this build (PopoverMenuButtonOptions.Panel).
+	panel func(panel Element)
 }
 
 // drawnIcon is an icon of a drawn menu in a color: the color of the text
@@ -992,6 +1009,9 @@ func (rt *engine) drawnMenuBuilt(e *node, d *drawnMenu, m *Menu) *platform.MenuI
 		panel.Shadow(0, 6, 20, 0, RGBA(0, 0, 0, 0.18))
 		if width > 0 {
 			panel.MaxWidth(max(width, t.Space(45)))
+		}
+		if d.panel != nil {
+			d.panel(wrapElement(panel))
 		}
 	}
 	var items func(menu *platform.Menu, width float32)

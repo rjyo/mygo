@@ -116,6 +116,22 @@ A menu the app opens takes the focus, with no item highlighted, and gives
 it back to the element that had it as it closes. A window shows one drawn
 menu at a time: another opening closes it, setting `Open` to false.
 
+`Panel` styles the menu's panel, and each submenu's, after the theme's
+look, for a menu that wears an app's own surface rather than the theme's
+`Background`, `Border` and shadow. Its background, border, radius and
+padding take the theme's place; `Shadow` adds a shadow, so `NoShadow`
+first takes off the theme's. The menu keeps its place, its gap from the
+button and its items' look:
+
+```go
+more.PopoverMenuButton(menu, ui.PopoverMenuButtonOptions{
+	Panel: func(panel ui.Element) {
+		panel.Background(app.menuColor).Border(1, app.line).Radius(12).
+			NoShadow().Shadow(0, 18, 50, 0, ui.RGBA(0, 0, 0, 0.45))
+	},
+})
+```
+
 Assistive technology sees the menu button, expanded while its menu
 shows, and the menu with its menu items, check box items and radio items,
 as it sees the system's. In a toolbar's overflow menu, choosing the button

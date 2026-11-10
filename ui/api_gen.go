@@ -6891,10 +6891,10 @@ func (_handle Element) PopoverMenu(build func(m *Menu)) Element {
 // such a menu, as MenuButton is one with a menu of the system's, and
 // MenuBase a menu button without a look.
 //
-// Its options place the menu elsewhere along the button, and let the app
-// open and close it (PopoverMenuButtonOptions): the menu of a toolbar's
-// button at the window's end lines up with the button's end, and closes
-// from an event of the app's:
+// Its options place the menu elsewhere along the button, let the app open
+// and close it, and style its panel (PopoverMenuButtonOptions): the menu
+// of a toolbar's button at the window's end lines up with the button's
+// end, and closes from an event of the app's:
 //
 //	more.PopoverMenuButton(build, ui.PopoverMenuButtonOptions{
 //		At: ui.AnchorBottomEnd, Self: ui.AnchorTopEnd, Open: &app.moreOpen,
