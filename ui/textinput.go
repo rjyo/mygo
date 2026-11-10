@@ -302,6 +302,58 @@ func (e *node) SetTextSelection(start, end int) *node {
 	return e
 }
 
+// ReplaceText replaces the runes of a text input from start to end with s,
+// as an edit, a step of undo of its own: Undo brings back the text the
+// user had, and Redo s again. A command that writes a message replaces all
+// of it, from 0 to math.MaxInt; a completion, the word before the caret.
+// The offsets are kept within the text, as SetTextSelection's, and what was
+// typed in this frame is applied first. Setting the bound value instead
+// takes the new text into the last step, which suits a reformat of what
+// the user typed, not a text that replaces it (see TextInput). As a paste
+// does, it puts the caret after s, and a single-line input takes line
+// breaks as spaces; MaxLength does not cut it, as it does not cut a value
+// the app sets. Changed reports it. It does nothing when the runes are s
+// already.
+func (e *node) ReplaceText(start, end int, s string) *node {
+	if !e.hasState() || e.st.editor == nil || e.flags&flagEditable == 0 {
+		return e
+	}
+	// What was typed this frame comes first.
+	e.c.rt.applyInputs()
+	ed := e.st.editor
+	ed.syncBuffer()
+	n := ed.buf.n
+	start, end = min(max(start, 0), n), min(max(end, 0), n)
+	start, end = min(start, end), max(start, end)
+	if ed.buf.slice(start, end) == s {
+		return e
+	}
+	ed.compose, ed.compositionActive = "", false
+	ed.record(false)
+	maxLength := ed.maxLength
+	ed.maxLength = 0
+	ed.replace(start, end, s)
+	ed.maxLength = maxLength
+	if ed.document != nil {
+		snapshot, ok := ed.document.compareRestore(ed.published, ed.buf.root)
+		if !ok {
+			// The app changed the buffer meanwhile, from another goroutine:
+			// its text wins, as it does over the user's edits.
+			ed.loadBuffer(snapshot)
+			return e
+		}
+		ed.published = snapshot
+	} else if ed.value != nil {
+		*ed.value = ed.buf.s
+	}
+	if ed.area != nil {
+		ed.area.reveal = true
+	}
+	e.st.markChanged()
+	e.c.rt.requestFrame()
+	return e
+}
+
 // Composing reports whether an input method composes text in a text
 // input, as Pinyin before a candidate is chosen: its value holds the text
 // once composed. Keys typed meanwhile are the input method's, as Enter

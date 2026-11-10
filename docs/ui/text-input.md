@@ -154,6 +154,31 @@ It preserves the last undo step, so an app can reformat what the user
 typed without losing that step. Setting the string to `""` does not discard
 the history: Undo can restore text from before the clear.
 
+To put a text of the app's in place of some or all of the user's, call
+`ReplaceText(start, end, s)` on the input instead. It replaces the runes
+from `start` to `end`, as one step of undo of its own, so Undo brings back
+what the user had written and Redo the app's text again. The offsets are
+kept within the text, so `0, math.MaxInt` replaces all of it, even text
+typed in the same frame:
+
+```go
+msg := ui.TextArea(c, &app.message).Label("Message")
+if text, ok := app.generated(); ok {
+	msg.ReplaceText(0, math.MaxInt, text) // Undo restores what the user wrote
+}
+
+in := ui.TextInput(c, &app.draft)
+if name, ok := app.mentionPicked(); ok {
+	_, caret := in.TextSelection()
+	in.ReplaceText(app.mentionStart, caret, "@"+name+" ")
+}
+```
+
+`ReplaceText` puts the caret after the text and reports the edit through
+`Changed`, as typing does. A single-line input takes line breaks as
+spaces, and `MaxLength` does not cut it. It works on `TextInputBuffer` and
+`TextAreaBuffer` too.
+
 To start a new editing session, clear the string and change the input's
 [key](views.md#keys). The new identity gets a new editor, without the old
 selection, composition or undo history:

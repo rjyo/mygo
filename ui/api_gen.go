@@ -7136,6 +7136,28 @@ func (_handle Element) ReadOnly(on bool) Element {
 	return wrapElement(_node.ReadOnly(on))
 }
 
+// ReplaceText replaces the runes of a text input from start to end with s,
+// as an edit, a step of undo of its own: Undo brings back the text the
+// user had, and Redo s again. A command that writes a message replaces all
+// of it, from 0 to math.MaxInt; a completion, the word before the caret.
+// The offsets are kept within the text, as SetTextSelection's, and what was
+// typed in this frame is applied first. Setting the bound value instead
+// takes the new text into the last step, which suits a reformat of what
+// the user typed, not a text that replaces it (see TextInput). As a paste
+// does, it puts the caret after s, and a single-line input takes line
+// breaks as spaces; MaxLength does not cut it, as it does not cut a value
+// the app sets. Changed reports it. It does nothing when the runes are s
+// already.
+func (_handle Element) ReplaceText(start int, end int, s string) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.ReplaceText(start, end, s))
+}
+
 // Reverse lays the children out in the other direction: a Row from right
 // to left, a Column from bottom to top, as CSS's row-reverse and
 // column-reverse do. Justify's Start is then the right or the bottom.
