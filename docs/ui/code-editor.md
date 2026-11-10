@@ -248,6 +248,10 @@ TypeScript, JSON, Python, Rust, C, C++, Java, Kotlin, Scala, Swift, Dart,
 C#, shell scripts, YAML, TOML, SQL, R, Ruby, Lua, PHP, CSS, HTML, ERB,
 Svelte, XML, Markdown, diffs, Dockerfiles, Makefiles, Protocol Buffers,
 GraphQL, Zig, Nix, Jinja templates and HCL (Terraform).
+A template's text is in the language its name gives before the template's
+extension: `LanguageFor` highlights `compose.yaml.j2` as Jinja in YAML,
+`config.json.erb` as ERB in JSON, and `notice.text.erb` as ERB in plain
+text. Without such a name, ERB's text is HTML and Jinja's plain text.
 A `Language` says how to highlight, comment, match brackets and indent its
 text, and with `Imports`, a pattern of a line that imports (`^import\b` for
 Go), which lines fold as a run: build one for another language, or copy

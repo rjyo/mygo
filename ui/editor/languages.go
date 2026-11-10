@@ -8,9 +8,62 @@ import (
 )
 
 // LanguageFor returns the language of a file by its name, as
-// "main.go" or "Makefile", or nil when MyGo knows none for it.
+// "main.go" or "Makefile", or nil when MyGo knows none for it. A
+// template's text is in the language its name gives before the
+// template's extension: "compose.yaml.j2" is Jinja in YAML, and
+// "notice.text.erb" ERB in plain text; without one, as "show.erb", it is
+// in the template's own, HTML for ERB and plain text for Jinja.
 func LanguageFor(filename string) *Language {
 	base := path.Base(strings.ReplaceAll(filename, "\\", "/"))
+	l := languageForBase(base)
+	if l == nil {
+		return nil
+	}
+	t, ok := l.Tokenizer.(*templateLexer)
+	if !ok {
+		return l
+	}
+	inner := base[:len(base)-len(path.Ext(base))]
+	host := languageForBase(inner)
+	if host == nil && path.Ext(inner) == "" {
+		return l
+	}
+	var tk Tokenizer
+	if host != nil {
+		if _, nested := host.Tokenizer.(*templateLexer); nested {
+			return l
+		}
+		tk = host.Tokenizer
+	}
+	if tk == t.host {
+		return l
+	}
+	return templateIn(l, t, host)
+}
+
+// templateIn returns template l with its text in host's language, plain
+// text when host is nil: one language for each pair, made once.
+func templateIn(l *Language, t *templateLexer, host *Language) *Language {
+	key := [2]*Language{l, host}
+	if in, ok := templateHosts.Load(key); ok {
+		return in.(*Language)
+	}
+	in, lt := *l, *t
+	lt.host = nil
+	if host != nil {
+		lt.host = host.Tokenizer
+	}
+	in.Tokenizer = &lt
+	got, _ := templateHosts.LoadOrStore(key, &in)
+	return got.(*Language)
+}
+
+// templateHosts holds the templates templateIn made, by template and host.
+var templateHosts sync.Map
+
+// languageForBase returns the language of a file named base, by its name
+// or else its extension.
+func languageForBase(base string) *Language {
 	ext := strings.ToLower(path.Ext(base))
 	for _, l := range Languages() {
 		for _, f := range l.Filenames {
@@ -569,6 +622,8 @@ func makeLanguages() {
 	}
 	// HTML's tokenizer highlights the scripts and styles inside it.
 	html.Tokenizer = &markupLexer{html: true, script: javascript.Tokenizer, style: css.Tokenizer}
+	// ERB's text is HTML, unless its name says otherwise: LanguageFor gives
+	// "config.json.erb" JSON text, and "notice.text.erb" plain text.
 	erb := &Language{
 		Name: "ERB", Extensions: []string{".erb", ".rhtml", ".tt"}, BlockComment: html.BlockComment,
 		Brackets: html.Brackets, AutoClose: html.AutoClose, WordChars: "-", TabSize: 2,
@@ -576,8 +631,9 @@ func makeLanguages() {
 		Tokenizer: &templateLexer{host: html.Tokenizer, code: ruby.Tokenizer,
 			tags: []templateTag{{open: "<%#", close: "%>", comment: true}, {open: "<%", close: "%>"}}, marks: "=-", trims: "-", escape: "<%%"},
 	}
-	// Jinja's text is plain: a template's name, as nginx.conf.j2, says
-	// what it makes, but the tags may cut its syntax anywhere.
+	// Jinja's text is plain, unless its name says what it makes: LanguageFor
+	// gives "compose.yaml.j2" YAML text. The tags may cut that text's
+	// syntax anywhere, and the text resumes after a tag as it was before.
 	jinja := &Language{
 		Name: "Jinja", Extensions: []string{".j2", ".jinja", ".jinja2"}, BlockComment: [2]string{"{#", "#}"},
 		Brackets: cBrackets, AutoClose: cAutoClose("\"", "'"), TabSize: 2,

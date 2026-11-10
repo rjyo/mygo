@@ -171,7 +171,8 @@ func hclHash(s string) uint64 {
 // Outside a tag its state is the host's. In a tag that goes on to the next
 // line, it is the code's state (bits 0-39), the host's without the state of
 // a script or style in it (bits 40-55), and one more than the tag's index
-// (bits 62-63).
+// (bits 62-63). A host whose state needs more bits, as Markdown's in a
+// fence, resumes after such a tag from those it kept.
 type templateLexer struct {
 	// host lexes the text outside tags; without one, it is plain text.
 	host, code Tokenizer

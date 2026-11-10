@@ -3,6 +3,7 @@ package editor
 import (
 	"fmt"
 	"math/rand/v2"
+	"path"
 	"strings"
 	"testing"
 	"time"
@@ -267,6 +268,53 @@ func TestLanguageFor(t *testing.T) {
 		}
 		if got != want {
 			t.Errorf("LanguageFor(%q) = %q, want %q", name, got, want)
+		}
+	}
+}
+
+// A template's text is in the language of the name before its extension,
+// plain text for a name LanguageFor doesn't know, and the template's own
+// without one; its tags stay the template's.
+func TestLanguageForTemplateHost(t *testing.T) {
+	for _, c := range []struct{ name, host, line, tagged string }{
+		{"compose.yaml.j2", "YAML", "image: app # pinned", `meta({{)var(tag)meta(}})`},
+		{"config.json.erb", "JSON", `{"a": [1, true]}`, `meta(<%=)var(tag)meta(%>)`},
+		{"Dockerfile.j2", "Dockerfile", "FROM ruby AS app", `meta({{)var(tag)meta(}})`},
+		{"show.html.erb", "HTML", `<p class="x">a</p>`, `meta(<%=)var(tag)meta(%>)`},
+		{"show.erb", "HTML", `<p class="x">a</p>`, `meta(<%=)var(tag)meta(%>)`},
+		{"welcome.text.erb", "", `<p class="x">a: 1</p>`, `meta(<%=)var(tag)meta(%>)`},
+		{"nginx.conf.j2", "TOML", "listen = 80", `meta({{)var(tag)meta(}})`},
+		{"motd.j2", "", "[a] = 1 # b", `meta({{)var(tag)meta(}})`},
+	} {
+		l := LanguageFor(c.name)
+		if l == nil {
+			t.Errorf("LanguageFor(%q) = nil", c.name)
+			continue
+		}
+		if again := LanguageFor("x/" + c.name); again != l {
+			t.Errorf("LanguageFor(%q) made a new language on each call", c.name)
+		}
+		want := "text(" + c.line + ")"
+		if c.host != "" {
+			want = lexLines(LanguageNamed(c.host).Tokenizer, c.line)
+		}
+		if got := lexLines(l.Tokenizer, c.line); got != want {
+			t.Errorf("%s text:\n got %s\nwant %s", c.name, got, want)
+		}
+		tag := "<%= tag %>"
+		if l.Name == "Jinja" {
+			tag = "{{ tag }}"
+		}
+		if got := lexLines(l.Tokenizer, tag); got != c.tagged {
+			t.Errorf("%s tag:\n got %s\nwant %s", c.name, got, c.tagged)
+		}
+	}
+	if LanguageFor("show.html.erb") != LanguageNamed("erb") || LanguageFor("motd.j2") != LanguageNamed("jinja") {
+		t.Error("a template in its own text language is not the template itself")
+	}
+	for _, name := range []string{"page.html.erb.j2", "x.j2.erb"} {
+		if l := LanguageFor(name); l != LanguageFor("a"+path.Ext(name)) {
+			t.Errorf("LanguageFor(%q) = %v, want the template in its own text", name, l)
 		}
 	}
 }
