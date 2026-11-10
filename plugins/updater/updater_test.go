@@ -223,6 +223,111 @@ func TestInstallAndRelaunch(t *testing.T) {
 	}
 }
 
+// releaseInstalls returns a release whose install sends its version to
+// installed.
+func releaseInstalls(version string, installed chan<- string) *release {
+	return newRelease(version, func(context.Context, func(int64, int64)) error {
+		installed <- version
+		return nil
+	})
+}
+
+// A release that came out while the window offered an older one is the
+// one Install installs.
+func TestInstallNewerRelease(t *testing.T) {
+	h := newHarness(t, Options{})
+	installed := make(chan string, 2)
+	h.result = func(context.Context) (*release, error) { return releaseInstalls("2.0.0", installed), nil }
+	done := h.begin(false)
+	s := h.shown()
+	v := waitView(t, s, "A new version of")
+	h.result = func(context.Context) (*release, error) { return releaseInstalls("2.1.0", installed), nil }
+	s.Respond(v.Prompt, actionInstall, false)
+	v = waitView(t, s, "Ready to Relaunch")
+	if !strings.Contains(v.Message, "2.1.0 is installed") {
+		t.Errorf("message %q", v.Message)
+	}
+	if got := wait.For(t, "the install", installed); got != "2.1.0" {
+		t.Errorf("installed %s, want 2.1.0", got)
+	}
+	s.Respond(v.Prompt, actionLater, false)
+	waitDone(t, done)
+	if h.u.available != "2.1.0" || h.u.installed == nil || h.u.installed.version != "2.1.0" {
+		t.Errorf("available %q, installed %+v", h.u.available, h.u.installed)
+	}
+	if n := h.checks.Load(); n != 2 {
+		t.Errorf("%d checks, want 2", n)
+	}
+}
+
+// When checking again before installing fails, Install installs the
+// release the window shows.
+func TestInstallRecheckFails(t *testing.T) {
+	h := newHarness(t, Options{})
+	installed := make(chan string, 2)
+	h.result = func(context.Context) (*release, error) { return releaseInstalls("2.0.0", installed), nil }
+	done := h.begin(true)
+	s := h.shown()
+	v := waitView(t, s, "A new version of")
+	h.result = func(context.Context) (*release, error) { return nil, errors.New("offline") }
+	s.Respond(v.Prompt, actionInstall, false)
+	v = waitView(t, s, "Ready to Relaunch")
+	if !strings.Contains(v.Message, "2.0.0 is installed") {
+		t.Errorf("message %q", v.Message)
+	}
+	if got := wait.For(t, "the install", installed); got != "2.0.0" {
+		t.Errorf("installed %s, want 2.0.0", got)
+	}
+	s.Respond(v.Prompt, actionLater, false)
+	waitDone(t, done)
+	if h.u.available != "2.0.0" {
+		t.Errorf("available %q", h.u.available)
+	}
+	if n := h.checks.Load(); n != 2 {
+		t.Errorf("%d checks, want 2", n)
+	}
+}
+
+// CheckForUpdates while the window offers an update checks again, and the
+// window then offers the newer version that came out.
+func TestCheckWhileOffering(t *testing.T) {
+	h := activateAvailabilityHarness(t)
+	installed := make(chan string, 2)
+	h.result = func(context.Context) (*release, error) { return releaseInstalls("2.0.0", installed), nil }
+	done := h.begin(false)
+	s := h.shown()
+	waitView(t, s, "A new version of")
+	if AvailableVersion() != "2.0.0" {
+		t.Fatalf("available %q", AvailableVersion())
+	}
+	h.result = func(context.Context) (*release, error) {
+		r := releaseInstalls("2.1.0", installed)
+		r.notes = "- Newer"
+		return r, nil
+	}
+	waitDone(t, h.begin(true)) // returns at once
+	wait.Until(t, "the window offers 2.1.0", func() bool {
+		v, _ := s.Current()
+		return strings.Contains(v.Message, "2.1.0 is now available")
+	})
+	v, _ := s.Current()
+	if !strings.Contains(markdown.HTML(v.Notes), "Newer") {
+		t.Errorf("notes %q", markdown.HTML(v.Notes))
+	}
+	if AvailableVersion() != "2.1.0" {
+		t.Errorf("available %q", AvailableVersion())
+	}
+	wait.Until(t, "the window promoted", s.User)
+	h.noWindow() // the same window, not another one
+	s.Respond(v.Prompt, actionInstall, false)
+	v = waitView(t, s, "Ready to Relaunch")
+	if got := wait.For(t, "the install", installed); got != "2.1.0" {
+		t.Errorf("installed %s, want 2.1.0", got)
+	}
+	s.Respond(v.Prompt, actionLater, false)
+	waitDone(t, done)
+}
+
 // A window keeps the language it opened in; after the app's language
 // changes, the next window and the menu item take the new one.
 func TestLanguageChange(t *testing.T) {

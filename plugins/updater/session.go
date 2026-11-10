@@ -29,6 +29,9 @@ type session struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
 	responses chan response
+	// rechecks asks the session to check again while it offers an
+	// update (offering).
+	rechecks chan struct{}
 
 	// showMu is held while the window is being created.
 	showMu sync.Mutex
@@ -43,6 +46,9 @@ type session struct {
 	changed chan struct{} // closed when the view changes
 	win     *mygo.Window
 	release bool // the window has the size of a release view
+	// offering is set while the window offers an update and waits for the
+	// user's answer.
+	offering bool
 }
 
 func newSession(u *updater, t *text, user bool) *session {
@@ -50,6 +56,7 @@ func newSession(u *updater, t *text, user bool) *session {
 	return &session{
 		u: u, t: t, user: user, ctx: ctx, cancel: cancel,
 		responses: make(chan response, 1),
+		rechecks:  make(chan struct{}, 1),
 		changed:   make(chan struct{}),
 	}
 }
@@ -203,6 +210,40 @@ func (s *session) promote() {
 	s.user = true
 	s.mu.Unlock()
 	s.show()
+}
+
+// recheck asks the session to check again and then bring its window to
+// the front, when the window offers an update. It reports whether it does.
+func (s *session) recheck() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.offering {
+		return false
+	}
+	select {
+	case s.rechecks <- struct{}{}:
+	default: // already asked
+	}
+	return true
+}
+
+// setOffering sets whether the window offers an update. When the offer
+// ends with a re-check still asked for, the window comes to the front, as
+// the user asked, unless it closed.
+func (s *session) setOffering(on bool) {
+	s.mu.Lock()
+	s.offering = on
+	s.mu.Unlock()
+	if on {
+		return
+	}
+	select {
+	case <-s.rechecks:
+		if s.ctx.Err() == nil {
+			s.promote()
+		}
+	default:
+	}
 }
 
 // wait waits for the user to respond to the view, or the window to close.
