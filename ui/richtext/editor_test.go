@@ -900,3 +900,23 @@ func TestRichTextSpace(t *testing.T) {
 		t.Fatalf("the room gone: %+v, then %+v", before, back)
 	}
 }
+
+// With NoScrollbar the editor draws no scroll bar, the pointer over it or
+// not, and a press where the bar would be places the caret in the text.
+func TestNoScrollbar(t *testing.T) {
+	doc := NewDocument(NewText(strings.Repeat("line\n", 200)))
+	tt := ui.NewTester(func(c *ui.Context) { Editor(c, doc, EditorOptions{NoScrollbar: true}).Fill() }, 500, 400)
+	tt.Move(250, 200)
+	tt.Frame()
+	img := tt.Image()
+	s := img.Bounds().Dx() / 500
+	for y := 10 * s; y < 390*s; y++ {
+		if img.RGBAAt(494*s, y) != img.RGBAAt(480*s, y) {
+			t.Fatal("a scroll bar shows")
+		}
+	}
+	tt.ClickAt(495, 30)
+	if a, z := doc.Selection(); a != z || a == 0 {
+		t.Fatalf("a press on the bar's place did not place the caret in the text: %d, %d", a, z)
+	}
+}

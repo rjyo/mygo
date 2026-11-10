@@ -709,6 +709,9 @@ func (v *view) taskBox(x float32, y float64) (int, bool) {
 
 // overScrollbar reports whether x of the element is on the scroll bar.
 func (v *view) overScrollbar(x float32) bool {
+	if v.opts.NoScrollbar {
+		return false
+	}
 	width := v.barStyle.TrackWidth
 	if width <= 0 {
 		width = scrollbarWidth

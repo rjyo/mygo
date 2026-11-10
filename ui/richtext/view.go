@@ -65,6 +65,13 @@ type EditorOptions struct {
 	// laid out, each frame for those in view, so that what it returns can
 	// change from frame to frame and the paragraphs below move with it.
 	Space func(p int) float32
+	// NoScrollbar draws no scroll bar of the editor's own, and a press
+	// where it would be goes to the text: an app that makes the editor as
+	// tall as its text, and scrolls it with a page around it, shows the
+	// page's bar alone, even in a frame where the editor's height falls
+	// short of its text and it scrolls a little itself. The editor still
+	// scrolls to keep the caret in view, and with the wheel.
+	NoScrollbar bool
 }
 
 // Editor creates an editor of doc's attributed text, as NSTextView edits
