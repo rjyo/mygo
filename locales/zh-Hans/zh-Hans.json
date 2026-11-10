@@ -190,5 +190,20 @@
   "decimalAtLeast": "请输入不小于 {min} 的值",
   "decimalAtMost": "请输入不大于 {max} 的值",
   "desktopShortcut": "创建桌面快捷方式",
-  "selected": "已选择"
+  "selected": "已选择",
+  "permissionAccessibility": "辅助功能",
+  "permissionDeviceControlAndDataAccess": "设备控制与数据访问",
+  "permissionScreenRecording": "屏幕录制",
+  "permissionInputMonitoring": "输入监控",
+  "permissionFullDiskAccess": "完全磁盘访问权限",
+  "permissionAppManagement": "应用管理",
+  "permissionDeveloperTools": "开发者工具",
+  "permissionMicrophone": "麦克风",
+  "permissionCamera": "相机",
+  "permissionCalendars": "日历",
+  "permissionReminders": "提醒事项",
+  "permissionBluetooth": "蓝牙",
+  "permissionMediaAppleMusic": "媒体与 Apple Music",
+  "guideDrag": "将{app}拖入上方列表以允许{permission}。",
+  "guideDragHint": "拖入"
 }

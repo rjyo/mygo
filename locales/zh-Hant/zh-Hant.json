@@ -190,5 +190,20 @@
   "decimalAtLeast": "請輸入不小於 {min} 的值",
   "decimalAtMost": "請輸入不大於 {max} 的值",
   "desktopShortcut": "建立桌面捷徑",
-  "selected": "已選取"
+  "selected": "已選取",
+  "permissionAccessibility": "輔助功能",
+  "permissionDeviceControlAndDataAccess": "裝置控制與資料存取",
+  "permissionScreenRecording": "螢幕錄製",
+  "permissionInputMonitoring": "輸入監控",
+  "permissionFullDiskAccess": "完整磁碟存取",
+  "permissionAppManagement": "應用程式管理",
+  "permissionDeveloperTools": "開發者工具",
+  "permissionMicrophone": "麥克風",
+  "permissionCamera": "相機",
+  "permissionCalendars": "行事曆",
+  "permissionReminders": "提醒事項",
+  "permissionBluetooth": "藍牙",
+  "permissionMediaAppleMusic": "媒體與 Apple Music",
+  "guideDrag": "將{app}拖入上方列表以允許{permission}。",
+  "guideDragHint": "拖入"
 }

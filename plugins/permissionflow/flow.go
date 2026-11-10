@@ -3,6 +3,8 @@ package permissionflow
 import (
 	"path/filepath"
 	"strings"
+
+	"github.com/egoist/mygo/internal/l10n"
 )
 
 // The parts of the systems' implementations that are plain computation,
@@ -74,16 +76,47 @@ type run struct {
 	bold bool
 }
 
-// panelText is what the panel says, as PermissionFlow's does: "Drag
-// **MyApp** to the list above to allow **Accessibility**."
-func panelText(app, permission string) []run {
-	return []run{
-		{text: "Drag "},
-		{text: app, bold: true},
-		{text: " to the list above to allow "},
-		{text: permission, bold: true},
-		{text: "."},
+const (
+	guideAppMarker        = "\x00mygo.permissionflow.app\x00"
+	guidePermissionMarker = "\x00mygo.permissionflow.permission\x00"
+)
+
+// panelText is what the panel says: "Drag **MyApp** to the list above to
+// allow **Accessibility**.", as PermissionFlow's does, in the language of
+// locale. Marker values let translated messages reorder the bold runs.
+func panelText(app, permission, locale string) []run {
+	text := l10n.In(locale).GuideDrag(guideAppMarker, guidePermissionMarker)
+	return splitRuns(text,
+		runMarker{token: guideAppMarker, text: app},
+		runMarker{token: guidePermissionMarker, text: permission},
+	)
+}
+
+type runMarker struct {
+	token string
+	text  string
+}
+
+func splitRuns(text string, markers ...runMarker) []run {
+	var runs []run
+	for len(text) > 0 {
+		index, marker := -1, runMarker{}
+		for _, candidate := range markers {
+			if i := strings.Index(text, candidate.token); i >= 0 && (index < 0 || i < index) {
+				index, marker = i, candidate
+			}
+		}
+		if index < 0 {
+			runs = append(runs, run{text: text})
+			break
+		}
+		if index > 0 {
+			runs = append(runs, run{text: text[:index]})
+		}
+		runs = append(runs, run{text: marker.text, bold: true})
+		text = text[index+len(marker.token):]
 	}
+	return runs
 }
 
 // rect is a rectangle in AppKit's screen coordinates: points, from the

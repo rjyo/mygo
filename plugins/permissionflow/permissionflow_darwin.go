@@ -19,6 +19,8 @@ import (
 	"github.com/ebitengine/purego/objc"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/i18n"
+	"github.com/egoist/mygo/internal/l10n"
 )
 
 // macOS keeps the permissions in TCC, which the frameworks ask: the
@@ -207,7 +209,7 @@ const ungated = true
 func title(p Permission, t string) string {
 	// macOS 27 renamed Accessibility; its anchor stays.
 	if p == Accessibility && loadCore() == nil && macMajor >= 27 {
-		return "Device Control and Data Access"
+		return l10n.In(i18n.Locale()).PermissionDeviceControlAndDataAccess()
 	}
 	return t
 }

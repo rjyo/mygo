@@ -190,5 +190,20 @@
   "decimalAtLeast": "{min} 以上の値を入力してください",
   "decimalAtMost": "{max} 以下の値を入力してください",
   "desktopShortcut": "デスクトップにショートカットを作成",
-  "selected": "選択済み"
+  "selected": "選択済み",
+  "permissionAccessibility": "アクセシビリティ",
+  "permissionDeviceControlAndDataAccess": "デバイス制御とデータアクセス",
+  "permissionScreenRecording": "画面収録",
+  "permissionInputMonitoring": "入力監視",
+  "permissionFullDiskAccess": "フルディスクアクセス",
+  "permissionAppManagement": "アプリケーション管理",
+  "permissionDeveloperTools": "デベロッパーツール",
+  "permissionMicrophone": "マイク",
+  "permissionCamera": "カメラ",
+  "permissionCalendars": "カレンダー",
+  "permissionReminders": "リマインダー",
+  "permissionBluetooth": "Bluetooth",
+  "permissionMediaAppleMusic": "メディアとApple Music",
+  "guideDrag": "{app}を上のリストにドラッグして{permission}を許可してください。",
+  "guideDragHint": "ドラッグ"
 }

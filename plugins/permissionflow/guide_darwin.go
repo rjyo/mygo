@@ -14,6 +14,8 @@ import (
 	"github.com/ebitengine/purego/objc"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/i18n"
+	"github.com/egoist/mygo/internal/l10n"
 )
 
 // Guide's panel is an NSPanel that never takes the focus, so that System
@@ -93,17 +95,17 @@ var (
 
 // A flow is one call of Guide.
 type flow struct {
-	p          Permission
-	app, name  string
-	draggable  bool
-	stop       chan struct{} // closed when the user closes it, or another flow starts
-	stopOnce   sync.Once
-	panel      objc.ID
-	views      panelViews
-	labelH     float64
-	shown      bool
-	dragOrigin nsPoint
-	dragBegan  bool
+	p               Permission
+	app, name, lang string
+	draggable       bool
+	stop            chan struct{} // closed when the user closes it, or another flow starts
+	stopOnce        sync.Once
+	panel           objc.ID
+	views           panelViews
+	labelH          float64
+	shown           bool
+	dragOrigin      nsPoint
+	dragBegan       bool
 }
 
 // panelViews are the views of the panel, which its content view keeps.
@@ -268,7 +270,7 @@ func guide(ctx context.Context, p Permission, opts GuideOptions) (Status, error)
 	if err := registerClasses(); err != nil {
 		return Unknown, err
 	}
-	f := &flow{p: p, app: opts.App, name: opts.Name, draggable: macDraggable(p), stop: make(chan struct{})}
+	f := &flow{p: p, app: opts.App, name: opts.Name, lang: i18n.Locale(), draggable: macDraggable(p), stop: make(chan struct{})}
 	if f.app == "" {
 		f.app = defaultApp()
 	}
@@ -482,7 +484,7 @@ func (f *flow) build(w float64) {
 
 	label := class("NSTextField").Send(sel("wrappingLabelWithString:"), nsString(""))
 	text := class("NSMutableAttributedString").Send(sel("alloc")).Send(sel("init"))
-	for _, r := range panelText(f.name, f.p.Title()) {
+	for _, r := range panelText(f.name, f.p.Title(), f.lang) {
 		font := class("NSFont").Send(sel("systemFontOfSize:"), 13.0)
 		if r.bold {
 			font = class("NSFont").Send(sel("boldSystemFontOfSize:"), 13.0)
@@ -532,7 +534,7 @@ func (f *flow) build(w float64) {
 	effect.Send(sel("addSubview:"), name)
 	v.name = name
 
-	hint := class("NSTextField").Send(sel("labelWithString:"), nsString("Drag"))
+	hint := class("NSTextField").Send(sel("labelWithString:"), nsString(l10n.In(f.lang).GuideDragHint()))
 	hint.Send(sel("setFont:"), class("NSFont").Send(sel("systemFontOfSize:"), 9.0))
 	hint.Send(sel("setTextColor:"), color("secondaryLabelColor"))
 	hint.Send(sel("setAlignment:"), nsTextAlignmentCenter)
