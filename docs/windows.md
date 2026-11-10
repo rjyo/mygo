@@ -1243,7 +1243,32 @@ win.Page().SetCertificateErrorHandler(func(e mygo.CertificateError) bool {
 
 On Linux only the page itself is asked about, not what it loads, and on
 Linux and Windows a certificate allowed for a host stays allowed in every
-window until the app quits. Client certificates are left to the system.
+window until the app quits.
+
+A server, or a proxy, can also ask for the client's certificate before it
+serves the page (mutual TLS). `Page.SetClientCertificateHandler` answers
+with one of the certificates the platform offers, or with an empty
+`ClientCertificateResponse` to refuse, which fails the load as when a
+user dismisses a browser's prompt:
+
+```go
+win.Page().SetClientCertificateHandler(func(req mygo.ClientCertificateRequest) mygo.ClientCertificateResponse {
+	for _, c := range req.Certificates {
+		if c.Subject == "CN=alice" {
+			return mygo.ClientCertificateResponse{Certificate: c}
+		}
+	}
+	return mygo.ClientCertificateResponse{}
+})
+```
+
+What is offered is the platform's: WebView2's mutually trusted
+certificates on Windows, the keychain's identities on macOS. WebKitGTK
+lists none, so on Linux `Certificates` is empty and a handler can only
+refuse; without a handler each platform shows its own choice (WebView2's
+dialog, WebKitGTK's chooser; macOS never asks). A refusal on Linux ends
+the load as a cancellation, which `OnDidFinishLoad` reports and
+`OnDidFailLoad` does not.
 
 ### Blocking content
 

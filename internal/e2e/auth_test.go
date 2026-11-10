@@ -16,8 +16,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -84,6 +86,67 @@ func TestAuthHandler(t *testing.T) {
 		t.Errorf("request = %+v", req)
 	}
 	waitFor(t, w, `document.title === "denied"`)
+}
+
+func TestClientCertificateHandler(t *testing.T) {
+	cert := selfSigned(t)
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// A client without a certificate never gets here.
+		fmt.Fprint(w, "<!doctype html><title>mutual</title>")
+	}))
+	server.TLS = &tls.Config{Certificates: []tls.Certificate{cert}, ClientAuth: tls.RequireAnyClientCert}
+	server.StartTLS()
+	defer server.Close()
+	u, _ := url.Parse(server.URL)
+	port, _ := strconv.Atoi(u.Port())
+
+	w := newWindow(t, mygo.WindowOptions{Title: "Client certificate", Width: 300, Height: 200})
+	// The server's own certificate does not verify: let it through, for
+	// what this test asks about is the certificate the server asks of
+	// the client after that. A TLS exception ends the first load without
+	// OnDidFailLoad and reloads; count only the ends after the handler
+	// has been asked, which is the cancel this test is about.
+	w.Page().SetCertificateErrorHandler(func(mygo.CertificateError) bool { return true })
+	var asks atomic.Int32
+	asked := make(chan mygo.ClientCertificateRequest, 8)
+	ended := make(chan int, 8)
+	end := func() {
+		select {
+		case ended <- int(asks.Load()):
+		default:
+		}
+	}
+	w.Page().OnDidFailLoad(func(*mygo.LoadError) { end() })
+	w.Page().OnDidFinishLoad(end)
+	w.Page().SetClientCertificateHandler(func(req mygo.ClientCertificateRequest) mygo.ClientCertificateResponse {
+		asks.Add(1)
+		offer(asked, req)
+		return mygo.ClientCertificateResponse{Cancel: true}
+	})
+	if err := w.Page().LoadURL(server.URL + "/"); err != nil {
+		t.Fatal(err)
+	}
+	req := wait.For(t, "the client certificate handler", asked)
+	if req.Host != "127.0.0.1" || req.Port != port || req.IsProxy {
+		t.Errorf("request = %+v", req)
+	}
+	// WebKitGTK lists no certificates to offer.
+	if runtime.GOOS == "linux" && len(req.Certificates) != 0 {
+		t.Errorf("linux offered certificates: %+v", req.Certificates)
+	}
+	// Canceling refuses the challenge: the load ends without the page.
+	// On Linux that end is a cancellation, which OnDidFinishLoad reports
+	// and OnDidFailLoad does not; elsewhere it fails the load.
+	want := int(asks.Load())
+	for {
+		n := wait.For(t, "the load to end after a cancel", ended)
+		if n >= want {
+			break
+		}
+	}
+	if title := mustEval(t, w, `document.title`); title == "mutual" {
+		t.Fatal("the page loaded although the handler canceled")
+	}
 }
 
 // selfSigned returns a certificate for 127.0.0.1 that no one issued.

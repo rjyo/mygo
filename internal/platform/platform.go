@@ -945,6 +945,14 @@ type WindowHandler interface {
 	// AuthRequested answers an HTTP authentication challenge of the page,
 	// or of what it loads.
 	AuthRequested(req AuthRequest) AuthResponse
+	// ClientCertificateRequested asks which client certificate to give a
+	// server that asks for one, of the page or of what it loads.
+	ClientCertificateRequested(req ClientCertificateRequest) ClientCertificateResponse
+	// HandlesClientCertificates tells whether the app answers client
+	// certificate challenges at all: a backend that lists certificates
+	// (macOS, whose keychain asks the user for them) lists them only
+	// while it does, and leaves the challenge to the web view otherwise.
+	HandlesClientCertificates() bool
 	// CertificateError asks whether to load what a server sent with a
 	// certificate that does not verify: false fails it, as without the
 	// call. A backend that verifies certificates itself to tell (macOS)

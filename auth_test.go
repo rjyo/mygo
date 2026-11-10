@@ -81,6 +81,55 @@ func TestCertificateErrorHandler(t *testing.T) {
 	}
 }
 
+func TestClientCertificateHandler(t *testing.T) {
+	w, fw := testWindow(t, WindowOptions{})
+	ask := func(req platform.ClientCertificateRequest) platform.ClientCertificateResponse {
+		return onMainValue(func() platform.ClientCertificateResponse { return fw.H.ClientCertificateRequested(req) })
+	}
+	mine := platform.ClientCertificate{
+		DER: []byte{0x30, 0x82, 0x01, 0x0a}, Subject: "CN=me", Issuer: "CN=mygo e2e CA",
+		ValidFrom: 1760000000, ValidTo: 1790000000, Native: 0x1234,
+	}
+	other := mine
+	other.DER, other.Native = []byte{0x30, 0x00}, 0x5678
+	challenge := platform.ClientCertificateRequest{Host: "intranet.example.com", Port: 443, Certificates: []platform.ClientCertificate{mine, other}}
+	// Without a handler the web view decides, as before.
+	if got := ask(challenge); got != (platform.ClientCertificateResponse{Default: true}) {
+		t.Errorf("default answer = %+v", got)
+	}
+	var got ClientCertificateRequest
+	w.Page().SetClientCertificateHandler(func(req ClientCertificateRequest) ClientCertificateResponse {
+		got = req
+		if len(req.Certificates) == 2 {
+			return ClientCertificateResponse{Certificate: req.Certificates[1]}
+		}
+		return ClientCertificateResponse{Cancel: true}
+	})
+	if r := ask(challenge); r.Cancel || r.Default || r.Certificate == nil || !bytes.Equal(r.Certificate.DER, other.DER) || r.Certificate.Native != 0x5678 {
+		t.Errorf("answer = %+v", r)
+	}
+	if got.Host != "intranet.example.com" || got.Port != 443 || got.IsProxy ||
+		len(got.Certificates) != 2 || got.Certificates[0].Subject != "CN=me" || got.Certificates[0].Issuer != "CN=mygo e2e CA" ||
+		got.Certificates[0].ValidFrom != 1760000000 || got.Certificates[0].ValidTo != 1790000000 ||
+		!bytes.Equal(got.Certificates[0].Certificate, mine.DER) {
+		t.Errorf("request = %+v", got)
+	}
+	// A certificate the request did not offer is as if none was chosen.
+	proxy := platform.ClientCertificateRequest{Host: "proxy.lan", Port: 3128, IsProxy: true}
+	if r := ask(proxy); !r.Cancel {
+		t.Errorf("canceled answer = %+v", r)
+	}
+	unknown := ClientCertificateResponse{Certificate: ClientCertificate{Certificate: []byte{0xff}}}
+	w.Page().SetClientCertificateHandler(func(ClientCertificateRequest) ClientCertificateResponse { return unknown })
+	if r := ask(challenge); r.Cancel || r.Certificate != nil {
+		t.Errorf("an unknown certificate was answered = %+v", r)
+	}
+	w.Page().SetClientCertificateHandler(nil)
+	if r := ask(challenge); !r.Default {
+		t.Error("SetClientCertificateHandler(nil) did not restore the default")
+	}
+}
+
 // The page of a web view in native UI has handlers of its own.
 func TestWebViewAuthHandlers(t *testing.T) {
 	show := true
