@@ -257,6 +257,12 @@ func (a *area) documentPositionAt(ed *editor, x float32, y float64) text.CaretPo
 }
 
 func (a *area) hitPosition(ed *editor, x float32, y float64, virtual bool) text.CaretPosition {
+	if a.version != ed.buf.version {
+		// The app replaced the text since the layout, and a drag that
+		// goes on looks for the pointer in the new one before it is
+		// laid out: the heights are still the old paragraphs'.
+		a.sync(&ed.buf, a.params)
+	}
 	n := len(ed.buf.paras)
 	y = max(y, 0)
 	p := a.hs.at(y)

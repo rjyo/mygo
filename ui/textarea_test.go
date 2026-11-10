@@ -479,6 +479,44 @@ func TestTextAreaDragReleaseBeforeFrame(t *testing.T) {
 	}
 }
 
+// TestTextAreaAppTextWhileDragging checks a drag that goes on as the app
+// replaces the text with one of fewer paragraphs, as a chat's input
+// cleared while the pointer is still down: the frame that takes the new
+// text looks for the pointer in it, before it is laid out.
+func TestTextAreaAppTextWhileDragging(t *testing.T) {
+	long := strings.Repeat("a line of the text area\n", 30)
+	s := long
+	buf := NewTextBuffer(long)
+	for name, view := range map[string]func(c *context){
+		"a string": func(c *context) { coreTextArea(c, &s).Fill() },
+		"a buffer": func(c *context) { coreTextAreaBuffer(c, buf).Fill() },
+	} {
+		s = long
+		buf.Set(long)
+		tt := coreNewTester(view, 300, 200)
+		tt.Press(100, 150) // far below the first paragraph
+		tt.Move(120, 160)
+		s = "one line"
+		buf.Set("one line")
+		tt.Move(130, 170)
+		tt.Release(130, 170)
+		ed := textAreaState(tt).editor
+		if got := ed.buf.string(); got != "one line" || ed.caret > len(got) || ed.anchor > len(got) {
+			t.Errorf("%s: the area holds %q, selected %d to %d", name, got, ed.anchor, ed.caret)
+		}
+		// A longer text again, while another drag goes on.
+		tt.Advance(time.Second)
+		tt.Press(100, 10)
+		s = long
+		buf.Set(long)
+		tt.Move(120, 150)
+		tt.Release(120, 150)
+		if got := ed.buf.string(); got != long || ed.caret == 0 {
+			t.Errorf("%s: after a longer text, the area holds %d bytes, the caret at %d", name, len(got), ed.caret)
+		}
+	}
+}
+
 // TestTextAreaUndoAppChanges undoes typing that the app reformatted: the
 // step takes the app's change back with the typing.
 func TestTextAreaUndoAppChanges(t *testing.T) {
