@@ -272,14 +272,30 @@ container that draws its own chrome or shows where it is by itself, as a
 carousel or a map: the wheel, `TrackScroll`, the keyboard and assistive
 technology still scroll it.
 
+`ScrollbarAxes(horizontal, vertical)` controls the two indicators and
+their pointer hit targets independently. For a view with its own vertical
+navigation, keep the horizontal bar and hide the vertical one:
+
+```go
+ui.ScrollBoth(c).Fill().ScrollbarAxes(true, false).Children(func() { /* ... */ })
+```
+
+Hidden axes still scroll by wheel, touchpad, `TrackScroll`, keyboard focus
+and assistive technology. Hiding the axis being dragged cancels that drag
+without clicking the content underneath. The remaining bar keeps its track
+and leaves the shared corner clear.
+`Scrollbars(false)` hides both regardless of call order; `Scrollbars(true)`
+preserves the axis settings. Repeating `ScrollbarAxes` uses its last value,
+and omitting it in the next build enables both axes again.
+
 `KeepScrollbars(true)` keeps them showing while the content overflows,
 with the pointer over the container or not, for a view whose place in its
 content the user should see at a glance, as a long log or a diff filling
 the window. They look as they do on hover, on the track if the style has
 one, so nothing changes as the pointer comes over them, and take presses
-as they do then; `Scrollbars(false)` still hides them. Both apply to
-`Scroll`, `ScrollHorizontal`, `ScrollBoth`, `List` and `Table`, are left at
-their defaults by leaving them out, and are not inherited:
+as they do then; `Scrollbars(false)` and `ScrollbarAxes` still hide them.
+All three apply to `Scroll`, `ScrollHorizontal`, `ScrollBoth`, `List` and
+`Table`, are left at their defaults by leaving them out, and are not inherited:
 
 ```go
 ui.List(c, &app.rows, len(app.lines), app.line).Fill().KeepScrollbars(true)

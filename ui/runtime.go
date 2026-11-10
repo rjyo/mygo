@@ -1578,17 +1578,43 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 	s.vx, s.vy, s.vw, s.vh, s.reposed = v.X, v.Y, v.W, v.H, false
 	s.cx, s.cy = e.x+e.contentX(), e.y+e.contentY()
 	s.cw, s.ch = max(e.w-e.padX(), 0), max(e.h-e.padY(), 0)
-	if e.flags&(flagScrollX|flagScrollY) != 0 {
+	barFlags := e.flags & (flagScrollX | flagScrollY)
+	if barFlags != 0 {
 		s.contentW, s.contentH = e.contentW, e.contentH
 		s.barInset = e.barInset
+		source := e
+		if e.barsFrom != nil {
+			source = e.barsFrom
+		}
+		if source.hiddenScrollbars&hideAllScrollbars != 0 {
+			barFlags = 0
+		} else {
+			barFlags &^= source.hiddenScrollbars
+		}
+		if barFlags != 0 && source.keepScrollbars {
+			barFlags |= keepBarsVisible
+		}
 		if s.barStyle == nil {
 			// Allocated once: a scroll container resolves its style every
 			// frame, and a steady frame allocates nothing.
 			s.barStyle = new(ScrollbarStyle)
 		}
-		*s.barStyle = e.scrollbarStyle().Resolve(e.theme())
+		style := ScrollbarStyle{}
+		if source.barStyle != nil {
+			style = *source.barStyle
+		}
+		*s.barStyle = style.Resolve(e.theme())
 	}
-	s.hideScrollbars, _ = e.scrollbars()
+	if d := &rt.scrollDrag; d.st == s {
+		axis := flagScrollY
+		if d.horizontal {
+			axis = flagScrollX
+		}
+		if barFlags&axis == 0 {
+			d.st = nil
+		}
+	}
+	s.barFlags = barFlags
 	// What is invisible keeps its box but takes neither the pointer nor
 	// the focus, and has no text to find; so does what is inert, which
 	// shows, and what is Hidden, which has no box.
@@ -1732,9 +1758,6 @@ func intersect(a, b Rect) Rect {
 // thumb being dragged wherever the pointer goes, show the default, not
 // the cursor of the text under the bar.
 func (rt *engine) updateCursor() {
-	if dragging := rt.scrollDrag.st; dragging != nil && dragging.hideScrollbars {
-		rt.scrollDrag.st = nil
-	}
 	if rt.pressed == nil && rt.scrollDrag.st == nil && rt.overWebView() {
 		// The page sets the cursor over it: it is set again as the
 		// pointer comes back.
@@ -1773,13 +1796,13 @@ func (rt *engine) updateCursor() {
 // bar element id shows.
 func (rt *engine) overScrollbar(id uint64) bool {
 	s := rt.states[id]
-	if s == nil || s.flags&(flagScrollX|flagScrollY) == 0 || s.hideScrollbars {
+	if s == nil || s.barFlags == 0 {
 		return false
 	}
 	x, y := s.local(rt.pointerX, rt.pointerY)
 	x += s.x
 	y += s.y
-	g := scrollBars(Rect{s.x, s.y, s.w, s.h}, s.barInset, float32(s.contentW), float32(s.contentH), float32(s.scrollX), float32(s.scrollY), s.flags, s.scrollbarStyle(), s.rtl)
+	g := s.scrollbarGeometry(s.x, s.y, s.contentW, s.contentH, s.scrollX, s.scrollY)
 	return g.vertical && g.vTrack.Contains(x, y) || g.horizontal && g.hTrack.Contains(x, y)
 }
 

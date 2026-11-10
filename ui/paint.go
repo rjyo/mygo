@@ -1426,7 +1426,6 @@ func (p *Painter) drawBitmap(img *Bitmap, box Rect, fit Fit, pos [2]float32, rad
 func (p *Painter) scrollbars(e *node) {
 	st := e.st
 	rt := e.c.rt
-	theme := p.Theme()
 	hovered := false
 	for _, id := range rt.hover {
 		if id == e.id {
@@ -1438,7 +1437,7 @@ func (p *Painter) scrollbars(e *node) {
 	// A press takes the bars only where the window shows them
 	// (scrollbarPress). Kept, they show as on hover, so that the pointer
 	// coming over changes nothing.
-	hide, keep := e.scrollbars()
+	hide, keep := st.barFlags == 0, st.barFlags&keepBarsVisible != 0
 	if !hide && !keep {
 		// The bars show on hover (hoverNeeds).
 		st.hoverLook = true
@@ -1447,8 +1446,8 @@ func (p *Painter) scrollbars(e *node) {
 	if !st.barsShown {
 		return
 	}
-	style := e.scrollbarStyle().Resolve(theme)
-	w, h := e.contentW, e.contentH
+	style := st.barStyle
+	w, h := st.contentW, st.contentH
 	x, y := st.scrollX, st.scrollY
 	if dragging {
 		// The thumb keeps its length, and goes as far along the track as
@@ -1458,7 +1457,7 @@ func (p *Painter) scrollbars(e *node) {
 		x = rescale(x, e.contentW-float64(e.w), w-float64(e.w))
 		y = rescale(y, e.contentH-float64(e.h), h-float64(e.h))
 	}
-	g := scrollBars(Rect{e.x, e.y, e.w, e.h}, e.barInset, float32(w), float32(h), float32(x), float32(y), e.flags, style, e.rtl())
+	g := st.scrollbarGeometry(e.x, e.y, w, h, x, y)
 	if style.Track.A > 0 {
 		if g.vertical {
 			p.Fill(g.vTrack, style.Track, 0)
@@ -1472,7 +1471,7 @@ func (p *Painter) scrollbars(e *node) {
 	var overV, overH bool
 	if hovered {
 		lx, ly := st.local(rt.pointerX, rt.pointerY)
-		lx, ly = lx+st.x, ly+st.y
+		lx, ly = lx+e.x, ly+e.y
 		overV = g.vertical && g.vTrack.Contains(lx, ly)
 		overH = g.horizontal && g.hTrack.Contains(lx, ly)
 	}

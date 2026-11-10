@@ -5895,9 +5895,9 @@ func (_handle Element) KeepOpen() Element {
 // content overflows it, with the pointer over it or not, rather than only
 // while it is hovered or a bar is dragged: a view whose place in its content
 // matters, as a long diff filling a window, shows how far down it is. The
-// bars look and take presses as they do on hover; Scrollbars(false) hides
-// them still. It applies where Scrollbars does (a code editor's State has
-// KeepScrollbars), and is not inherited.
+// bars look and take presses as they do on hover; Scrollbars(false) and
+// ScrollbarAxes still hide them. It applies where Scrollbars does (a code
+// editor's State has KeepScrollbars), and is not inherited.
 func (_handle Element) KeepScrollbars(keep bool) Element {
 	_node := _handle.node()
 	if _node == nil {
@@ -7557,6 +7557,24 @@ func (_handle Element) ScrollWith(scroller Element) Element {
 	_ctx := _node.c
 	_ = _ctx
 	return wrapElement(_node.ScrollWith(scroller.nodeFor(_ctx.rt)))
+}
+
+// ScrollbarAxes controls the horizontal and vertical indicators and their
+// pointer hit targets independently. Both are enabled by default, showing
+// while the container overflows and is hovered, or as KeepScrollbars says.
+// Hiding the axis being dragged ends that drag. Wheel, TrackScroll, keyboard
+// focus and accessibility still scroll both axes.
+// Scrollbars(false) hides both regardless of call order; Scrollbars(true)
+// preserves the axis settings. It applies where Scrollbars does and is not
+// inherited. Omitting it in the next build enables both axes again.
+func (_handle Element) ScrollbarAxes(horizontal bool, vertical bool) Element {
+	_node := _handle.node()
+	if _node == nil {
+		return Element{}
+	}
+	_ctx := _node.c
+	_ = _ctx
+	return wrapElement(_node.ScrollbarAxes(horizontal, vertical))
 }
 
 // ScrollbarInsets moves a scroll container's scroll bars in from its

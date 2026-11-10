@@ -839,7 +839,9 @@ type state struct {
 	// barsShown reports whether the last frame painted the element's
 	// scroll bars: they show only while it is hovered or a bar is
 	// dragged, unless it keeps them (KeepScrollbars).
-	barsShown, hideScrollbars bool
+	barsShown bool
+	// barFlags contains the enabled scroll axes and, if any, the keep bit.
+	barFlags uint32
 	// track is the ScrollState of the last frame's element, which events
 	// that scroll it update (scrollTo).
 	track *ScrollState

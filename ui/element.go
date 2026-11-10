@@ -570,18 +570,18 @@ type node struct {
 	// listRow is set on the elements holding its rows, rowIndex their row.
 	// rowsOf is the list whose rows the element holds for assistive
 	// technology, and takes the keys for: the list, or its Table.
-	// popover is the anchor of the panel of a popover. hideScrollbars and
-	// keepScrollbars are the element's Scrollbars and KeepScrollbars, and
-	// barsFrom the element whose they are instead, as a table's for the
-	// list of its rows.
+	// popover is the anchor of the panel of a popover. barsFrom supplies
+	// the scroll bar settings, as a table does for the list of its rows.
 	popover        *node
 	list           *listFrame
 	listRow        bool
-	hideScrollbars bool
 	keepScrollbars bool
-	barsFrom       *node
-	rowIndex       int
-	rowsOf         *listFrame
+	// hiddenScrollbars holds the axes hidden by ScrollbarAxes and the
+	// independent Scrollbars(false) override.
+	hiddenScrollbars uint32
+	barsFrom         *node
+	rowIndex         int
+	rowsOf           *listFrame
 	// snap is how the element, a scroll container, snaps (ScrollSnap), and
 	// snapAlign how the element lines up with the container around it
 	// that does (SnapAlign): Start, Center or End plus one, horizontally
@@ -1031,39 +1031,45 @@ func (e *node) ScrollbarStyle(s ScrollbarStyle) *node { e.barStyle = &s; return 
 // It applies to Scroll, ScrollHorizontal, ScrollBoth, List and Table, not the
 // internal indicators of custom controls such as a code editor (whose State
 // has NoScrollbars), and is not inherited.
-func (e *node) Scrollbars(visible bool) *node { e.hideScrollbars = !visible; return e }
+func (e *node) Scrollbars(visible bool) *node {
+	if visible {
+		e.hiddenScrollbars &^= hideAllScrollbars
+	} else {
+		e.hiddenScrollbars |= hideAllScrollbars
+	}
+	return e
+}
+
+// This bit is separate from flagScrollX and flagScrollY in hiddenScrollbars.
+const hideAllScrollbars = 1
+
+// ScrollbarAxes controls the horizontal and vertical indicators and their
+// pointer hit targets independently. Both are enabled by default, showing
+// while the container overflows and is hovered, or as KeepScrollbars says.
+// Hiding the axis being dragged ends that drag. Wheel, TrackScroll, keyboard
+// focus and accessibility still scroll both axes.
+// Scrollbars(false) hides both regardless of call order; Scrollbars(true)
+// preserves the axis settings. It applies where Scrollbars does and is not
+// inherited. Omitting it in the next build enables both axes again.
+func (e *node) ScrollbarAxes(horizontal, vertical bool) *node {
+	e.hiddenScrollbars &= hideAllScrollbars
+	if !horizontal {
+		e.hiddenScrollbars |= flagScrollX
+	}
+	if !vertical {
+		e.hiddenScrollbars |= flagScrollY
+	}
+	return e
+}
 
 // KeepScrollbars keeps this scroll container's scroll bars showing while its
 // content overflows it, with the pointer over it or not, rather than only
 // while it is hovered or a bar is dragged: a view whose place in its content
 // matters, as a long diff filling a window, shows how far down it is. The
-// bars look and take presses as they do on hover; Scrollbars(false) hides
-// them still. It applies where Scrollbars does (a code editor's State has
-// KeepScrollbars), and is not inherited.
+// bars look and take presses as they do on hover; Scrollbars(false) and
+// ScrollbarAxes still hide them. It applies where Scrollbars does (a code
+// editor's State has KeepScrollbars), and is not inherited.
 func (e *node) KeepScrollbars(keep bool) *node { e.keepScrollbars = keep; return e }
-
-// scrollbars returns whether the element hides its scroll bars
-// (Scrollbars(false)) and whether it keeps them showing (KeepScrollbars),
-// as it says or the element it takes them from does (barsFrom).
-func (e *node) scrollbars() (hide, keep bool) {
-	if e.barsFrom != nil {
-		e = e.barsFrom
-	}
-	return e.hideScrollbars, e.keepScrollbars
-}
-
-// scrollbarStyle returns how the element's scroll bars look, as it says or
-// the element it takes them from does (barsFrom), as a table's rows take
-// the table's.
-func (e *node) scrollbarStyle() ScrollbarStyle {
-	if e.barsFrom != nil {
-		e = e.barsFrom
-	}
-	if e.barStyle != nil {
-		return *e.barStyle
-	}
-	return ScrollbarStyle{}
-}
 
 // Width sets the width in DIPs.
 func (e *node) Width(v float32) *node { e.width = px(v); return e }

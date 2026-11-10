@@ -630,13 +630,12 @@ func (t *Tester) targetLabelCenter(n *labelNode, button int) (float32, float32, 
 	if button == 0 {
 		for _, id := range hit {
 			st := t.rt.states[id]
-			if st == nil || st.flags&(flagScrollX|flagScrollY) == 0 || !st.barsShown || st.hideScrollbars {
+			if st == nil || !st.barsShown || st.barFlags == 0 {
 				continue
 			}
 			lx, ly := st.local(cx, cy)
 			lx, ly = lx+st.x, ly+st.y
-			g := scrollBars(Rect{st.x, st.y, st.w, st.h}, st.barInset, float32(st.contentW), float32(st.contentH),
-				float32(st.scrollX), float32(st.scrollY), st.flags, st.scrollbarStyle(), st.rtl)
+			g := st.scrollbarGeometry(st.x, st.y, st.contentW, st.contentH, st.scrollX, st.scrollY)
 			if g.vertical && g.vTrack.Contains(lx, ly) || g.horizontal && g.hTrack.Contains(lx, ly) {
 				return 0, 0, fmt.Errorf("ui: %q is covered by a scroll bar", s)
 			}

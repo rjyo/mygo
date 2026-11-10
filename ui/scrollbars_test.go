@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"image/color"
 	"testing"
 
 	"github.com/egoist/mygo/internal/platform"
@@ -241,7 +242,7 @@ func TestScrollbarsPolicyResetsByOmissionWithoutRelayout(t *testing.T) {
 	before := tt.rt.computed
 	hidden = false
 	tt.Frame()
-	if st.hideScrollbars || !st.barsShown {
+	if st.barFlags == 0 || !st.barsShown {
 		t.Fatal("omitting the override did not restore default hover indicators")
 	}
 	if tt.rt.computed != before {
@@ -267,7 +268,7 @@ func TestScrollbarsPolicyDoesNotInheritAndDoesNotHideNeighbor(t *testing.T) {
 		t.Fatal("explicitly hidden indicator was painted")
 	}
 	tt.Move(150, 50)
-	if !normal.barsShown || normal.hideScrollbars {
+	if !normal.barsShown || normal.barFlags == 0 {
 		t.Fatal("neighbor inherited another container's indicator policy")
 	}
 }
@@ -377,7 +378,7 @@ func TestScrollbarsFinalFluentValueKeepsVisibleThumbDrag(t *testing.T) {
 	x, y := g.h.X+g.h.W/2, g.h.Y+g.h.H/2
 	tt.Press(x, y)
 	tt.Frame()
-	if st.hideScrollbars || tt.rt.scrollDrag.st != st {
+	if st.barFlags == 0 || tt.rt.scrollDrag.st != st {
 		t.Fatal("an intermediate fluent value cancelled the finally visible thumb")
 	}
 	tt.Move(x+10, y)
@@ -462,7 +463,7 @@ func TestKeepScrollbars(t *testing.T) {
 			// Hidden wins, and the default shows on hover only again.
 			tall, keep, visible = true, true, false
 			tt.Frame()
-			if st.barsShown || st.hideScrollbars != true {
+			if st.barsShown || st.barFlags != 0 {
 				t.Fatal("Scrollbars(false) did not hide kept bars")
 			}
 			keep, visible = false, true
@@ -498,9 +499,37 @@ func TestTableScrollbars(t *testing.T) {
 			tt.rt.close()
 			t.Fatalf("%s: the list state is not the table's rows'", tc.name)
 		}
-		if st.barsShown != tc.shown || st.hideScrollbars == tc.visible {
-			t.Errorf("%s: rows' bars shown %v hidden %v, want shown %v hidden %v", tc.name, st.barsShown, st.hideScrollbars, tc.shown, !tc.visible)
+		if st.barsShown != tc.shown || (st.barFlags != 0) != tc.visible {
+			t.Errorf("%s: rows' bars shown %v hidden %v, want shown %v hidden %v", tc.name, st.barsShown, st.barFlags == 0, tc.shown, !tc.visible)
 		}
 		tt.rt.close()
+	}
+}
+
+func TestScrollbarInCachedLayer(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		cache bool
+	}{{"plain", false}, {"cached", true}} {
+		t.Run(c.name, func(t *testing.T) {
+			tt := coreNewTester(func(ctx *context) {
+				sc := coreScroll(ctx).Absolute().Left(160).Top(40).Size(100, 100).
+					KeepScrollbars(true).ScrollbarStyle(ScrollbarStyle{
+					TrackWidth: 12, ThumbWidth: 6,
+					Track: RGB(240, 20, 30), Thumb: RGB(240, 20, 30),
+				})
+				if c.cache {
+					sc.Cache()
+				}
+				sc.Children(func() {
+					coreBox(ctx).Size(100, 400).Background(RGB(255, 255, 255))
+				})
+			}, 300, 180)
+			defer tt.rt.close()
+			img := tt.Image()
+			if got, want := img.RGBAAt(254, 90), (color.RGBA{240, 20, 30, 255}); got != want {
+				t.Fatalf("scrollbar track at (254,90) = %v, want %v", got, want)
+			}
+		})
 	}
 }
