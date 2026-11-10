@@ -41,8 +41,10 @@ type Rect struct{ X, Y, Width, Height int }
 
 // TitleBar is the room the window controls take at the top of a window
 // with a hidden title bar, in DIPs: they sit in a band of Height along the
-// top edge, Left wide from the left edge and Right wide from the right.
-type TitleBar struct{ Height, Left, Right int }
+// top edge, Left wide from the left edge and Right wide from the right,
+// and end Bottom below the top edge, which is Height where they fill the
+// band.
+type TitleBar struct{ Height, Left, Right, Bottom int }
 
 // Color is an 8-bit RGBA color.
 type Color struct{ R, G, B, A uint8 }

@@ -383,6 +383,7 @@ CSS variables on `:root`:
 |---|---|
 | `--mygo-titlebar-height` | the height of the title bar |
 | `--mygo-titlebar-inset-left`, `--mygo-titlebar-inset-right` | the room the controls take from the left and from the right edge |
+| `--mygo-titlebar-controls-bottom` | where the controls end, from the top edge: the bottom of the traffic lights on macOS, the title bar's height on Linux and Windows |
 
 They are `0px` in full screen, where the controls hide (on macOS they come
 back with the menu bar). The page's title bar keeps clear of the controls
@@ -394,6 +395,15 @@ and, marked with `--app-region: drag`, moves the window:
   height: var(--mygo-titlebar-height, 40px);
   padding-left: var(--mygo-titlebar-inset-left, 0px);
   padding-right: var(--mygo-titlebar-inset-right, 0px);
+}
+```
+
+A sidebar that runs to the top of the window, with the traffic lights over
+it, starts its items below them:
+
+```css
+.sidebar {
+  padding-top: calc(var(--mygo-titlebar-controls-bottom, 0px) + 8px);
 }
 ```
 

@@ -43,6 +43,7 @@ let rootStyle: HTMLStyleElement | null = null;
       "--mygo-titlebar-height": `${tb.height}px`,
       "--mygo-titlebar-inset-left": `${tb.left}px`,
       "--mygo-titlebar-inset-right": `${tb.right}px`,
+      "--mygo-titlebar-controls-bottom": `${tb.bottom}px`,
     }),
   );
 
@@ -196,6 +197,7 @@ interface TitleBar {
   height: number;
   left: number;
   right: number;
+  bottom: number;
 }
 
 /** Sets MyGo's CSS variables of :root, keeping the ones already set. A null

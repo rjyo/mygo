@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"image"
 	pngenc "image/png"
-	"runtime"
 	"slices"
 	"strings"
 	"structs"
@@ -44,16 +43,15 @@ type cgRect struct {
 const nsNotFound = uint(1<<63 - 1)
 
 var (
-	surfaceOnce        sync.Once
-	msgConvertRectView func(obj id, sel objc.SEL, r NSRect, view id) NSRect
-	msgInitTracking    func(obj id, sel objc.SEL, r NSRect, options uint, owner, info id) id
-	msgTimer           func(cls id, sel objc.SEL, interval float64, target id, selector objc.SEL, info id, repeats bool) id
-	cgColorSpaceSRGB   uintptr
-	cgImageCreate      uintptr
-	cgImageRelease     uintptr
-	cgProviderCreate   uintptr
-	cgProviderRelease  uintptr
-	cfDataCreate       uintptr
+	surfaceOnce       sync.Once
+	msgInitTracking   func(obj id, sel objc.SEL, r NSRect, options uint, owner, info id) id
+	msgTimer          func(cls id, sel objc.SEL, interval float64, target id, selector objc.SEL, info id, repeats bool) id
+	cgColorSpaceSRGB  uintptr
+	cgImageCreate     uintptr
+	cgImageRelease    uintptr
+	cgProviderCreate  uintptr
+	cgProviderRelease uintptr
+	cfDataCreate      uintptr
 	// Read the keyboard type from each event, so an external ISO keyboard
 	// does not inherit the built-in keyboard's ANSI mapping.
 	cgEventGetIntegerValueField func(event uintptr, field uint32) int64
@@ -84,11 +82,6 @@ const (
 
 func loadSurface() {
 	surfaceOnce.Do(func() {
-		stret := msgSendAddr
-		if runtime.GOARCH == "amd64" {
-			stret = mustDlsym(libObjC, "objc_msgSend_stret")
-		}
-		purego.RegisterFunc(&msgConvertRectView, stret)
 		purego.RegisterFunc(&msgInitTracking, msgSendAddr)
 		purego.RegisterFunc(&msgTimer, msgSendAddr)
 		cgImageCreate = mustDlsym(libCG, "CGImageCreate")

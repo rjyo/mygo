@@ -282,7 +282,8 @@ func (b *Backend) NewWindow(o *platform.WindowOptions, h platform.WindowHandler)
 	}
 	if !o.Frameless && (o.TitleBarStyle == "hidden" || o.TitleBarStyle == "hiddenInset") && !o.HideWindowButtons {
 		// Three buttons 46 wide at the top right, as on Windows.
-		w.TitleBarRoom = platform.TitleBar{Height: cmp.Or(o.TitleBarHeight, 32), Right: 138}
+		h := cmp.Or(o.TitleBarHeight, 32)
+		w.TitleBarRoom = platform.TitleBar{Height: h, Right: 138, Bottom: h}
 	}
 	if o.Flyout != nil {
 		w.place(*o.Flyout, platform.Size{Width: o.Width, Height: o.Height})

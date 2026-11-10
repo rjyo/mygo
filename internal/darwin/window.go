@@ -1529,9 +1529,10 @@ func (w *window) hiddenTitleBar() bool {
 }
 
 // TitleBar returns the room the traffic lights take, from the left edge to
-// the right edge of the zoom button, in the title bar, which is as tall as
-// the window's own or, with TrafficLightPosition, leaves as much room below
-// them as above. They hide in full screen, and with HideWindowButtons.
+// the right edge of the zoom button and from the top edge to their bottom
+// edge, in the title bar, which is as tall as the window's own or, with
+// TrafficLightPosition, leaves as much room below them as above. They hide
+// in full screen, and with HideWindowButtons.
 func (w *window) TitleBar() platform.TitleBar {
 	if !w.hiddenTitleBar() || w.closed || w.IsFullScreen() || w.opts.HideWindowButtons {
 		return platform.TitleBar{}
@@ -1545,12 +1546,23 @@ func (w *window) TitleBar() platform.TitleBar {
 	if p := w.trafficLights; p != nil {
 		// Where layoutTrafficLights puts them, which may not have run yet.
 		right := float64(p.X) + z.Origin.X - c.Origin.X + z.Size.Width
-		return platform.TitleBar{Height: int(math.Round(c.Size.Height + 2*float64(p.Y))), Left: int(math.Ceil(right))}
+		return platform.TitleBar{
+			Height: int(math.Round(c.Size.Height + 2*float64(p.Y))),
+			Left:   int(math.Ceil(right)),
+			Bottom: int(math.Ceil(float64(p.Y) + c.Size.Height)),
+		}
 	}
 	frame := msgRect(w.win, sel("frame"))
 	content := msgRect(w.win, sel("contentLayoutRect"))
 	height := frame.Size.Height - content.Origin.Y - content.Size.Height
-	return platform.TitleBar{Height: int(math.Round(height)), Left: int(math.Ceil(z.Origin.X + z.Size.Width))}
+	// The close button in the window's coordinates, whose origin is the
+	// bottom-left corner of its frame.
+	lights := msgConvertRectView(closeBtn, sel("convertRect:toView:"), NSRect{Size: c.Size}, 0)
+	return platform.TitleBar{
+		Height: int(math.Round(height)),
+		Left:   int(math.Ceil(z.Origin.X + z.Size.Width)),
+		Bottom: int(math.Ceil(frame.Size.Height - lights.Origin.Y)),
+	}
 }
 
 func (w *window) TitleBarDoubleClicked() {

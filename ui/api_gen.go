@@ -676,6 +676,10 @@ func (_handle *Context) Theme() *Theme {
 //
 //	bar := c.TitleBar()
 //	ui.Row(c).Height(max(bar.Height, 32)).Padding(0, bar.Right, 0, bar.Left).DragWindow()
+//
+// A sidebar under the controls starts below Bottom:
+//
+//	ui.Column(c).Padding(bar.Bottom+8, 0, 0, 0)
 func (_handle *Context) TitleBar() TitleBar {
 	_ctx := _handle.build()
 	if _ctx == nil {

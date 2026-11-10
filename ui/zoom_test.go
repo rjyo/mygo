@@ -209,12 +209,12 @@ func TestZoomHitTesting(t *testing.T) {
 		scrolled = scrollArea.Y
 	}
 	tt := coreNewTester(view, 400, 200)
-	tt.SetTitleBar(TitleBar{Height: 28, Left: 72, Right: 10})
+	tt.SetTitleBar(TitleBar{Height: 28, Left: 72, Right: 10, Bottom: 20})
 	tt.SetZoom(2)
 	if w != 200 || h != 100 || zoom != 2 {
 		t.Errorf("zoomed 2 times, the view sees %v×%v at zoom %v, want 200×100 at 2", w, h, zoom)
 	}
-	if bar != (TitleBar{Height: 14, Left: 36, Right: 5}) {
+	if bar != (TitleBar{Height: 14, Left: 36, Right: 5, Bottom: 10}) {
 		t.Errorf("TitleBar = %+v, want the window's halved", bar)
 	}
 	if r, _ := tt.Find("B"); r != (Rect{120, 0, 100, 100}) {

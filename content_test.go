@@ -317,28 +317,29 @@ func testContentTitleBar(t *testing.T, style TitleBarStyle) {
 		w.native = &contentTitleBarWindow{Window: w.native, t: t}
 		s.Frame()
 	})
-	if bar != (ui.TitleBar{Height: 52, Right: 138}) {
+	if bar != (ui.TitleBar{Height: 52, Right: 138, Bottom: 52}) {
 		t.Errorf("TitleBar = %+v", bar)
 	}
 	var framed bool
 	onMain(func() {
-		fw.TitleBarRoom = platform.TitleBar{Height: 46, Left: 80}
+		// The traffic lights, 14 high, 16 below the top edge.
+		fw.TitleBarRoom = platform.TitleBar{Height: 46, Left: 80, Bottom: 30}
 		fw.H.TitleBarChanged()
 		framed = s.Frame()
 	})
-	if !framed || bar != (ui.TitleBar{Height: 46, Left: 80}) {
+	if !framed || bar != (ui.TitleBar{Height: 46, Left: 80, Bottom: 30}) {
 		t.Errorf("after a change: frame %v, TitleBar = %+v", framed, bar)
 	}
 	// Full screen removes the controls, and leaving it restores them.
 	// Native UI must hear both changes without queuing events for a page
 	// that does not exist (or asking the backend for its webview's zoom).
-	for _, room := range []platform.TitleBar{{}, {Height: 46, Left: 80}} {
+	for _, room := range []platform.TitleBar{{}, {Height: 46, Left: 80, Bottom: 30}} {
 		onMain(func() {
 			fw.TitleBarRoom = room
 			fw.H.TitleBarChanged()
 			framed = s.Frame()
 		})
-		if !framed || bar != (ui.TitleBar{Height: float32(room.Height), Left: float32(room.Left), Right: float32(room.Right)}) {
+		if !framed || bar != (ui.TitleBar{Height: float32(room.Height), Left: float32(room.Left), Right: float32(room.Right), Bottom: float32(room.Bottom)}) {
 			t.Errorf("after a full screen change: frame %v, TitleBar = %+v, want %+v", framed, bar, room)
 		}
 	}

@@ -1046,35 +1046,35 @@ func TestEventsWaitForDOMReady(t *testing.T) {
 
 func TestHiddenTitleBar(t *testing.T) {
 	// titleBar matches the page event of the room the window controls take.
-	titleBar := func(height, left, right float64) func(m map[string]any) bool {
+	titleBar := func(height, left, right, bottom float64) func(m map[string]any) bool {
 		return func(m map[string]any) bool {
 			p, _ := m["p"].(map[string]any)
-			return m["n"] == "mygo:title-bar" && p["height"] == height && p["left"] == left && p["right"] == right
+			return m["n"] == "mygo:title-bar" && p["height"] == height && p["left"] == left && p["right"] == right && p["bottom"] == bottom
 		}
 	}
 	w, fw := readyWindow(t, WindowOptions{TitleBarStyle: TitleBarHidden, TitleBarHeight: 52})
 	if fw.Opts.TitleBarHeight != 52 {
 		t.Errorf("TitleBarHeight = %d, want 52", fw.Opts.TitleBarHeight)
 	}
-	received(t, fw, titleBar(52, 0, 138))
+	received(t, fw, titleBar(52, 0, 138, 52))
 
 	// The backend reports a change, such as another button layout.
 	onMain(func() {
-		fw.TitleBarRoom = platform.TitleBar{Height: 46, Left: 80}
+		fw.TitleBarRoom = platform.TitleBar{Height: 46, Left: 80, Bottom: 30}
 		fw.H.TitleBarChanged()
 	})
-	received(t, fw, titleBar(46, 80, 0))
+	received(t, fw, titleBar(46, 80, 0, 30))
 
 	// The page gets CSS pixels, which zoom makes larger.
 	w.Page().SetZoomFactor(2)
-	received(t, fw, titleBar(23, 40, 0))
+	received(t, fw, titleBar(23, 40, 0, 15))
 
 	// A later page hears it once its DOM is ready: the script the backend
 	// runs at document start may be older.
 	onMain(func() { fw.H.NavigationCommitted("https://next.example/") })
 	n := len(fw.Scripts())
 	page(fw, `{"t":"dom-ready"}`)
-	received(t, fw, titleBar(23, 40, 0))
+	received(t, fw, titleBar(23, 40, 0, 15))
 	if len(fw.Scripts()) == n {
 		t.Error("the new page did not hear the title bar")
 	}

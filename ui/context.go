@@ -421,8 +421,11 @@ func (c *context) Size() (width, height float32) { return c.w, c.h }
 
 // TitleBar is the room the window controls take at the top of a window
 // with a hidden title bar, in DIPs: they sit in a band of Height along the
-// top edge, Left wide from the left edge and Right wide from the right.
-type TitleBar struct{ Height, Left, Right float32 }
+// top edge, Left wide from the left edge and Right wide from the right,
+// and end Bottom below the top edge: on macOS the bottom edge of the
+// traffic lights, and Height on Linux and Windows, where the controls fill
+// the band.
+type TitleBar struct{ Height, Left, Right, Bottom float32 }
 
 // TitleBar returns the room the window controls take in a window with a
 // hidden title bar (mygo.WindowOptions.TitleBarStyle), whose view draws
@@ -433,6 +436,10 @@ type TitleBar struct{ Height, Left, Right float32 }
 //
 //	bar := c.TitleBar()
 //	ui.Row(c).Height(max(bar.Height, 32)).Padding(0, bar.Right, 0, bar.Left).DragWindow()
+//
+// A sidebar under the controls starts below Bottom:
+//
+//	ui.Column(c).Padding(bar.Bottom+8, 0, 0, 0)
 func (c *context) TitleBar() TitleBar { return c.titleBar }
 
 // Vibrancy reports whether the window shows its material

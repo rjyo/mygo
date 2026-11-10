@@ -37,6 +37,17 @@ ui.Row(c).Height(max(bar.Height, 32)).Padding(0, bar.Right+12, 0, bar.Left+12).D
 })
 ```
 
+`bar.Bottom` is where the controls end, from the top edge: the bottom of
+the traffic lights on macOS, which `TrafficLightPosition` moves, and
+`bar.Height` on Linux and Windows. A sidebar that runs to the top of the
+window, with the traffic lights over it, starts its items below them:
+
+```go
+ui.Column(c).Width(220).Padding(bar.Bottom+8, 8, 8, 8).DragWindow().Children(func() {
+	ui.Text(c, "Inbox")
+})
+```
+
 In a `Frameless` window, `DragWindow` makes an element move the window, and
 a double click on it maximizes the window.
 
