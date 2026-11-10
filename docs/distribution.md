@@ -615,7 +615,9 @@ export default defineConfig({
 The desktop entry names the window class of the app, `StartupWMClass`,
 as the executable of `command`: an X11 session groups the window with the
 entry and shows its icon in the taskbar, where Wayland matches the same
-name as the app id.
+name as the app id. Started by a command of another name than its slug, as
+`ma`, the app is the same program: its windows have that class, and its
+pages the data they kept, as `localStorage`.
 
 Keep the slug of a released app. Its Linux files are named after it, and
 an update replaces the files of the same names: one to a version with

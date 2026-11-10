@@ -142,6 +142,10 @@ func TestMain(m *testing.M) {
 		automationApp()
 		return
 	}
+	if os.Getenv("MYGO_E2E_PROGRAM_NAME") == "1" {
+		programName()
+		return
+	}
 	mygo.Bind(Greeter{}, probe, streams, Bench{})
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

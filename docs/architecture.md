@@ -369,6 +369,12 @@ by `mygo build` with `mygo_noinspector`) leave out its downloader and
 - The main thread is the one that called `gtk_init_check`; `IsMainThread`
   compares `gettid`. `Step` is `g_main_context_iteration(NULL, TRUE)` and
   `Wake` is `g_main_context_wakeup`.
+- `Init` names the program after its executable (`g_set_prgname`) before
+  `gtk_init_check`, which would name it after `argv[0]`: GTK names the
+  class of the windows and the app id after the program, as the desktop
+  entry does (`StartupWMClass`), and WebKitGTK the directories of the
+  pages' data. Started through a link of another name, as `linux.command`
+  puts in `/usr/bin`, the app is then the same program.
 - `Bounds` are those of the frame a reparenting X11 window manager puts
   around the window (`gdk_window_get_frame_extents`): GTK positions the
   frame (NORTH_WEST gravity) and sizes the window inside it, without the
