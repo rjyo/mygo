@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"testing"
+	"unsafe"
 )
 
 // The layout benchmarks lay out trees of boxes shaped as Taffy's flexbox
@@ -195,5 +196,13 @@ func TestLayoutBenchTrees(t *testing.T) {
 		} else {
 			t.Log(lb.name, fmt.Sprint(n))
 		}
+	}
+}
+
+// A flex item stays within a cache line: one larger made the deep trees
+// above take longer to lay out.
+func TestFlexItemFitsCacheLine(t *testing.T) {
+	if n := unsafe.Sizeof(flexItem{}); n > 64 {
+		t.Errorf("a flexItem is %d bytes, more than 64", n)
 	}
 }
