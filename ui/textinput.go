@@ -325,6 +325,8 @@ func (e *node) ReplaceText(start, end int, s string) *node {
 	n := ed.buf.n
 	start, end = min(max(start, 0), n), min(max(end, 0), n)
 	start, end = min(start, end), max(start, end)
+	// As the input takes it, a text it holds already is no edit.
+	s = ed.edited(s)
 	if ed.buf.slice(start, end) == s {
 		return e
 	}

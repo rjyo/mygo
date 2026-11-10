@@ -130,6 +130,34 @@ func TestReplaceTextLimits(t *testing.T) {
 	}
 }
 
+// TestReplaceTextCRLF checks that a line break of two characters is one,
+// as in a paste: one space of a single-line input and a line feed of a text
+// area, and that a text the input holds already, once its line breaks are
+// taken so, makes no step and no change.
+func TestReplaceTextCRLF(t *testing.T) {
+	for _, multiline := range []bool{false, true} {
+		want := "one two three"
+		if multiline {
+			want = "one\ntwo\nthree"
+		}
+		s, next, changed := "", "", false
+		tt := replaceTester(&s, &next, &changed, multiline)
+		next = "one\r\ntwo\nthree"
+		tt.Frame()
+		if s != want {
+			t.Errorf("multiline %v: replaced to %q, want %q", multiline, s, want)
+		}
+		ed := textAreaOrInput(tt).editor
+		steps := len(ed.undo)
+		next, changed = "one\r\ntwo\nthree", false
+		tt.Frame()
+		if s != want || changed || len(ed.undo) != steps {
+			t.Errorf("multiline %v: the same text made %q, changed %v, %d steps, want %d", multiline, s, changed, len(ed.undo), steps)
+		}
+		tt.rt.close()
+	}
+}
+
 // TestReplaceTextBuffer replaces the text of an input editing a TextBuffer:
 // the buffer takes it, and Undo brings the user's text back.
 func TestReplaceTextBuffer(t *testing.T) {

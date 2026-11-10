@@ -84,16 +84,33 @@ func (ed *editor) record(typing bool) {
 	ed.lastEdit = now
 }
 
+// lineBreaksAsSpaces returns s as a single-line input takes it.
+func lineBreaksAsSpaces(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\r' {
+			return ' '
+		}
+		return r
+	}, s)
+}
+
+// edited returns s as an edit puts it in the text, for what compares it
+// with the text there first: a line break of two characters is one, as
+// insert takes it, and a single-line input has spaces for line breaks, as
+// replace gives it.
+func (ed *editor) edited(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	if !ed.multiline {
+		s = lineBreaksAsSpaces(s)
+	}
+	return s
+}
+
 // replace replaces the runes from start to end with s, as the last step
 // of undo notes, and puts the caret after it.
 func (ed *editor) replace(start, end int, s string) {
 	if !ed.multiline {
-		s = strings.Map(func(r rune) rune {
-			if r == '\n' || r == '\r' {
-				return ' '
-			}
-			return r
-		}, s)
+		s = lineBreaksAsSpaces(s)
 	}
 	s = ed.fit(start, end, s)
 	if n := len(ed.undo); n > 0 {
