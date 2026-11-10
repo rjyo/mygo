@@ -6565,11 +6565,33 @@ func (_handle Element) ObserveInput(fn func(ev InputEvent)) Element {
 // OnPaste has fn see a paste into a text input, by Cmd+V, Ctrl+V or a
 // Paste menu item, before it is inserted, on the main thread as the paste
 // comes: text is the clipboard's text, empty when it holds none, as with
-// an image, which the app reads from the clipboard itself. fn reports
+// an image, which fn reads with Services.ReadClipboardData. fn reports
 // whether it took the paste; a paste taken changes nothing, its selection
 // and undo history included, as when a web page prevents a paste's
 // default and attaches a large block instead of inserting it. Like
 // ReadOnly, it holds for the input that comes until the next frame.
+//
+// fn runs between frames, where an Element kept from the view is no
+// longer valid, and the input writes what it holds over its bound value,
+// so setting the value from fn is lost. To put text of its own in place
+// of the paste, as a link to an image it attaches, fn keeps the text and
+// the view inserts it with ReplaceText as it is built again, which a
+// paste seen by fn does at once:
+//
+//	svc := c.Services()
+//	in := ui.TextArea(c, &app.draft).OnPaste(func(string) bool {
+//		img := svc.ReadClipboardData(transfer.PNG)
+//		if len(img.Items()) == 0 {
+//			return false // text pastes as usual
+//		}
+//		app.insert = app.attach(img) // "![image](https://…)"
+//		return true
+//	})
+//	if app.insert != "" {
+//		start, end := in.TextSelection()
+//		in.ReplaceText(start, end, app.insert) // a step of undo
+//		app.insert = ""
+//	}
 func (_handle Element) OnPaste(fn func(text string) bool) Element {
 	_node := _handle.node()
 	if _node == nil {
