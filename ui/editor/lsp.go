@@ -90,6 +90,10 @@ const (
 type Inlay struct {
 	Offset int
 	Text   string
+	// Trailing marks text at the end of a line, such as a diagnostic or
+	// a blame: the caret stays before it and a selection to the end of
+	// the line does not cover it, as for a suggestion.
+	Trailing bool
 }
 
 // completions is the list of completions the editor shows.
@@ -445,9 +449,13 @@ func sortInlays(in []inlay) {
 
 // setInlays shows the inlay hints.
 func (ed *editor) setInlays(hints []Inlay) {
-	ed.view.inlays = slices.DeleteFunc(ed.view.inlays, func(in inlay) bool { return in.kind == 0 })
+	ed.view.inlays = slices.DeleteFunc(ed.view.inlays, func(in inlay) bool { return in.kind == 0 || in.kind == inlayTrailing })
 	for _, h := range hints {
-		ed.view.inlays = append(ed.view.inlays, inlay{at: h.Offset, text: h.Text})
+		kind := 0
+		if h.Trailing {
+			kind = inlayTrailing
+		}
+		ed.view.inlays = append(ed.view.inlays, inlay{at: h.Offset, text: h.Text, kind: kind})
 	}
 	sortInlays(ed.view.inlays)
 	ed.view.lines.m = nil

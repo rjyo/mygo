@@ -74,12 +74,15 @@ type view struct {
 type inlay struct {
 	at   int
 	text string
-	kind int // 0 a hint, 1 a suggestion, inlayNoNewline a diff's mark
+	kind int // 0 a hint, 1 a suggestion, inlayNoNewline a diff's mark, inlayTrailing text at a line's end
 }
 
 // inlayNoNewline is the kind of inlay a diff marks the last line of a
 // text without a final newline with (markEnds).
 const inlayNoNewline = 2
+
+// inlayTrailing is the kind of inlay set with Inlay.Trailing.
+const inlayTrailing = 3
 
 // lineLayout is a line laid out for display.
 type lineLayout struct {
@@ -103,7 +106,7 @@ type dispSeg struct {
 	from, to int // the bytes of the line it shows
 	kind     uint8
 	inlay    int
-	ghost    bool // a suggestion, which a caret at it shows before
+	ghost    bool // a suggestion or trailing text, which a caret at it shows before
 }
 
 const (
@@ -693,7 +696,7 @@ func (v *view) display(l *lineLayout) {
 		for ii < len(inl) && inl[ii].at-l.start <= at {
 			flush(at)
 			in := inl[ii]
-			l.segs = append(l.segs, dispSeg{disp: b.Len(), from: at, to: at, kind: segInlay, inlay: ii, ghost: in.kind == 1})
+			l.segs = append(l.segs, dispSeg{disp: b.Len(), from: at, to: at, kind: segInlay, inlay: ii, ghost: in.kind == 1 || in.kind == inlayTrailing})
 			b.WriteString(in.text)
 			col += utf8.RuneCountInString(in.text)
 			ii++
