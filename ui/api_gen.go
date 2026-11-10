@@ -5165,7 +5165,8 @@ func (_handle Element) FixedLineHeight(v float32) Element {
 // SearchField's, gives it to its input, where typing goes. When the focus
 // moves to it, it scrolls the containers around it as little as shows it,
 // as Tab does and the web's focus() does; ScrollIntoView lines it up
-// otherwise.
+// otherwise. While a pointer button is held it scrolls nothing: what a
+// press focuses, as the line a grip moves, is under the pointer.
 func (_handle Element) Focus() Element {
 	_node := _handle.node()
 	if _node == nil {

@@ -3008,7 +3008,8 @@ either.
   focus and shortcuts without retaining an element in app state. Scroll
   offsets move in the layout too
   (`ui/scroll.go`): elements that asked to `ScrollIntoView`, and the focus
-  as the keyboard or the app moved it (`node.focus`; a click does not),
+  as the keyboard or the app moved it (`node.focus`; a click does not,
+  nor the app while a pointer button is held),
   come into view before the boxes are placed, lined up as its options say
   (or glide there as a wheel's notches do, by what they went each frame,
   `glideScroll`), and placing keeps each offset within its content; a

@@ -124,3 +124,33 @@ func TestFocusEveryFrameKeepsTheUserScroll(t *testing.T) {
 		t.Errorf("Focus again on the focused Row 40 scrolled the view back to %v (Row 40 at %v)", s.Y, r.Y)
 	}
 }
+
+// A control that takes the focus as a grip beside it is pressed stays where
+// the user scrolled it, as one a click focuses does: Focus scrolls nothing
+// while a pointer button is held.
+func TestFocusUnderAPressKeepsTheScroll(t *testing.T) {
+	var s ui.ScrollState
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Scroll(c.Key("page")).Height(200).TrackScroll(&s).Children(func() {
+			ui.Box(c).Height(150).Shrink(0)
+			// 150 to 250 of a view 200 high: its lower half is out of view.
+			line := ui.Box(c.Key("line")).Height(100).Shrink(0).Focusable().Label("Line")
+			grip := ui.Box(c.Key("grip")).Absolute().Top(150).Left(0).Width(20).Height(100)
+			if _, _, held := grip.Dragged(); held {
+				line.Focus()
+			}
+			ui.Box(c).Height(400).Shrink(0)
+		})
+	}, 400, 300)
+	tt.Frame()
+	tt.Press(10, 180)
+	tt.Frame()
+	tt.Frame()
+	if !tt.Focused("Line") {
+		t.Fatal("the press on the grip didn't focus the line")
+	}
+	if s.Y != 0 {
+		t.Errorf("the press scrolled the view to %v", s.Y)
+	}
+	tt.Release(10, 180)
+}

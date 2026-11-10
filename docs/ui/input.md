@@ -217,8 +217,10 @@ When the focus moves to an element by the keyboard or by the app (`Focus`,
 as little as shows it, as the web's `element.focus()` does, so keyboard
 navigation of your own keeps the focus in sight. It scrolls once, as the
 focus moves: calling `Focus` in every frame leaves the user's scrolling
-alone. A click focuses an element where it is. To line it up otherwise,
-call `ScrollIntoView` with its options in the frame it takes the focus.
+alone. A click focuses an element where it is, and so does `Focus` while
+a pointer button is held, as for a line that takes the focus from a press
+on its grip. To line it up otherwise, call `ScrollIntoView` with its
+options in the frame it takes the focus.
 
 `TabStop(false)` makes an element focusable but out of Tab's order, as
 HTML's `tabindex="-1"`: it takes the focus from a click, from `Focus` and

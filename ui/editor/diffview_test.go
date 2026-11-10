@@ -230,6 +230,38 @@ func TestDiffViewerLineSelection(t *testing.T) {
 	}
 }
 
+// A press on the divider focuses it where the user scrolled the page: a
+// diff the page's scroll view cuts stays put.
+func TestDiffDividerPressKeepsThePageScroll(t *testing.T) {
+	d := &DiffState{Old: NewBuffer("a\nb\nc\n"), New: NewBuffer("a\nx\nc\n"), Layout: DiffSplit}
+	var page ui.ScrollState
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Scroll(c.Key("page")).Fill().TrackScroll(&page).Children(func() {
+			ui.Box(c).Height(100).Shrink(0)
+			// 100 to 360 of a window 300 high.
+			DiffView(c, d).Height(260).Shrink(0)
+			ui.Box(c).Height(400).Shrink(0)
+		})
+	}, 900, 300)
+	tt.Frame()
+	tt.Frame()
+	div, ok := tt.AccessByRole(ui.RoleSplitter, "")
+	if !ok {
+		t.Fatal("the diff has no divider")
+	}
+	x := div.Bounds.X + div.Bounds.W/2
+	tt.Press(x, 200)
+	tt.Frame()
+	tt.Frame()
+	if div, _ := tt.AccessByRole(ui.RoleSplitter, ""); !div.Focused {
+		t.Fatal("the press didn't focus the divider")
+	}
+	if page.Y != 0 {
+		t.Errorf("the press scrolled the page to %v", page.Y)
+	}
+	tt.Release(x, 200)
+}
+
 // The app runs commands and reads the caret in the side that has the
 // keyboard, or had it last: the new side's until the old one has it.
 func TestDiffViewerActiveSide(t *testing.T) {

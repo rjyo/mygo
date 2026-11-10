@@ -1805,7 +1805,8 @@ func (e *node) FocusWithin() bool {
 // SearchField's, gives it to its input, where typing goes. When the focus
 // moves to it, it scrolls the containers around it as little as shows it,
 // as Tab does and the web's focus() does; ScrollIntoView lines it up
-// otherwise.
+// otherwise. While a pointer button is held it scrolls nothing: what a
+// press focuses, as the line a grip moves, is under the pointer.
 func (e *node) Focus() *node {
 	e.focus(true)
 	return e
@@ -1828,7 +1829,7 @@ func (e *node) focus(reveal bool) {
 	if rt.focused != e.id {
 		rt.focused = e.id
 		rt.blinkStart = rt.now()
-		if reveal {
+		if reveal && rt.buttons == 0 {
 			rt.reveal(e.id)
 		}
 	}
