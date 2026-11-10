@@ -39,6 +39,9 @@ type NavigateEvent struct {
 	// location.href. It is false for a page's script navigating on its
 	// own, as from a timer.
 	UserInitiated bool
+	// InFrame is true for the navigation of an iframe, which only a page
+	// with PageOptions.FrameNavigations is asked about.
+	InFrame bool
 }
 
 // TitleEvent is passed to Page.OnPageTitleUpdated listeners. Preventing
