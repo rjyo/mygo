@@ -490,6 +490,42 @@ func TestSetPatchFilesCollapses(t *testing.T) {
 	}
 }
 
+// A file's lines end at its final newline, as git diff shows them: the
+// empty line the editor starts after it neither counts among the lines
+// that collapse nor shows once they expand.
+func TestSetPatchFilesEndsAtTheFinalNewline(t *testing.T) {
+	old, new, p := linesPatch(100, 20, 60)
+	for _, layout := range []DiffLayout{DiffSplit, DiffUnified} {
+		d := &DiffState{Layout: layout}
+		if err := d.SetPatchFiles(p, old, new); err != nil {
+			t.Fatal(err)
+		}
+		seps := map[int]*DiffSeparator{}
+		d.RenderSeparator = func(c *ui.Context, sep ui.Element, s *DiffSeparator) {
+			seps[s.a] = s
+			DefaultSeparator(c, sep, s)
+		}
+		tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).Fill() }, 800, 2000)
+		tt.Frame()
+		tt.Frame()
+		// Lines 64 to 99 collapse after the change at 60.
+		if s := seps[61]; s == nil || s.Lines != 36 {
+			t.Fatalf("%v: last separator %+v, want 36 lines", layout, s)
+		}
+		seps[61].ExpandAll()
+		tt.Frame()
+		if !hides(d.sides[1].hidden(), 100) {
+			t.Fatalf("%v: the new file's empty line after its final newline shows", layout)
+		}
+		if layout == DiffSplit && !hides(d.sides[0].hidden(), 100) {
+			t.Fatalf("the old file's empty line after its final newline shows")
+		}
+		if hides(d.sides[1].hidden(), 99) {
+			t.Fatalf("%v: the file's last line is hidden", layout)
+		}
+	}
+}
+
 // A patch that does not make the new file from the old, or a binary one,
 // returns an error and leaves the diff as it was.
 func TestSetPatchFilesMismatch(t *testing.T) {
@@ -561,6 +597,56 @@ func TestSetPatchFilesEmptySides(t *testing.T) {
 		ui.NewTester(func(c *ui.Context) { DiffView(c, d).Fill() }, 800, 400).Frame()
 		if hs := d.Hunks(); !slices.Equal(hs, c.want) {
 			t.Errorf("%s: hunks %+v, want %+v", c.name, hs, c.want)
+		}
+	}
+}
+
+// hides reports whether spans hide line.
+func hides(spans []lineSpan, line int) bool {
+	for _, s := range spans {
+		if s.from <= line && line <= s.to {
+			return true
+		}
+	}
+	return false
+}
+
+// An editable diff shows the empty line after the final newline, where
+// typing adds a line, from the frame Editable is set on.
+func TestEditableDiffShowsTheLineAfterTheFinalNewline(t *testing.T) {
+	d := &DiffState{Old: NewBuffer("a\nb\n"), New: NewBuffer("a\nc\n")}
+	tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).Fill() }, 800, 400)
+	tt.Frame()
+	if !hides(d.sides[1].hidden(), 2) {
+		t.Fatal("a read-only diff shows the line after the final newline")
+	}
+	d.Editable = true
+	tt.Frame()
+	if hides(d.sides[1].hidden(), 2) {
+		t.Fatal("an editable diff hides the line after the final newline")
+	}
+}
+
+// Lines deleted at the end of a file show, though the line after the new
+// file's final newline, which they go before, does not.
+func TestDiffShowsLinesDeletedAtTheEnd(t *testing.T) {
+	for _, layout := range []DiffLayout{DiffSplit, DiffUnified} {
+		d := &DiffState{Old: NewBuffer("a\nlast\n"), New: NewBuffer("a\n"), Layout: layout}
+		tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).Fill() }, 800, 400)
+		tt.Frame()
+		tt.Frame()
+		if !hides(d.sides[1].hidden(), 1) {
+			t.Fatalf("%v: the line after the new file's final newline shows", layout)
+		}
+		// Two lines high: "a", and "last" deleted, or its filler.
+		eds := d.eds[:]
+		if layout == DiffUnified {
+			eds = eds[1:]
+		}
+		for _, ed := range eds {
+			if got, want := ed.view.heights.total(), 2*float64(ed.view.lineHeight); got != want {
+				t.Fatalf("%v: a side %v high, want %v", layout, got, want)
+			}
 		}
 	}
 }

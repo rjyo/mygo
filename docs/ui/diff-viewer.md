@@ -34,7 +34,10 @@ typed.
 
 An empty text has no lines, as `git diff` counts them: the side of a file
 added or deleted, or emptied, shows no line numbers, and its gutter selects
-no line and offers no button.
+no line and offers no button. A text's lines end at its final newline, as
+git's do: a diff that isn't `Editable` leaves out the empty line an editor
+starts after it, which no separator counts, while an editable one shows it,
+as typing there adds a line.
 
 ## Layout
 

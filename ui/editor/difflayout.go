@@ -4,23 +4,26 @@ import (
 	"math"
 	"slices"
 	"sort"
+
+	"github.com/egoist/mygo/internal/rope"
 )
 
 // diffPrepared is what the blocks and hidden lines were made of.
 type diffPrepared struct {
-	version uint64
-	expandV int
-	layout  DiffLayout
-	context int
-	anns    uint64 // the annotations' sides, lines and heights, hashed
-	wrapsA  uint64
-	wrapsB  uint64
-	lh      float32
-	wrap    bool
-	expAll  bool
-	inline  DiffInline
-	nOld    int
-	nNew    int
+	version  uint64
+	expandV  int
+	layout   DiffLayout
+	context  int
+	anns     uint64 // the annotations' sides, lines and heights, hashed
+	wrapsA   uint64
+	wrapsB   uint64
+	lh       float32
+	wrap     bool
+	expAll   bool
+	inline   DiffInline
+	nOld     int
+	nNew     int
+	editable bool // which shows the line after a final newline (shownLines)
 }
 
 // diffGap is a run of unchanged lines between hunks, from the old line
@@ -48,7 +51,7 @@ func (d *DiffState) prepare() {
 	viewB := &edB.view
 	key := diffPrepared{version: d.model.version, expandV: d.expandV, layout: d.Layout, context: d.context(), anns: annotationsKey(d.Annotations),
 		wrapsA: viewA.heights.wraps.version, wrapsB: viewB.heights.wraps.version, lh: viewB.lineHeight, wrap: d.Wrap,
-		expAll: d.ExpandUnchanged, inline: d.Inline, nOld: viewA.text.LineCount(), nNew: viewB.text.LineCount()}
+		expAll: d.ExpandUnchanged, inline: d.Inline, nOld: viewA.text.LineCount(), nNew: viewB.text.LineCount(), editable: d.Editable}
 	if d.prepared == key {
 		return
 	}
@@ -65,7 +68,8 @@ func (d *DiffState) prepare() {
 		key.wrapsA, key.wrapsB = viewA.heights.wraps.version, viewB.heights.wraps.version
 	}
 	d.prepared = key
-	gaps := d.gaps(viewA.text.LineCount(), viewB.text.LineCount())
+	nA, nB := d.shownLines(viewA.text, true), d.shownLines(viewB.text, false)
+	gaps := d.gaps(nA, nB)
 	d.gapList = gaps
 	lh := viewB.lineHeight
 	var hideA, hideB []lineSpan
@@ -91,7 +95,7 @@ func (d *DiffState) prepare() {
 		for _, side := range []struct {
 			blks, late *[]block
 			from, n    int
-		}{{&blkA, &lateA, g.hideA, viewA.text.LineCount()}, {&blkB, &lateB, g.hideB, viewB.text.LineCount()}} {
+		}{{&blkA, &lateA, g.hideA, nA}, {&blkB, &lateB, g.hideB, nB}} {
 			b := sep(gi, side.from, side.n)
 			if b.below {
 				*side.late = append(*side.late, b)
@@ -100,6 +104,8 @@ func (d *DiffState) prepare() {
 			}
 		}
 	}
+	hideA = hideEnd(hideA, nA, viewA.text.LineCount())
+	hideB = hideEnd(hideB, nB, viewB.text.LineCount())
 	// A patch's hunks under their headers: above their first line, or,
 	// for a hunk with no lines left on a side, below its last line, after
 	// what the hunk before puts there (late).
@@ -339,6 +345,42 @@ func (v *view) wrapLineNow(i int) {
 		l.faces = v.facesOf(l, nil)
 	}
 	w.set(i, len(v.wrapBreaks(l.disp, l.faces, false))+1)
+}
+
+// shownLines returns how many lines of a side's text the diff shows. A
+// diff that cannot be edited ends at the text's final newline, as git
+// diff does, leaving out the empty line the editor starts after it,
+// unless a change of the side holds that line. An editable one shows it,
+// as there is where typing adds a line.
+func (d *DiffState) shownLines(text rope.Text, old bool) int {
+	n := text.LineCount()
+	if d.Editable || n < 2 || text.LineStart(n-1) != text.Len() {
+		return n
+	}
+	if k := len(d.model.hunks) - 1; k >= 0 {
+		h := d.model.hunks[k]
+		lo, hi := h.B0, h.B1
+		if old {
+			lo, hi = h.A0, h.A1
+		}
+		if lo <= n-1 && n-1 < hi {
+			return n
+		}
+	}
+	return n - 1
+}
+
+// hideEnd hides the lines of a side from shown to its last, total - 1,
+// joining the hidden lines that end right before them.
+func hideEnd(hide []lineSpan, shown, total int) []lineSpan {
+	if shown >= total {
+		return hide
+	}
+	if k := len(hide) - 1; k >= 0 && hide[k].to == shown-1 {
+		hide[k].to = total - 1
+		return hide
+	}
+	return append(hide, lineSpan{shown, total - 1})
 }
 
 // gaps returns the runs of unchanged lines and which of them collapse.

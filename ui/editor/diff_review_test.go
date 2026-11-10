@@ -225,7 +225,7 @@ func TestReviewDiffAnnotationBeforeSeparator(t *testing.T) {
 		tt.Frame()
 		tt.Frame()
 		note, _ := tt.Find("the note")
-		sep, ok := tt.Find("Expand 22 unmodified lines")
+		sep, ok := tt.Find("Expand 21 unmodified lines")
 		if !ok || note.Y > sep.Y {
 			t.Fatalf("layout %d: the note at %v, the separator at %v (%v)", layout, note, sep, ok)
 		}

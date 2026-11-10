@@ -30,7 +30,9 @@ type DiffState struct {
 	// wide enough for both, and the share is kept for when it is again.
 	SplitPercent float32
 	// Editable lets the new text be edited where it shows, with all an
-	// editor does; the diff follows as it is typed.
+	// editor does; the diff follows as it is typed. It also shows the empty
+	// line after each text's final newline, where typing adds a line,
+	// which a diff that is not editable leaves out, as git diff does.
 	Editable bool
 	// Inline highlights what changed within changed lines.
 	Inline DiffInline
