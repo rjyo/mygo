@@ -962,10 +962,16 @@ func (v *view) caretRect() (ui.Rect, bool) {
 
 // boxes appends the boxes of the paragraphs in view to out.
 func (v *view) boxes(out []ParagraphBox) []ParagraphBox {
-	for i := v.first; i <= v.last && i < len(v.paras); i++ {
+	if v.first > v.last || v.first >= len(v.paras) {
+		return out
+	}
+	// Each start is counted on from the one before, as paint does: found
+	// from the start of the text, each cost as much as the text is long.
+	ps := v.shown.paraStart(v.first)
+	for i := v.first; i <= v.last && i < len(v.paras); i, ps = i+1, ps+v.para(i).n+1 {
 		pv := v.paraLayout(i)
 		_, y := v.origin(i)
-		out = append(out, ParagraphBox{Index: i, Start: v.shown.paraStart(i), Top: v.padY + float32(y-v.scroll), Height: pv.h - pv.space})
+		out = append(out, ParagraphBox{Index: i, Start: ps, Top: v.padY + float32(y-v.scroll), Height: pv.h - pv.space})
 	}
 	return out
 }

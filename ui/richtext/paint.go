@@ -22,14 +22,26 @@ func (v *view) paint(p *ui.Painter, r ui.Rect) {
 	}
 	a, z := v.selection()
 	focused := v.focused
-	for i := v.first; i <= v.last && i < len(v.paras); i++ {
+	// Only the paragraphs the painter's clip shows are painted: an editor as
+	// tall as its text, in a scroll container, has all of them in its box.
+	// Each one's start is counted on from the one before it; found from the
+	// start of the text, it cost as much as the text is long, for each one.
+	vis := p.Visible()
+	compose := -1
+	if v.compose != "" {
+		compose = v.shown.paraAt(v.caret)
+	}
+	ps := v.shown.paraStart(v.first)
+	for i := v.first; i <= v.last && i < len(v.paras); i, ps = i+1, ps+v.para(i).n+1 {
+		top := oy + float32(v.hs.top(i)-v.scroll)
+		if bottom := oy + float32(v.hs.top(i+1)-v.scroll); bottom < vis.Y || top > vis.Y+vis.H {
+			continue
+		}
 		pv := v.paraLayout(i)
 		st := v.para(i).style
-		top := oy + float32(v.hs.top(i)-v.scroll)
 		px, py := v.origin(i)
 		x, y := ox+px, oy+float32(py-v.scroll)
 		v.paintBlock(p, i, st, ox, top, pv.h, w)
-		ps := v.shown.paraStart(i)
 		pe := ps + v.para(i).n
 		if a != z && a <= pe && z >= ps && (focused || v.opts.ReadOnly) {
 			from, to := v.local(i, max(a, ps)), v.local(i, min(z, pe))
@@ -46,7 +58,7 @@ func (v *view) paint(p *ui.Painter, r ui.Rect) {
 		p.TextLayout(pv.layout, x, y, look.Text)
 		v.paintAttachments(p, i, pv, x, y)
 		v.paintMarker(p, i, st, pv, x, y)
-		if v.compose != "" && v.shown.paraAt(v.caret) == i {
+		if compose == i {
 			c := v.local(i, v.caret)
 			n := len([]rune(v.compose))
 			for _, s := range pv.layout.SelectionRects(ui.TextInputRange{Start: pv.units[c], End: pv.units[min(c+n, len(pv.units)-1)]}) {

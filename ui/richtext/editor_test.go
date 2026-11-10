@@ -2,11 +2,13 @@ package richtext
 
 import (
 	"bytes"
+	"fmt"
 	"runtime"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -946,5 +948,55 @@ func TestVisibleParagraphsPerEditor(t *testing.T) {
 	}
 	if tt.FramePending() {
 		t.Fatal("the frames do not settle")
+	}
+}
+
+// An editor as tall as its text, in a scroll container (a page that
+// scrolls as a whole), paints the paragraphs the container shows when it
+// is scrolled down the text, though it paints only those, and gives each
+// paragraph in its box with the rune it starts at.
+func TestTallEditorInScroll(t *testing.T) {
+	var b strings.Builder
+	var starts []int
+	at := 0
+	for i := 0; i < 300; i++ {
+		line := fmt.Sprintf("paragraph %d: çok güzel, %s", i, strings.Repeat("é", i%7))
+		starts = append(starts, at)
+		at += utf8.RuneCountInString(line) + 1
+		b.WriteString(line + "\n")
+	}
+	doc := NewDocument(NewText(strings.TrimSuffix(b.String(), "\n")))
+	var boxes []ParagraphBox
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Scroll(c).Fill().Children(func() {
+			Editor(c, doc, EditorOptions{NoScrollbar: true}).FillWidth().Height(300 * 40)
+			boxes = doc.VisibleParagraphs()
+		})
+	}, 500, 400)
+	tt.Frame()
+	tt.Frame()
+	if len(boxes) != len(starts) {
+		t.Fatalf("%d boxes in an editor as tall as its %d paragraphs", len(boxes), len(starts))
+	}
+	for i, bx := range boxes {
+		if bx.Index != i || bx.Start != starts[i] {
+			t.Fatalf("box %d: paragraph %d at rune %d, want %d", i, bx.Index, bx.Start, starts[i])
+		}
+	}
+	tt.Wheel(250, 200, 0, 2000)
+	tt.Advance(time.Second)
+	img := tt.Image()
+	s := img.Bounds().Dx() / 500
+	ground := img.RGBAAt(498*s, 2*s)
+	ink := 0
+	for y := 0; y < 400*s; y += 2 {
+		for x := 0; x < 300*s; x += 2 {
+			if img.RGBAAt(x, y) != ground {
+				ink++
+			}
+		}
+	}
+	if ink < 2000 {
+		t.Fatalf("scrolled down the text, the view shows no text (%d marked pixels)", ink)
 	}
 }
