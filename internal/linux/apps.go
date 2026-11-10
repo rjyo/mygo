@@ -4,6 +4,8 @@ package linux
 
 import (
 	"fmt"
+	"net/url"
+	"path/filepath"
 	"sync"
 
 	"github.com/egoist/mygo/internal/platform"
@@ -74,4 +76,49 @@ func (shell) OpenApplication(path string) error {
 		return gErr(gerr)
 	}
 	return nil
+}
+
+// DefaultApp returns the application that opens url: the default handler
+// for its scheme (g_app_info_get_default_for_uri_scheme), or for a file://
+// URL, the default handler for the file's content type
+// (g_content_type_guess and g_app_info_get_default_for_type).
+func (shell) DefaultApp(rawURL string) (platform.Application, error) {
+	loadApps()
+	var scheme, ext string
+	if u, e := url.Parse(rawURL); e == nil && u.Scheme != "" {
+		if u.Scheme == "file" {
+			ext = filepath.Ext(u.Path)
+		} else {
+			scheme = u.Scheme
+		}
+	} else {
+		ext = filepath.Ext(rawURL)
+	}
+	var info ptr
+	if scheme != "" {
+		info = gAppInfoGetDefaultForURIScheme(cs(scheme))
+	} else if ext != "" {
+		ct := gContentTypeGuess(cs(ext), 0, 0, nil)
+		if ct == 0 {
+			return platform.Application{}, fmt.Errorf("mygo: no application found for %q", rawURL)
+		}
+		info = gAppInfoGetDefaultForType(cs(goStr(ct)), false)
+		gFree(ct)
+	} else {
+		return platform.Application{}, fmt.Errorf("mygo: invalid URL %q", rawURL)
+	}
+	if info == 0 {
+		return platform.Application{}, fmt.Errorf("mygo: no application found for %q", rawURL)
+	}
+	defer gObjectUnref(info)
+	path := goStr(gDesktopAppInfoGetFilename(info))
+	id := goStr(gAppInfoGetID(info))
+	if path == "" {
+		path = id
+	}
+	return platform.Application{
+		Name: goStr(gAppInfoGetDisplayName(info)),
+		ID:   id,
+		Path: path,
+	}, nil
 }

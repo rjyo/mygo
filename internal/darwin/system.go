@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"unsafe"
 
@@ -221,6 +222,48 @@ func (shell) PreviewItem(path string) error {
 }
 
 func (shell) Beep() { nsBeep() }
+
+// DefaultApp returns the application the system would use to open url.
+// url may be a web URL (https://example.com), a file:// URL, or any URL
+// whose scheme is registered with Launch Services. The name, bundle
+// identifier and path of the .app bundle are returned.
+func (shell) DefaultApp(url string) (platform.Application, error) {
+	var app platform.Application
+	var err error
+	withPool(func() {
+		u := nsURL(url)
+		if u == 0 {
+			err = fmt.Errorf("mygo: invalid URL %q", url)
+			return
+		}
+		// NSWorkspace -URLForApplicationToOpenURL: (10.10+) returns the
+		// .app bundle URL of the default handler.
+		appURL := send(workspace(), "URLForApplicationToOpenURL:", uintptr(u))
+		if appURL == 0 {
+			err = fmt.Errorf("mygo: no application found for %q", url)
+			return
+		}
+		// Pull the file-system path from the NSURL.
+		path := goString(send(appURL, "path"))
+		if path == "" {
+			err = fmt.Errorf("mygo: no application found for %q", url)
+			return
+		}
+		// Resolve name and bundle ID from the .app bundle.
+		bundle := send(class("NSBundle"), "bundleWithPath:", uintptr(nsString(path)))
+		fm := send(class("NSFileManager"), "defaultManager")
+		name := strings.TrimSuffix(goString(send(fm, "displayNameAtPath:", uintptr(nsString(path)))), ".app")
+		id := ""
+		if bundle != 0 {
+			id = goString(send(bundle, "bundleIdentifier"))
+		}
+		if id == "" {
+			id = path
+		}
+		app = platform.Application{Name: name, ID: id, Path: path}
+	})
+	return app, err
+}
 
 // Screen (NSScreen).
 

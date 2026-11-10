@@ -1214,6 +1214,14 @@ func (shell) OpenApplication(path string) error {
 	return nil
 }
 
+// DefaultAppURLs are the URLs DefaultApp was asked about, in order.
+var DefaultAppURLs []string
+
+func (shell) DefaultApp(url string) (platform.Application, error) {
+	DefaultAppURLs = append(DefaultAppURLs, url)
+	return platform.Application{Name: "Default", ID: "app.default", Path: "/Applications/Default.app"}, nil
+}
+
 // FileIcon returns a transparent PNG of the size asked for, or the error of
 // a path that does not exist.
 func (shell) FileIcon(path string, size int) ([]byte, error) {

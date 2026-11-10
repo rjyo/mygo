@@ -95,3 +95,17 @@ func TestInstalledApps(t *testing.T) {
 		t.Error("LaunchApp of an app without a path did not fail")
 	}
 }
+
+func TestDefaultApp(t *testing.T) {
+	defer func() { fake.DefaultAppURLs = nil }()
+	app, err := Shell.DefaultApp("https://example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if app.Path == "" {
+		t.Error("DefaultApp returned an app without a path")
+	}
+	if want := []string{"https://example.com"}; !slices.Equal(fake.DefaultAppURLs, want) {
+		t.Errorf("DefaultApp passed %q, want %q", fake.DefaultAppURLs, want)
+	}
+}

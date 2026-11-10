@@ -172,6 +172,22 @@ func (ShellModule) LaunchApp(app InstalledApp) error {
 	return onMainValue(func() error { return backend().Shell().OpenApplication(app.Path) })
 }
 
+// DefaultApp returns the application the system would use to open url, the
+// default handler for it: the browser for a web URL, the editor for a
+// text file, and so on. url may be a web URL such as https://example.com,
+// a file:// URL, or any URL whose scheme is registered with the system.
+// It is supported on macOS, Linux and Windows; other platforms return
+// ErrUnsupported. It reads system associations: call it from a goroutine of
+// its own, which it does not block the main thread from.
+func (ShellModule) DefaultApp(url string) (InstalledApp, error) {
+	needsApp("Shell.DefaultApp")
+	if !isMainThread() {
+		App.waitReady()
+	}
+	app, err := backend().Shell().DefaultApp(url)
+	return InstalledApp(app), err
+}
+
 // Beep plays the system alert sound.
 func (ShellModule) Beep() {
 	needsApp("Shell.Beep")
