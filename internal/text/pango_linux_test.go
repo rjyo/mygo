@@ -259,7 +259,7 @@ func TestGrayGlyphsWhereFontconfigAsksForSubpixels(t *testing.T) {
 	if l.fcConfigParseFromMemory(l.fcConfigGetCurrent(), rgba, int32(gTrue)) == 0 {
 		t.Fatalf("fontconfig refused %s", rgba)
 	}
-	for _, r := range [][3]string{{"", "", ""}, {"gray", "slight", ""}, {"subpixel", "slight", "rgb"}} {
+	for _, r := range [][3]string{{"", "", ""}, {"gray", "slight", ""}, {"subpixel", "slight", "rgb"}, {"none", "full", "rgb"}} {
 		e, err := newPango()
 		if err != nil {
 			t.Fatal(err)
@@ -267,7 +267,7 @@ func TestGrayGlyphsWhereFontconfigAsksForSubpixels(t *testing.T) {
 		e.setFontRendering(r[0], r[1], r[2])
 		_, subpixel := e.textParams()
 		drawn := 0
-		for _, run := range e.shape([]rune("Candle"), Style{Family: "sans-serif", Size: 13}, nil, 0, false, false)[0].runs {
+		for _, run := range e.shape([]rune("Candle 显示右侧边栏"), Style{Family: "sans-serif", Size: 13}, nil, 0, false, false)[0].runs {
 			for _, g := range run.glyphs {
 				b := e.glyph(run.font, g.ID, 1, 0, 0, subpixel)
 				if b.pix == nil {
@@ -285,5 +285,39 @@ func TestGrayGlyphsWhereFontconfigAsksForSubpixels(t *testing.T) {
 		if drawn == 0 {
 			t.Skip("no glyphs drawn")
 		}
+	}
+}
+
+func TestGrayscaleFontPreservesColorGlyphs(t *testing.T) {
+	e, err := newPango()
+	if err != nil {
+		t.Skip(err)
+	}
+	found := false
+	for _, f := range e.fontMapFamilies() {
+		if f.Name == "Noto Color Emoji" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Skip("needs Noto Color Emoji")
+	}
+	e.setFontRendering("gray", "slight", "rgb")
+	drawn := 0
+	for _, run := range e.shape([]rune("😀"), Style{Family: "Noto Color Emoji", Size: 20}, nil, 0, false, false)[0].runs {
+		for _, g := range run.glyphs {
+			b := e.glyph(run.font, g.ID, 1, 0, 0, false)
+			if b.pix == nil {
+				continue
+			}
+			drawn++
+			if !b.color || b.subpixel {
+				t.Errorf("emoji glyph %d: color=%v, subpixel=%v", g.ID, b.color, b.subpixel)
+			}
+		}
+	}
+	if drawn == 0 {
+		t.Fatal("no emoji glyphs drawn")
 	}
 }

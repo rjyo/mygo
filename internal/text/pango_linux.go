@@ -64,6 +64,7 @@ const (
 	cairoStatusSuccess         = 0
 	fcResultMatch              = 0
 	fcMatchPattern             = 0
+	fcRGBANone                 = 5
 	fcLangEqual                = 0
 	fcSetApplication           = 1
 	gTrue, gFalse          int = 1, 0
@@ -119,9 +120,10 @@ type (
 )
 
 var pangoLib struct {
-	gObjectRef   func(obj uintptr) uintptr
-	gObjectUnref func(obj uintptr)
-	gFree        func(p uintptr)
+	gObjectRef        func(obj uintptr) uintptr
+	gObjectUnref      func(obj uintptr)
+	gObjectGetPointer func(object uintptr, name string, value *uintptr, end uintptr)
+	gFree             func(p uintptr)
 
 	fontMapListFamilies   func(fontMap uintptr, families **uintptr, n *int32)
 	fontFamilyGetName     func(family uintptr) *byte
@@ -190,6 +192,8 @@ var pangoLib struct {
 	cairoFontOptionsHintStyle func(options uintptr, style int32)
 	cairoFontOptionsSubpixel  func(options uintptr, order int32)
 	cairoScaledFontFace       func(font uintptr) uintptr
+	cairoFontFaceFromPattern  func(pattern uintptr) uintptr
+	cairoFontFaceDestroy      func(face uintptr)
 	cairoScaledFontMatrix     func(font uintptr, m *cairoMatrix)
 	cairoScaledFontOptions    func(font, options uintptr)
 	cairoScaledFontCreate     func(face uintptr, fontMatrix, ctm *cairoMatrix, options uintptr) uintptr
@@ -215,6 +219,7 @@ var pangoLib struct {
 	fcPatternCreate           func() uintptr
 	fcPatternDestroy          func(pattern uintptr)
 	fcPatternAddString        func(pattern uintptr, object, s string) int32
+	fcPatternAddInteger       func(pattern uintptr, object string, value int32) int32
 	fcPatternDuplicate        func(pattern uintptr) uintptr
 	fcPatternDel              func(pattern uintptr, object string) int32
 	fcFontSetAdd              func(set *fcFontSet, pattern uintptr) int32
@@ -268,6 +273,7 @@ func loadPango() error {
 	}
 	l := &pangoLib
 	bind(gobject, &l.gObjectRef, "g_object_ref")
+	bind(gobject, &l.gObjectGetPointer, "g_object_get")
 	bind(gobject, &l.gObjectUnref, "g_object_unref")
 	bind(glib, &l.gFree, "g_free")
 	bind(pango, &l.fontMapListFamilies, "pango_font_map_list_families")
@@ -328,6 +334,8 @@ func loadPango() error {
 	bind(cairo, &l.cairoFontOptionsHintStyle, "cairo_font_options_set_hint_style")
 	bind(cairo, &l.cairoFontOptionsSubpixel, "cairo_font_options_set_subpixel_order")
 	bind(cairo, &l.cairoScaledFontFace, "cairo_scaled_font_get_font_face")
+	bind(cairo, &l.cairoFontFaceFromPattern, "cairo_ft_font_face_create_for_pattern")
+	bind(cairo, &l.cairoFontFaceDestroy, "cairo_font_face_destroy")
 	bind(cairo, &l.cairoScaledFontMatrix, "cairo_scaled_font_get_font_matrix")
 	bind(cairo, &l.cairoScaledFontOptions, "cairo_scaled_font_get_font_options")
 	bind(cairo, &l.cairoScaledFontCreate, "cairo_scaled_font_create")
@@ -371,6 +379,7 @@ func loadPango() error {
 		bind(fc, &l.fcPatternCreate, "FcPatternCreate")
 		bind(fc, &l.fcPatternDestroy, "FcPatternDestroy")
 		bind(fc, &l.fcPatternAddString, "FcPatternAddString")
+		bind(fc, &l.fcPatternAddInteger, "FcPatternAddInteger")
 		bind(fc, &l.fcPatternDuplicate, "FcPatternDuplicate")
 		bind(fc, &l.fcPatternDel, "FcPatternDel")
 		bind(fc, &l.fcFontSetAdd, "FcFontSetAdd")
@@ -1119,7 +1128,19 @@ func (e *pangoEngine) scaledFont(f *Font, scale float32, subpixel bool) uintptr 
 		// without antialiasing keep it off.
 		l.cairoFontOptionsAntialias(opts, cairoAntialiasGray)
 	}
-	sf := l.cairoScaledFontCreate(l.cairoScaledFontFace(src), &m, &identity, opts)
+	face := l.cairoScaledFontFace(src)
+	// The grayscale face has no fontconfig subpixel order.
+	if !subpixel && l.fcPatternAddInteger != nil {
+		var original uintptr
+		l.gObjectGetPointer(f.native, "pattern", &original, 0)
+		pattern := l.fcPatternDuplicate(original)
+		l.fcPatternDel(pattern, "rgba")
+		l.fcPatternAddInteger(pattern, "rgba", fcRGBANone)
+		face = l.cairoFontFaceFromPattern(pattern)
+		l.fcPatternDestroy(pattern)
+		defer l.cairoFontFaceDestroy(face)
+	}
+	sf := l.cairoScaledFontCreate(face, &m, &identity, opts)
 	l.cairoFontOptionsDestroy(opts)
 	if sf == 0 || l.cairoScaledFontStatus(sf) != cairoStatusSuccess {
 		return 0
