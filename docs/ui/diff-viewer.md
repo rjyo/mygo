@@ -39,6 +39,14 @@ git's do: a diff that isn't `Editable` leaves out the empty line an editor
 starts after it, which no separator counts, while an editable one shows it,
 as typing there adds a line.
 
+A diff that isn't `Editable` compares lines with their line feeds, as git
+does, so a last line that gains or loses its newline is a changed line, and
+the last line of a text without a final newline ends with a muted "No
+newline at end of file", git's `\ No newline at end of file`. `SetPatch`,
+whose texts hold only the patch's lines, marks the sides its `\` lines
+name. An editable diff compares lines without them and marks none: adding
+the final newline adds the empty line after it, where typing goes.
+
 ## Layout
 
 - `Layout` shows the old text on the left and the new on the right, their

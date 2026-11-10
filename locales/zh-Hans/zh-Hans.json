@@ -50,6 +50,7 @@
   "expandAll": "全部展开",
   "expand": "展开 {what}",
   "unmodifiedLines": "{n, plural, other {# 行未修改}}",
+  "noNewlineAtEnd": "文件末尾没有换行符",
   "revert": "还原",
   "keep": "保留",
   "hunkAction": "{action}更改",

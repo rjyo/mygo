@@ -26,7 +26,7 @@ func (ed *editor) syncGitDiff() {
 	if ed.gitDiff == nil {
 		ed.gitDiff = &gitDiff{}
 	}
-	ed.gitDiff.d.set(base, ed.buf())
+	ed.gitDiff.d.set(base, ed.buf(), false)
 	ed.gitDiff.d.update()
 }
 
@@ -121,7 +121,7 @@ func (ed *editor) revertHunks() bool {
 	}
 	edits := make([]Edit, 0, len(idx))
 	for _, i := range idx {
-		edits = append(edits, hunkEdit(d.hunks[i], d.oldText, d.newText))
+		edits = append(edits, d.hunkEdit(d.hunks[i], d.oldText, d.newText))
 	}
 	return ed.apply(edits, editOther, nil)
 }

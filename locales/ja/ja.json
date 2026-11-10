@@ -50,6 +50,7 @@
   "expandAll": "すべて展開",
   "expand": "{what}を展開",
   "unmodifiedLines": "{n, plural, other {変更されていない # 行}}",
+  "noNewlineAtEnd": "ファイル末尾に改行がありません",
   "revert": "元に戻す",
   "keep": "保持",
   "hunkAction": "変更を{action}",

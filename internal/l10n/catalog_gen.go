@@ -762,6 +762,22 @@ func (msgs Messages) UnmodifiedLines(n int) string {
 	return Catalog.Format(msgs.locale, "unmodifiedLines", map[string]any{"n": n})
 }
 
+// NoNewlineAtEnd says "No newline at end of file"
+// in the language the app shows.
+//
+// Marks the last line of a text in a diff viewer when the text does not end
+// with a newline, as git diff's "\ No newline at end of file" line.
+func NoNewlineAtEnd() string { return In(i18n.Locale()).NoNewlineAtEnd() }
+
+// NoNewlineAtEnd says "No newline at end of file"
+// in the language of msgs.
+//
+// Marks the last line of a text in a diff viewer when the text does not end
+// with a newline, as git diff's "\ No newline at end of file" line.
+func (msgs Messages) NoNewlineAtEnd() string {
+	return Catalog.Format(msgs.locale, "noNewlineAtEnd", nil)
+}
+
 // Revert says "Revert"
 // in the language the app shows.
 //

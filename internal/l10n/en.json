@@ -215,6 +215,10 @@
       }
     }
   },
+  "noNewlineAtEnd": "No newline at end of file",
+  "@noNewlineAtEnd": {
+    "description": "Marks the last line of a text in a diff viewer when the text does not end with a newline, as git diff's \"\\ No newline at end of file\" line."
+  },
   "revert": "Revert",
   "@revert": {
     "description": "An action of a diff viewer on a change."

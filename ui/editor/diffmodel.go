@@ -23,6 +23,12 @@ type diffModel struct {
 	// show.
 	version uint64
 	words   map[wordKey]*hunkWords
+	// eol compares lines with their line feeds, as git diff does, for a
+	// diff that is not edited: a last line without one differs from the
+	// same line with one, and the empty line an editor starts after a
+	// final newline is no line. An edited diff compares lines without
+	// them, as typing after the final newline adds that line.
+	eol bool
 }
 
 // diffPad is how many unchanged lines around an edit are compared
@@ -33,9 +39,9 @@ const diffPad = 3
 // before comparing the whole texts.
 const diffMaxRegion = 20000
 
-func (d *diffModel) set(old, new *Buffer) {
-	if d.old != old || d.new != new {
-		d.old, d.new = old, new
+func (d *diffModel) set(old, new *Buffer, eol bool) {
+	if d.old != old || d.new != new || d.eol != eol {
+		d.old, d.new, d.eol = old, new, eol
 		d.oldVer, d.newVer = ^uint64(0), ^uint64(0)
 	}
 }
@@ -133,7 +139,7 @@ func (d *diffModel) update() bool {
 // full compares the whole texts.
 func (d *diffModel) full(oldText, newText rope.Text, oldVer, newVer uint64) {
 	d.oldText, d.newText, d.oldVer, d.newVer = oldText, newText, oldVer, newVer
-	d.hunks = diff.Lines(ropeLines(oldText, 0, oldText.LineCount()), ropeLines(newText, 0, newText.LineCount()))
+	d.hunks = diff.Lines(d.lines(oldText, 0, oldText.LineCount()), d.lines(newText, 0, newText.LineCount()))
 	d.version++
 	d.words = nil
 }
@@ -148,13 +154,49 @@ func ropeLines(r rope.Text, from, to int) []string {
 	return strings.Split(s, "\n")
 }
 
+// lines returns the lines from to to of r the diff compares: with their
+// line feeds when eol, the last without one when r ends without, and none
+// after a final newline; ropeLines' otherwise.
+func (d *diffModel) lines(r rope.Text, from, to int) []string {
+	if !d.eol {
+		return ropeLines(r, from, to)
+	}
+	if from >= to || r.Len() == 0 {
+		return nil
+	}
+	end := r.Len()
+	if to < r.LineCount() {
+		end = r.LineStart(to)
+	}
+	ls := strings.SplitAfter(r.Slice(r.LineStart(from), end), "\n")
+	if ls[len(ls)-1] == "" {
+		ls = ls[:len(ls)-1]
+	}
+	return ls
+}
+
+// count returns how many lines of r the diff compares.
+func (d *diffModel) count(r rope.Text) int {
+	n := r.LineCount()
+	if d.eol && (r.Len() == 0 || r.LineStart(n-1) == r.Len()) {
+		return n - 1
+	}
+	return n
+}
+
+// sameLine reports whether lines a and b of r compare as the same.
+func (d *diffModel) sameLine(r rope.Text, a, b int) bool {
+	last := r.LineCount() - 1
+	return r.Line(a) == r.Line(b) && (!d.eol || (a < last) == (b < last))
+}
+
 // redo compares again the new lines from to to, inclusive, with a few
 // unchanged lines around them and the hunks they touch: the range grows
 // until no hunk crosses its edges, so that the lines before and after it
 // pair up in both texts.
 func (d *diffModel) redo(from, to int, touched []bool) {
-	nNew := d.newText.LineCount()
-	nOld := d.oldText.LineCount()
+	nNew := d.count(d.newText)
+	nOld := d.count(d.oldText)
 	newFrom := max(0, from-diffPad)
 	newTo := min(nNew, to+1+diffPad)
 	for i, h := range d.hunks {
@@ -203,8 +245,8 @@ func (d *diffModel) redo(from, to int, touched []bool) {
 		d.full(d.oldText, d.newText, d.oldVer, d.newVer)
 		return
 	}
-	a := ropeLines(d.oldText, oldFrom, oldTo)
-	b := ropeLines(d.newText, newFrom, newTo)
+	a := d.lines(d.oldText, oldFrom, oldTo)
+	b := d.lines(d.newText, newFrom, newTo)
 	mid := diff.Lines(a, b)
 	for i := range mid {
 		h := &mid[i]
@@ -226,10 +268,10 @@ func (d *diffModel) redo(from, to int, touched []bool) {
 		if i+1 < len(mid) {
 			limHi = min(limHi, mid[i+1].B0-1-(h.B1-h.B0))
 		}
-		for lo > limLo && d.newText.Line(lo-1) == d.newText.Line(lo-1+h.B1-h.B0) {
+		for lo > limLo && d.sameLine(d.newText, lo-1, lo-1+h.B1-h.B0) {
 			lo--
 		}
-		for hi < limHi && d.newText.Line(hi) == d.newText.Line(hi+h.B1-h.B0) {
+		for hi < limHi && d.sameLine(d.newText, hi, hi+h.B1-h.B0) {
 			hi++
 		}
 		best, bestOver := h.B0, overlap(h.B0, h.B1, from, to+1)
@@ -480,13 +522,23 @@ func joinWordAlt(rs []diffRange, s string) []diffRange {
 // revert puts the old lines of hunk i back in the new buffer.
 func (d *diffModel) revert(i int) {
 	if i >= 0 && i < len(d.hunks) {
-		d.new.Edit(hunkEdit(d.hunks[i], d.oldText, d.newText))
+		d.new.Edit(d.hunkEdit(d.hunks[i], d.oldText, d.newText))
 	}
 }
 
 // hunkEdit returns the edit of the new text that puts the old lines of
 // h back.
-func hunkEdit(h diff.Hunk, old, nw rope.Text) Edit {
+func (d *diffModel) hunkEdit(h diff.Hunk, old, nw rope.Text) Edit {
+	if d.eol {
+		// The lines with their line feeds, which make the texts whole.
+		at := func(r rope.Text, line int) int {
+			if line >= r.LineCount() {
+				return r.Len()
+			}
+			return r.LineStart(line)
+		}
+		return Edit{Start: at(nw, h.B0), End: at(nw, h.B1), Text: old.Slice(at(old, h.A0), at(old, h.A1))}
+	}
 	text := ""
 	if h.A1 > h.A0 {
 		text = old.Slice(old.LineStart(h.A0), old.LineEnd(h.A1-1))
@@ -519,7 +571,7 @@ func (d *diffModel) accept(i int) {
 	}
 	// The same edit, the other way: the old buffer takes the new lines.
 	h := d.hunks[i]
-	d.old.Edit(hunkEdit(diff.Hunk{A0: h.B0, A1: h.B1, B0: h.A0, B1: h.A1}, d.newText, d.oldText))
+	d.old.Edit(d.hunkEdit(diff.Hunk{A0: h.B0, A1: h.B1, B0: h.A0, B1: h.A1}, d.newText, d.oldText))
 }
 
 // hunksTouching returns the hunks whose new lines meet from to to.

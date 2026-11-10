@@ -32,7 +32,9 @@ type DiffState struct {
 	// Editable lets the new text be edited where it shows, with all an
 	// editor does; the diff follows as it is typed. It also shows the empty
 	// line after each text's final newline, where typing adds a line,
-	// which a diff that is not editable leaves out, as git diff does.
+	// which a diff that is not editable leaves out, as git diff does: it
+	// compares lines with their line feeds, and marks a last line without
+	// one "No newline at end of file".
 	Editable bool
 	// Inline highlights what changed within changed lines.
 	Inline DiffInline
@@ -129,6 +131,9 @@ type DiffState struct {
 	built   diffGeom
 	gapList []diffGap
 	partial *diffPartial
+	// endMark marks a last line without a final newline, in the
+	// window's language (markEnds).
+	endMark string
 }
 
 // DiffLayout is how a diff viewer lays out its two texts.
@@ -232,7 +237,7 @@ func (d *DiffState) ensure() {
 		d.partial = nil
 		d.prepared = diffPrepared{}
 	}
-	d.model.set(d.Old, d.New)
+	d.model.set(d.Old, d.New, !d.Editable)
 	d.model.update()
 	// The lines revealed move with edits of the old text, as Keep makes,
 	// and go with it.
@@ -567,6 +572,7 @@ func (d *DiffState) sideOptions(old bool) options {
 // DiffView builds the diff viewer.
 func DiffView(c *ui.Context, d *DiffState) ui.Element {
 	d.ensure()
+	d.endMark = "  " + l10n.In(c.Locale()).NoNewlineAtEnd()
 	// The new side's editor scrolls as it is built, as to a caret
 	// GoToHunk moved, where a split view's scrolls as it is drawn
 	// (rebuildIfMoved): either builds the view again, for what read

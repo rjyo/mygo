@@ -54,7 +54,7 @@ func TestCodeDiffIncremental(t *testing.T) {
 		old := NewBuffer(sb.String())
 		nw := NewBuffer(sb.String())
 		var d diffModel
-		d.set(old, nw)
+		d.set(old, nw, false)
 		d.update()
 		for range 20 {
 			text := nw.String()
@@ -91,7 +91,7 @@ func TestCodeDiffRevertAccept(t *testing.T) {
 	} {
 		old, nw := NewBuffer(c.old), NewBuffer(c.new)
 		var d diffModel
-		d.set(old, nw)
+		d.set(old, nw, false)
 		d.update()
 		for i := 0; len(d.hunks) > 0 && i < 10; i++ {
 			d.revert(0)
@@ -102,7 +102,7 @@ func TestCodeDiffRevertAccept(t *testing.T) {
 		}
 		old, nw = NewBuffer(c.old), NewBuffer(c.new)
 		d = diffModel{}
-		d.set(old, nw)
+		d.set(old, nw, false)
 		d.update()
 		for i := 0; len(d.hunks) > 0 && i < 10; i++ {
 			d.accept(0)
@@ -742,7 +742,7 @@ func TestDiffLineTop(t *testing.T) {
 	a := []string{"a", "b", "c", "d", "e", "f"}
 	b := []string{"a", "B", "c", "d", "e", "f", "g"}
 	for _, layout := range []DiffLayout{DiffSplit, DiffUnified} {
-		d := &DiffState{Old: NewBuffer(strings.Join(a, "\n")), New: NewBuffer(strings.Join(b, "\n")), Layout: layout, ExpandUnchanged: true}
+		d := &DiffState{Old: NewBuffer(strings.Join(a, "\n") + "\n"), New: NewBuffer(strings.Join(b, "\n") + "\n"), Layout: layout, ExpandUnchanged: true}
 		tt := ui.NewTester(func(c *ui.Context) { DiffView(c, d).Fill() }, 800, 600)
 		tt.Frame()
 		tt.Frame()

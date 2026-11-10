@@ -74,8 +74,12 @@ type view struct {
 type inlay struct {
 	at   int
 	text string
-	kind int // 0 a hint, 1 a suggestion
+	kind int // 0 a hint, 1 a suggestion, inlayNoNewline a diff's mark
 }
+
+// inlayNoNewline is the kind of inlay a diff marks the last line of a
+// text without a final newline with (markEnds).
+const inlayNoNewline = 2
 
 // lineLayout is a line laid out for display.
 type lineLayout struct {

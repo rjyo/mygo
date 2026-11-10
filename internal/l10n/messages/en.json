@@ -49,6 +49,7 @@
   "expandAll": "Expand all",
   "expand": "Expand {what}",
   "unmodifiedLines": "{n, plural, one {# unmodified line} other {# unmodified lines}}",
+  "noNewlineAtEnd": "No newline at end of file",
   "revert": "Revert",
   "keep": "Keep",
   "hunkAction": "{action} change",

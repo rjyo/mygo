@@ -24,7 +24,7 @@ func TestReviewDiffMultiChangeVersion(t *testing.T) {
 	newS := strings.Join(lines, "\n") + "\n"
 	old, nw := NewBuffer(oldS), NewBuffer(newS)
 	var d diffModel
-	d.set(old, nw)
+	d.set(old, nw, false)
 	d.update()
 	r, _ := nw.snapshot()
 	nw.Edit(Edit{Start: r.LineStart(1), End: r.LineStart(21)}, Edit{Start: r.LineStart(25), End: r.LineStart(25), Text: "\n"})
@@ -40,7 +40,7 @@ func TestReviewDiffMultiChangeVersion(t *testing.T) {
 		oldS := strings.Join(a, "\n") + "\n"
 		old, nw := NewBuffer(oldS), NewBuffer(oldS)
 		var d diffModel
-		d.set(old, nw)
+		d.set(old, nw, false)
 		d.update()
 		for range 6 {
 			t, _ := nw.snapshot()
