@@ -85,3 +85,18 @@ var shifted = map[rune]ui.Key{
 }
 
 func vtMods(m ui.Modifiers) vt.Mods { return vt.Mods(m) } // the same bits
+
+// consumedMods are the modifiers that made r rather than the key's own
+// character: Shift or Option, and on Windows AltGr, which comes as Control
+// and Alt. Left unconsumed, the Kitty protocol would send AltGr+Q, which
+// types an @ on a German keyboard, as Ctrl+Alt+Q.
+func consumedMods(mods ui.Modifiers, r, unshifted rune, windows bool) vt.Mods {
+	if r == unshifted {
+		return 0
+	}
+	made := ui.Shift | ui.Alt
+	if windows && mods&(ui.Ctrl|ui.Alt) == ui.Ctrl|ui.Alt {
+		made |= ui.Ctrl
+	}
+	return vtMods(mods & made)
+}

@@ -823,12 +823,8 @@ func (v *view) typed(text string) {
 		v.sendText(text)
 		return
 	}
-	var consumed vt.Mods
 	r, _ := utf8.DecodeRuneInString(text)
-	if r != p.unshifted {
-		// Shift or Option made the character.
-		consumed = vtMods(p.mods & (ui.Shift | ui.Alt))
-	}
+	consumed := consumedMods(p.mods, r, p.unshifted, runtime.GOOS == "windows")
 	action := vt.KeyPress
 	if p.repeat {
 		action = vt.KeyRepeat
