@@ -30,9 +30,9 @@ export const Route = createRootRoute({
       ...(import.meta.env.PROD
         ? [
             {
-              src: "https://u.egoist.dev/script.js",
+              src: "https://tt.egoist.dev/js/script.js",
               defer: true,
-              "data-website-id": "60fbda78-1368-4d06-9a33-83d14133acd6",
+              "data-domain": "mygo.egoist.dev",
             },
           ]
         : []),
