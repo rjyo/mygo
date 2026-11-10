@@ -920,3 +920,31 @@ func TestNoScrollbar(t *testing.T) {
 		t.Fatalf("a press on the bar's place did not place the caret in the text: %d, %d", a, z)
 	}
 }
+
+// A document shown in two editors gives each one's paragraphs in view
+// when they are read right after it is built, as an app that shows one
+// page in two panes lines each up with its own; and what each painted is
+// told apart, so the frames settle.
+func TestVisibleParagraphsPerEditor(t *testing.T) {
+	doc := NewDocument(NewText(strings.Repeat("a word or two, again and again, to wrap at a narrow width; ", 6) + "\nsecond\nthird"))
+	var wide, narrow []ParagraphBox
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Row(c).Fill().Children(func() {
+			EditorBase(c, doc).Width(600).Height(400)
+			wide = doc.VisibleParagraphs()
+			EditorBase(c, doc).Width(150).Height(400)
+			narrow = doc.VisibleParagraphs()
+		})
+	}, 800, 400)
+	tt.Frame()
+	tt.Frame()
+	if len(wide) < 2 || len(narrow) < 2 {
+		t.Fatalf("boxes: %d and %d", len(wide), len(narrow))
+	}
+	if narrow[0].Height <= wide[0].Height {
+		t.Fatalf("the narrow editor's first paragraph is %v high, the wide one's %v: one editor's boxes for both", narrow[0].Height, wide[0].Height)
+	}
+	if tt.FramePending() {
+		t.Fatal("the frames do not settle")
+	}
+}

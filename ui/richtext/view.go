@@ -181,6 +181,13 @@ type view struct {
 	// placed is room for the boxes of the paragraphs painted, which moved
 	// compares with those the app read.
 	placed []ParagraphBox
+	// read is set as the app reads this editor's paragraphs in view
+	// (VisibleParagraphs), which readBoxes holds, and readCaret as it reads
+	// its caret (CaretRect), which readCaretRect holds: for its next paint
+	// to tell whether it moved them. Under the document's lock.
+	read, readCaret bool
+	readBoxes       []ParagraphBox
+	readCaretRect   ui.Rect
 }
 
 type editMode uint8
@@ -239,9 +246,14 @@ func build(c *ui.Context, doc *Document, options []EditorOptions, styled bool) u
 		doc.lock()
 		v.selAnchor, v.caret = doc.anchor, doc.caret
 		v.selVersion = doc.selVersion
-		doc.shownIn = weak.Make(v)
 		doc.mu.Unlock()
 	}
+	// the editor built last shows the document for what the app reads
+	// next (VisibleParagraphs, CaretRect): with two editors of one
+	// document, each one's are read right after it is built
+	doc.lock()
+	doc.shownIn = weak.Make(v)
+	doc.mu.Unlock()
 	v.opts = EditorOptions{}
 	if len(options) > 0 {
 		v.opts = options[0]
@@ -897,8 +909,12 @@ func (d *Document) VisibleParagraphs() []ParagraphBox {
 		boxes = v.boxes(nil)
 	}
 	d.lock()
-	d.read = true
-	d.boxes = append(d.boxes[:0], boxes...)
+	if v != nil && v.doc == d {
+		v.read = true
+		v.readBoxes = append(v.readBoxes[:0], boxes...)
+	} else {
+		d.readNone = true
+	}
 	d.mu.Unlock()
 	return boxes
 }
@@ -924,7 +940,11 @@ func (d *Document) CaretRect() (r ui.Rect, ok bool) {
 		r, ok = v.caretRect()
 	}
 	d.lock()
-	d.readCaret, d.caretRect = true, r
+	if v != nil && v.doc == d {
+		v.readCaret, v.readCaretRect = true, r
+	} else {
+		d.readNone = true
+	}
 	d.mu.Unlock()
 	return r, ok
 }
@@ -956,9 +976,12 @@ func (v *view) boxes(out []ParagraphBox) []ParagraphBox {
 func (v *view) moved() {
 	d := v.doc
 	d.lock()
-	read, was := d.read, d.boxes
-	readCaret, caretWas := d.readCaret, d.caretRect
-	d.read, d.readCaret = false, false
+	read, was := v.read, v.readBoxes
+	readCaret, caretWas := v.readCaret, v.readCaretRect
+	v.read, v.readCaret = false, false
+	if d.readNone { // read before any editor showed it: what this one placed is news
+		d.readNone, read, was = false, true, nil
+	}
 	d.mu.Unlock()
 	if read {
 		v.placed = v.boxes(v.placed[:0])
