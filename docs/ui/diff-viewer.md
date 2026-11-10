@@ -268,6 +268,23 @@ for _, f := range files {
 }
 ```
 
+When the app has the files too, as a git client reads them from the
+repository, `SetPatchFiles(f, old, new)` shows the whole files with the
+patch's changes: its runs of `-` and `+` lines, as `git diff` aligned
+them with its options (`--patience`, `--histogram`), not what comparing
+the texts would find. The unchanged lines between them collapse
+into separators that expand, as in any diff. It returns an error, and
+changes nothing, when the patch is binary or doesn't make `new` from
+`old`:
+
+```go
+old := app.fileAt("HEAD", f.OldName) // the app's own git read
+new := app.fileAt("", f.NewName)      // the working tree's
+if err := d.SetPatchFiles(f, old, new); err != nil {
+	d.SetPatch(f) // the files moved on since the patch: show its hunks
+}
+```
+
 ## Accessibility
 
 Assistive technology sees each side as a text field, "Old text" and "New

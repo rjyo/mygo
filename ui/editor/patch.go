@@ -221,6 +221,16 @@ func hunkRange(s string) (int, int, error) {
 	return a, n, nil
 }
 
+// hunkLine returns the line, from 0, a hunk's side starts at, from its
+// start and count in the header: a side of no lines names the line before
+// where it is.
+func hunkLine(start, lines int) int {
+	if lines == 0 {
+		return start
+	}
+	return start - 1
+}
+
 // Apply applies the patch to the old file's text and returns the new
 // file's, checking that the lines of both and those deleted are there.
 func (p FilePatch) Apply(old string) (string, error) {
@@ -243,10 +253,7 @@ func (p FilePatch) Apply(old string) (string, error) {
 	// hunk reaching the end says.
 	newEOL, touchedEnd := eol, false
 	for _, h := range p.Hunks {
-		start := h.OldStart - 1
-		if h.OldLines == 0 {
-			start = h.OldStart
-		}
+		start := hunkLine(h.OldStart, h.OldLines)
 		if start < at || start > len(lines) {
 			return "", fmt.Errorf("ui: hunk at line %d out of place", h.OldStart)
 		}
@@ -307,12 +314,9 @@ func (d *DiffState) SetPatch(p FilePatch) {
 	var old, nw strings.Builder
 	pt := &diffPartial{}
 	oldLine, newLine := 0, 0
-	// The changes are the patch's runs of - and + lines, as it says them,
-	// not what comparing the texts would find.
 	var hunks []diff.Hunk
-	run := -1
 	for _, h := range p.Hunks {
-		run = -1
+		hunks = patchRuns(hunks, h, oldLine, newLine)
 		pt.oldStarts = append(pt.oldStarts, oldLine)
 		pt.newStarts = append(pt.newStarts, newLine)
 		pt.oldFile = append(pt.oldFile, max(0, h.OldStart-1))
@@ -325,20 +329,6 @@ func (d *DiffState) SetPatch(p FilePatch) {
 		for _, l := range h.Lines {
 			if l == "" || l[0] == '\\' {
 				continue
-			}
-			switch {
-			case l[0] != '-' && l[0] != '+':
-				run = -1
-			case run < 0:
-				hunks = append(hunks, diff.Hunk{A0: oldLine, A1: oldLine, B0: newLine, B1: newLine})
-				run = len(hunks) - 1
-			}
-			if run >= 0 {
-				if l[0] == '-' {
-					hunks[run].A1++
-				} else {
-					hunks[run].B1++
-				}
 			}
 			text := strings.TrimSuffix(l[1:], "\r")
 			if l[0] != '+' {
@@ -357,9 +347,40 @@ func (d *DiffState) SetPatch(p FilePatch) {
 			}
 		}
 	}
-	d.Old, d.New = NewBuffer(old.String()), NewBuffer(nw.String())
-	d.Old.setRestarts(pt.oldStarts)
-	d.New.setRestarts(pt.newStarts)
+	pt.old, pt.new = NewBuffer(old.String()), NewBuffer(nw.String())
+	pt.old.setRestarts(pt.oldStarts)
+	pt.new.setRestarts(pt.newStarts)
+	d.showPatch(p, pt.old, pt.new, hunks)
+	d.partial = pt
+	d.Editable = false
+}
+
+// SetPatchFiles shows a file's patch with the files it was made from: Old
+// and New become old and new, and the patch's runs of - and + lines are
+// the changes, as git diff found them, not what comparing the texts would
+// find. Unchanged lines between them collapse and expand as in any diff,
+// and the lines are numbered as in the files. It returns an error, and
+// changes nothing, when the patch is binary or does not make new from old.
+func (d *DiffState) SetPatchFiles(p FilePatch, old, new string) error {
+	got, err := p.Apply(old)
+	if err != nil {
+		return err
+	}
+	if got != new {
+		return errors.New("ui: the patch does not make the new file from the old")
+	}
+	var hunks []diff.Hunk
+	for _, h := range p.Hunks {
+		hunks = patchRuns(hunks, h, hunkLine(h.OldStart, h.OldLines), hunkLine(h.NewStart, h.NewLines))
+	}
+	d.showPatch(p, NewBuffer(old), NewBuffer(new), hunks)
+	return nil
+}
+
+// showPatch shows old and new, highlighted in the language of p's file,
+// with hunks as their changes.
+func (d *DiffState) showPatch(p FilePatch, old, new *Buffer, hunks []diff.Hunk) {
+	d.Old, d.New = old, new
 	name := p.NewName
 	if name == "" {
 		name = p.OldName
@@ -368,9 +389,7 @@ func (d *DiffState) SetPatch(p FilePatch) {
 		d.Old.SetLanguage(l)
 		d.New.SetLanguage(l)
 	}
-	pt.old, pt.new = d.Old, d.New
-	d.partial = pt
-	d.Editable = false
+	d.partial = nil
 	d.prepared = diffPrepared{}
 	m := &d.model
 	m.set(d.Old, d.New)
@@ -378,6 +397,39 @@ func (d *DiffState) SetPatch(p FilePatch) {
 	m.newText, m.newVer = d.New.snapshot()
 	m.hunks, m.words = hunks, nil
 	m.version++
+}
+
+// patchRuns appends to hunks the changes of h: its runs of - and + lines,
+// as the patch says them, not what comparing the texts would find. The
+// hunk's first lines are lines oldLine and newLine of the texts.
+func patchRuns(hunks []diff.Hunk, h PatchHunk, oldLine, newLine int) []diff.Hunk {
+	run := -1
+	for _, l := range h.Lines {
+		if l == "" || l[0] == '\\' {
+			continue
+		}
+		switch {
+		case l[0] != '-' && l[0] != '+':
+			run = -1
+		case run < 0:
+			hunks = append(hunks, diff.Hunk{A0: oldLine, A1: oldLine, B0: newLine, B1: newLine})
+			run = len(hunks) - 1
+		}
+		if l[0] != '+' {
+			oldLine++
+		}
+		if l[0] != '-' {
+			newLine++
+		}
+		if run >= 0 {
+			if l[0] == '-' {
+				hunks[run].A1++
+			} else {
+				hunks[run].B1++
+			}
+		}
+	}
+	return hunks
 }
 
 // fileLine maps a line of a side's text to the file's.
