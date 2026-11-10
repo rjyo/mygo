@@ -404,6 +404,13 @@ func (s *surface) RequestFrame() {
 	}
 	if s.link != 0 {
 		switch {
+		case !sendBool(s.w.win, "isVisible"):
+			// The link does not tick for a window hidden or minimized,
+			// only for one covered: the frame draws at once, as the one
+			// the view builds as the window hides (WindowHidden) would
+			// otherwise wait until it shows again. Package ui holds the
+			// others (holdFrame), which draw nothing.
+			s.drawSoon()
 		case s.linkRunning:
 			s.due = true
 		case time.Since(s.lastFrame) > 2*s.refresh() && (s.visible() || !s.drawn):

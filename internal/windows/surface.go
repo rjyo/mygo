@@ -275,10 +275,16 @@ func (s *surface) Size() (float64, float64, float64) {
 
 func (s *surface) RequestFrame() {
 	procInvalidateRectW.Call(s.hwnd, 0, 0)
-	if !s.drawn && !s.hiddenFrame && !s.w.IsVisible() {
+	if !s.hiddenFrame && s.unpainted() {
 		s.hiddenFrame = true
 		s.w.b.post(s.drawHidden)
 	}
+}
+
+// unpainted reports whether no WM_PAINT draws the window's next frame: a
+// window minimized gets none, nor does one hidden before its first frame.
+func (s *surface) unpainted() bool {
+	return s.Occluded() || !s.drawn && !s.w.IsVisible()
 }
 
 // The window of native UI is cloaked, which keeps it out of sight though
@@ -402,12 +408,14 @@ func (s *surface) FirstFrame() { s.drawn = true }
 
 var _ platform.FirstFrameSurface = (*surface)(nil)
 
-// drawHidden draws the content's first frame in a window hidden, which no
-// WM_PAINT asks for: the window is then ready to show, and shows the frame
-// from the swap chain as it shows. A window shown since gets WM_PAINT.
+// drawHidden draws a frame no WM_PAINT asks for. The content's first frame
+// in a window hidden makes it ready to show, and shows from the swap chain
+// as the window shows. A frame in a window minimized builds the content as
+// it hides, so a view sees that it hides at once, not once it shows again.
+// A window shown or restored since gets WM_PAINT.
 func (s *surface) drawHidden() {
 	s.hiddenFrame = false
-	if s.drawn || s.w.closed || s.w.b.surfaces[s.hwnd] != s || s.w.IsVisible() {
+	if s.w.closed || s.w.b.surfaces[s.hwnd] != s || !s.unpainted() {
 		return
 	}
 	s.send(platform.SurfaceEvent{Kind: platform.SurfaceFrame})
