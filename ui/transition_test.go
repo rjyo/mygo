@@ -897,3 +897,77 @@ func TestTransitionFlipsWithItsAttachment(t *testing.T) {
 		t.Errorf("above without Flip, it comes from %v", d)
 	}
 }
+
+// transitionedRowOf finds the node that transitions the row showing s:
+// its text, and the nearest ancestor carrying a transition record.
+func transitionedRowOf(t *testing.T, tt *Tester, s string) *node {
+	t.Helper()
+	var walk func(e *node) *node
+	walk = func(e *node) *node {
+		if e.text == s {
+			for p := e.parent; p != nil; p = p.parent {
+				if p.st != nil && p.st.trec != nil {
+					return p
+				}
+			}
+			t.Fatalf("the row %q shows without a transition", s)
+		}
+		for c := e.first; c != nil; c = c.next {
+			if r := walk(c); r != nil {
+				return r
+			}
+		}
+		return nil
+	}
+	if e := walk(tt.rt.c.root); e != nil {
+		return e
+	}
+	t.Fatalf("no row shows %q", s)
+	return nil
+}
+
+// A row that comes into a list that was already there comes in, though
+// the list's row wrapper is born with the row: the wrapper is
+// scaffolding, not interface. A list newly shown appears at once, with
+// its page, and rows already there do not come in again.
+func TestTransitionEntersInListRows(t *testing.T) {
+	n := 2
+	motion := ElementTransition{Ease: Linear, Enter: &Motion{Collapse: true}}
+	var s ListState
+	s.Key = func(i int) any { return i }
+	tt, now := clockTester(func(c *context) {
+		coreColumn(c).Children(func() {
+			coreList(c, &s, n, func(i int) {
+				coreRow(c).Height(30).Transition(motion).Children(func() { coreText(c, fmt.Sprintf("Row %d", i)) })
+			}).Grow(1)
+		})
+	}, 200, 200)
+	// The list is new with its page: its rows appear at once.
+	for id, r := range tt.rt.trans {
+		if r.moving != 0 {
+			t.Errorf("a row of the list's first frame came in (id %d)", id)
+		}
+	}
+	old0, old1 := transitionedRowOf(t, tt, "Row 0"), transitionedRowOf(t, tt, "Row 1")
+
+	n = 3
+	tt.Frame()
+	in := transitionedRowOf(t, tt, "Row 2")
+	if in.h != 0 || in.flags&flagClip == 0 {
+		t.Fatalf("the row coming in starts at %v high", in.h)
+	}
+	*now = now.Add(100 * time.Millisecond)
+	tt.Frame()
+	if h := in.h; h < 14 || h > 16 {
+		t.Errorf("halfway, the row coming in is %v high", h)
+	}
+	// The rows already there stand still while the new one comes in.
+	if old0.h != 30 || old1.h != 30 {
+		t.Errorf("old rows moved: %v, %v", old0.h, old1.h)
+	}
+	*now = now.Add(150 * time.Millisecond)
+	tt.Frame()
+	if in.h != 30 {
+		t.Errorf("once in, the row is %v high", in.h)
+	}
+}

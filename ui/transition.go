@@ -686,7 +686,12 @@ func (rt *engine) animateLayout(root *node, w, h float32) {
 		if parent == c.overlay {
 			parent = root
 		}
-		appears := r.fresh && !resized && e.st.born == rt.frame && parent.st.born != rt.frame
+		// A row that just came into a list that was there comes in too:
+		// the list's row wrapper is born with the row and is scaffolding,
+		// not interface. A list newly shown comes in with its page, at
+		// once.
+		inNewRow := parent.listRow && parent.st.born == rt.frame && parent.parent.st.born != rt.frame
+		appears := r.fresh && !resized && e.st.born == rt.frame && (parent.st.born != rt.frame || inNewRow)
 		if r.held || appears && r.t.AfterExits {
 			// Unseen until the copies of its siblings are gone, which
 			// animateExits makes: then it comes in.
