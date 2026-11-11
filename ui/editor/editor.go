@@ -547,6 +547,44 @@ func (ed *editor) offsetAt(x float32, y float64) int {
 	return l.start + l.fromDisp(d)
 }
 
+// overTrailingInlay reports whether a content point is on rendered trailing
+// decoration, rather than in the blank space after it. Such decoration keeps
+// the source caret before it, so caretRect alone cannot hit-test it.
+func (ed *editor) overTrailingInlay(x float32, y float64) bool {
+	v := &ed.view
+	if v.text.LineCount() == 0 {
+		return false
+	}
+	line := v.heights.lineAt(y)
+	if v.heights.isHidden(line) {
+		return false
+	}
+	l := v.line(line)
+	inlays := v.inlaysIn(l.start, l.start+len(l.text))
+	for i, segment := range l.segs {
+		if segment.kind != segInlay || segment.inlay >= len(inlays) || inlays[segment.inlay].kind != inlayTrailing {
+			continue
+		}
+		end := segment.disp + segLen(l, i)
+		for rowIndex := range l.rows {
+			row := &l.rows[rowIndex]
+			from, to := max(segment.disp, row.from), min(end, row.to)
+			if from >= to {
+				continue
+			}
+			top := ed.rowTop(line) + float64(rowIndex)*float64(v.lineHeight)
+			if y < top || y >= top+float64(v.lineHeight) {
+				continue
+			}
+			left, right := v.xOf(l, row, from), v.xOf(l, row, to)
+			if x >= left && x < right {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // verticalMove returns where a caret at off with goal x goes moving rows
 // down (positive) or up, and the goal it keeps.
 func (ed *editor) verticalMove(off int, goal float32, rows int) (int, float32) {

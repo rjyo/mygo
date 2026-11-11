@@ -94,6 +94,9 @@ type Inlay struct {
 	// a blame: the caret stays before it and a selection to the end of
 	// the line does not cover it, as for a suggestion.
 	Trailing bool
+	// Ellipsis shortens trailing text to the room left on its last display
+	// row rather than wrapping it onto another row. Empty disables elision.
+	Ellipsis string
 }
 
 // completions is the list of completions the editor shows.
@@ -455,7 +458,7 @@ func (ed *editor) setInlays(hints []Inlay) {
 		if h.Trailing {
 			kind = inlayTrailing
 		}
-		ed.view.inlays = append(ed.view.inlays, inlay{at: h.Offset, text: h.Text, kind: kind})
+		ed.view.inlays = append(ed.view.inlays, inlay{at: h.Offset, text: h.Text, kind: kind, ellipsis: h.Ellipsis})
 	}
 	sortInlays(ed.view.inlays)
 	ed.view.lines.m = nil

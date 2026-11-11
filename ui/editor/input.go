@@ -366,8 +366,11 @@ func (ed *editor) pointerMove(ev ui.InputEvent) bool {
 		cx, cy := ed.toContent(ev.X, ev.Y)
 		off = ed.offsetAt(cx, cy)
 		// Past the end of a line, or below the last, is over no text.
-		if cr, ok := ed.caretRect(off); !ok || float64(cy) > float64(cr.Y+cr.H) ||
-			off == ed.view.text.LineEnd(ed.view.text.LineOf(off)) && cx > cr.X+ed.view.charWidth/2 {
+		// Trailing inlays are the exception: their caret deliberately stays
+		// before them, but their rendered text is still a hover target.
+		if cr, ok := ed.caretRect(off); (!ok || float64(cy) > float64(cr.Y+cr.H) ||
+			off == ed.view.text.LineEnd(ed.view.text.LineOf(off)) && cx > cr.X+ed.view.charWidth/2) &&
+			!ed.overTrailingInlay(cx, float64(cy)) {
 			off = -1
 		}
 	}
