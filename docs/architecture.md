@@ -3170,8 +3170,9 @@ either.
   window hidden, minimized or covered by other windows, whose display link
   still ticks while it is covered, at the display's rate for half a
   minute, then at about 40 Hz, but not while it is hidden or minimized,
-  where `RequestFrame` draws the frame from the backend's queue
-  (`drawSoon`) instead; a minimized window on Linux, as GDK's `window-state-event` tells
+  where a timer draws the frames `RequestFrame` asks for instead, a
+  refresh after the last, and the backend's queue (`drawSoon`) the one
+  after a pause; a minimized window on Linux, as GDK's `window-state-event` tells
   on X11, and on Windows, as `WM_SIZE` does, where no `WM_PAINT` comes
   and `RequestFrame` draws the frame from the queue as well), what moves asks for no frame, and a frame asked for by a change of
   the state waits (`holdFrame`; both `held`), as browsers draw nothing for
