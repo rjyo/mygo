@@ -1801,6 +1801,15 @@ func TestWindowPixels(handle uintptr) (img *image.RGBA, ok bool) {
 	return img, true
 }
 
+// TestPauseFrames has the surface of a window's native UI take its last
+// frame for one long past, as on a runner slow enough that a frame asked
+// for comes after a pause (RequestFrame), whatever the machine's speed.
+func TestPauseFrames(handle uintptr) {
+	if w := theBackend.byNSWindow[id(handle)]; w != nil && w.surface != nil {
+		w.surface.lastFrame = time.Time{}
+	}
+}
+
 // TestDrawablesTrimmed reports whether the GPU renderer of a window's
 // native UI gave back its drawables, as it does once the window has drawn
 // nothing for a while (internal/gpu/metal's trim), and whether the window

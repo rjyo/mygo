@@ -499,6 +499,14 @@ func (s *surface) drawSoon() {
 		if s.w.b.surfaceOf(s.view) != s || s.lastFrame != s.soonAfter {
 			return
 		}
+		if s.link != 0 && s.resized && s.presentsWithTransaction() {
+			// A frame for a new size after one presented with the
+			// transaction, drawn in a pass of its own, does not show
+			// (updateLayer): the link's next tick draws it.
+			s.lastFrame = time.Now()
+			s.RequestFrame()
+			return
+		}
 		s.frameNow(false)
 	})
 }

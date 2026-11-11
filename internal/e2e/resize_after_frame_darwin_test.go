@@ -149,6 +149,35 @@ func TestContentWindowResizeRightAfterFrame(t *testing.T) {
 			shows(t, w, squaresWidth(k))
 		}
 	})
+
+	// The same, the window resized after a pause since that frame, as on a
+	// slow runner: the frame of the new size, asked for after a pause, drew
+	// from the backend's queue in a pass of its own, and never showed
+	// either.
+	t.Run("after an idle frame and a pause", func(t *testing.T) {
+		var n atomic.Int32 // squares, set by the test
+		n.Store(5)
+		w := newWindow(t, mygo.WindowOptions{
+			Title: "Resized after a pause", Width: squaresWidth(5), Height: squaresTall, UseContentSize: true,
+			Content: ui.View(func(c *ui.Context) { squares(c, int(n.Load())) }),
+		})
+		shows(t, w, squaresWidth(5))
+		for _, k := range []int{2, 5} {
+			idle(t, w)
+			// A frame of the old size, which takes the drawables again.
+			w.Invalidate()
+			eventually(t, "a frame after the idle one", func() (drawn bool) {
+				mygo.RunOnMain(func() { trimmed, _ := darwin.TestDrawablesTrimmed(w.NativeHandle()); drawn = !trimmed })
+				return drawn
+			})
+			n.Store(int32(k))
+			mygo.RunOnMain(func() {
+				darwin.TestPauseFrames(w.NativeHandle())
+				w.SetContentSize(squaresWidth(k), squaresTall)
+			})
+			shows(t, w, squaresWidth(k))
+		}
+	})
 }
 
 // idle waits for the GPU renderer of a window to give its drawables back,

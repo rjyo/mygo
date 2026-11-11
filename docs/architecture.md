@@ -5254,7 +5254,9 @@ either.
     that took back the drawables given back when idle: drawn in AppKit's
     display of the view, presented with the transaction too, it did not
     show, and the window kept the last frame stretched to its new size
-    (#1044). The main thread never
+    (#1044). So does one asked for after a pause, which would otherwise
+    draw from the backend's queue (`drawSoon`) in a pass of its own, and
+    not show either. The main thread never
     waits for the display: after each frame presented as soon as drawn, a
     goroutine on a thread of its own (`present.go`) takes the next frame's
     drawable, which `nextDrawable` holds back while the display holds the
