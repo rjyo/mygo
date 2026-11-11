@@ -59,15 +59,32 @@ func (p *PTY) wait() (int, error) {
 // Read reads the output of the process; it returns io.EOF once no process
 // has the terminal open any more, or after Close.
 func (p *PTY) Read(b []byte) (int, error) {
-	n, err := p.master.Read(b)
-	if err != nil && n == 0 {
+	for {
+		n, err := p.master.Read(b)
+		if n > 0 {
+			return n, nil
+		}
+		if err == nil {
+			return 0, nil
+		}
+		// Nothing to read yet, which a read on a master that the os package
+		// cannot wait on says with EAGAIN: that is not the end of the
+		// program. A reader that takes it for the end closes the master,
+		// and the kernel then hangs the program up with SIGHUP, before it
+		// runs a single command.
+		if errors.Is(err, syscall.EAGAIN) || errors.Is(err, syscall.EINTR) {
+			if werr := p.waitReadable(); werr != nil {
+				return 0, werr
+			}
+			continue
+		}
 		// Linux reports EIO when the last process with the terminal
 		// open closes it.
 		if errors.Is(err, syscall.EIO) || errors.Is(err, os.ErrClosed) {
 			err = io.EOF
 		}
+		return 0, err
 	}
-	return n, err
 }
 
 // Write types b into the terminal.

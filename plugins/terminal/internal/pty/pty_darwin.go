@@ -36,3 +36,17 @@ func openMaster() (*os.File, string, error) {
 	}
 	return master, string(name[:n]), nil
 }
+
+// waitReadable waits until the master has output, for a read that came back
+// with EAGAIN because the os package could not make the descriptor one its
+// poller waits on.
+func (p *PTY) waitReadable() error {
+	fd := int(p.master.Fd())
+	var r syscall.FdSet
+	r.Bits[fd/32] |= 1 << (uint(fd) % 32)
+	for {
+		if err := syscall.Select(fd+1, &r, nil, nil, nil); err != syscall.EINTR {
+			return err
+		}
+	}
+}
