@@ -3977,10 +3977,22 @@ either.
     highlighter and the diff follow a buffer by the versions they last
     saw (`sync`): selections, folds, diagnostics and caches move through
     the changes since, with a bias at insertions, so that one buffer is
-    shown by several editors and both sides of a diff. Undo keeps the
-    texts before and after each step, grouped while typing of one kind
-    by one editor goes on within 300 ms, and each step the selections of
-    the editor that made it.
+    shown by several editors and both sides of a diff. A step of undo
+    keeps the edits that take it back, a list for each version it made,
+    grouped while typing of one kind by one editor goes on within 300 ms,
+    and the selections of the editor that made it. Taking a step back
+    applies its lists from the last, logging a version for each, whose
+    text is its changes' as tree-sitter needs, and keeps the edits taking
+    each back as the step of redo. `EditRemote` makes a version outside
+    the history and moves both stacks past it, from the top
+    (`rebase`): the edit's ranges (`span`) and a step's lists are of one
+    text, so each moves past the other (`rebaseEdits`), and the ranges go
+    on down. A step that overlaps them leaves the history, the text
+    staying as it is, so the steps under it move past that step and the
+    ranges together (`composeSpans`). The cost is a few integers for
+    each edit of the history, whatever the size of the text; a step's
+    replaced text is a string, so undoing `Set` builds the text again
+    where it used to swap versions.
   - *Display* (`display.go`, `view.go`). Every line is a row, several
     when it wraps, none when folded or collapsed by a diff; blocks are
     rows between lines (a diff's deleted lines, spacers, separators,

@@ -20,10 +20,11 @@ import (
 //
 // The text is a persistent tree of chunks: an edit copies a few
 // kilobytes and a path of the tree, whatever the size of the document,
-// and each version shares the rest with the one before, so undo history
-// keeps versions rather than copies, and frames and other goroutines
-// read a version (Snapshot) without locks. Offsets count bytes of UTF-8,
-// and a Pos a line and the bytes into it.
+// and each version shares the rest with the one before, so frames and
+// other goroutines read a version (Snapshot) without locks. Undo history
+// keeps the edits that take each step back, which EditRemote moves past
+// edits made elsewhere. Offsets count bytes of UTF-8, and a Pos a line
+// and the bytes into it.
 //
 // Lines end in \n, as in Zed: a text set with \r\n line endings keeps
 // \n ones, and LineEnding says which it had, which WriteTo writes.
@@ -90,16 +91,18 @@ type logEntry struct {
 	restarts []int // the buffer's restarts in text
 }
 
-// transaction is a step of undo: the text before and after, the changes
-// of each version it made, and where the editor making it had its
-// selections before and after.
+// transaction is a step of undo or redo: the edits that take it back,
+// on the undo stack, or make it again, on the redo stack, and where the
+// editor making it had its selections before and after it.
 type transaction struct {
-	before, after rope.Text
-	changes       [][]change
-	// texts are the texts the versions of the step made, one a changes,
-	// which undo and redo log as they go through them, so that each
-	// entry's text is its changes' (as tree-sitter needs).
-	texts     []rope.Text
+	// edits are a list for each version the step made, applied from the
+	// last: each list is of the text the list after it makes, as Edit
+	// takes them. Undo and redo log a version for each list, so that each
+	// entry's text is its changes' (as tree-sitter needs), and keep the
+	// edits taking each back, in the order they applied them, as the step
+	// that makes it again (applyStep). Being edits rather than texts, the
+	// steps move past an edit outside the history (EditRemote, rebase).
+	edits     [][]Edit
 	owner     any
 	selBefore any
 	selAfter  any
@@ -248,7 +251,30 @@ func (b *Buffer) SetLanguage(l *Language) {
 func (b *Buffer) Modified() bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return !b.text.Same(b.saved) && b.text.String() != b.saved.String()
+	return !sameText(b.text, b.saved)
+}
+
+// sameText reports whether a and b hold the same bytes, comparing them
+// a chunk at a time rather than copying them out.
+func sameText(a, b rope.Text) bool {
+	if a.Same(b) {
+		return true
+	}
+	if a.Len() != b.Len() {
+		return false
+	}
+	same, off := true, 0
+	a.Chunks(0, a.Len(), func(s string) bool {
+		n := len(s)
+		b.Chunks(off, off+n, func(t string) bool {
+			same = s[:len(t)] == t
+			s = s[len(t):]
+			return same
+		})
+		off += n
+		return same
+	})
+	return same
 }
 
 // MarkSaved makes the current text the saved one.
@@ -343,17 +369,11 @@ func (b *Buffer) undoStep() (transaction, bool) {
 	}
 	tx := b.undo[n-1]
 	b.undo = b.undo[:n-1]
-	b.redo = append(b.redo, tx)
 	b.openTx = nil
 	b.lastEdit = time.Time{}
-	for i := len(tx.changes) - 1; i >= 0; i-- {
-		b.text = tx.before
-		if i > 0 {
-			b.text = tx.texts[i-1]
-		}
-		b.record(invertChanges(tx.changes[i]))
-	}
-	b.text = tx.before
+	redo := tx
+	redo.edits = b.applyStep(tx.edits)
+	b.redo = append(b.redo, redo)
 	return tx, true
 }
 
@@ -365,22 +385,122 @@ func (b *Buffer) redoStep() (transaction, bool) {
 	}
 	tx := b.redo[n-1]
 	b.redo = b.redo[:n-1]
-	b.undo = append(b.undo, tx)
 	b.openTx = nil
 	b.lastEdit = time.Time{}
-	for i, c := range tx.changes {
-		b.text = tx.texts[i]
-		b.record(c)
-	}
-	b.text = tx.after
+	undo := tx
+	undo.edits = b.applyStep(tx.edits)
+	b.undo = append(b.undo, undo)
 	return tx, true
+}
+
+// applyStep applies the edits of a step, from the last list, each list
+// a version, and returns the edits taking them back, in the order it
+// applied them: the step that makes it again. b.mu is held.
+func (b *Buffer) applyStep(edits [][]Edit) [][]Edit {
+	back := make([][]Edit, 0, len(edits))
+	for i := len(edits) - 1; i >= 0; i-- {
+		before := b.text
+		text, changes := b.replace(edits[i])
+		if changes == nil {
+			continue
+		}
+		b.text = text
+		b.record(changes)
+		back = append(back, inverse(before, changes))
+	}
+	return back
+}
+
+// inverse returns the edits taking changes back, of the text they made
+// of before.
+func inverse(before rope.Text, changes []change) []Edit {
+	out := make([]Edit, len(changes))
+	for i, c := range changes {
+		out[i] = Edit{Start: c.newStart, End: c.newEnd, Text: before.Slice(c.oldStart, c.oldEnd)}
+	}
+	return out
+}
+
+// EditRemote applies edits made outside the buffer's history, as
+// another device's or the result of a merge, which undo does not take
+// back: undo and redo take back and make again the buffer's own steps
+// as if they had been made on the text with these edits, moving them
+// past the edits as collaborative editors do (rebase). Their offsets
+// are as Edit's. A step whose edits overlap them can no longer be taken
+// back or made again alone and leaves the history, the text staying as
+// it is; the steps around it stay, and the redo steps too, which a local
+// edit drops. Pass the ranges that changed rather than the whole text,
+// which overlaps every step: a diff of the old and new texts gives them.
+//
+// Carets, selections, folds, diagnostics and inlays move through the
+// edits as through any edit, and Modified still compares with the saved
+// text: call MarkSaved when the text is what was saved, as edits read
+// from the file on disk.
+func (b *Buffer) EditRemote(edits ...Edit) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	text, changes := b.replace(edits)
+	if changes == nil {
+		return
+	}
+	b.text = text
+	b.record(changes)
+	c := make([]span, len(changes))
+	for i, ch := range changes {
+		c[i] = span{ch.oldStart, ch.oldEnd, ch.newEnd - ch.newStart}
+	}
+	var top bool
+	b.undo, top = rebase(b.undo, c, false)
+	b.redo, _ = rebase(b.redo, c, true)
+	if !top {
+		// The step edits were going into left: the next makes its own,
+		// rather than joining the one under it.
+		b.openTx = nil
+		b.lastEdit = time.Time{}
+	} else if b.openTx != nil {
+		b.openTx = &b.undo[len(b.undo)-1]
+	}
 }
 
 // edit applies edits as a transaction, or into the open one; b.mu is
 // held. It returns the changes, nil when nothing changed.
 func (b *Buffer) edit(edits []Edit, kind editKind, owner, selBefore any) []change {
-	if len(edits) == 0 {
+	before := b.text
+	text, changes := b.replace(edits)
+	if changes == nil {
 		return nil
+	}
+	b.text = text
+	b.record(changes)
+	b.redo = nil
+	back := inverse(before, changes)
+	now := time.Now()
+	switch tx := b.openTx; {
+	case tx != nil:
+		tx.edits = append(tx.edits, back)
+	case b.open == 0 && kind != editOther && len(b.undo) > 0 && b.undo[len(b.undo)-1].kind == kind &&
+		b.undo[len(b.undo)-1].owner == owner && (now.Sub(b.lastEdit) < groupTimeout || kind == editCompose && !b.lastEdit.IsZero()):
+		tx := &b.undo[len(b.undo)-1]
+		tx.edits = append(tx.edits, back)
+	default:
+		b.undo = append(b.undo, transaction{edits: [][]Edit{back}, owner: owner, selBefore: selBefore, kind: kind})
+		if len(b.undo) > undoMax {
+			b.undo = slices.Delete(b.undo, 0, len(b.undo)-undoMax)
+		}
+		if b.open > 0 {
+			b.openTx = &b.undo[len(b.undo)-1]
+		}
+	}
+	b.lastEdit = now
+	return changes
+}
+
+// replace returns the text edits make of the buffer's and their changes,
+// nil when they change nothing, recording nothing; b.mu is held. The
+// edits are as Edit takes them.
+func (b *Buffer) replace(edits []Edit) (rope.Text, []change) {
+	if len(edits) == 0 {
+		return b.text, nil
 	}
 	if !slices.IsSortedFunc(edits, func(x, y Edit) int { return x.Start - y.Start }) {
 		edits = slices.Clone(edits)
@@ -422,35 +542,9 @@ func (b *Buffer) edit(edits []Edit, kind editKind, owner, selBefore any) []chang
 		changes = append(changes, c)
 	}
 	if len(changes) == 0 {
-		return nil
+		return before, nil
 	}
-	b.text = text
-	b.record(changes)
-	b.redo = nil
-	now := time.Now()
-	switch tx := b.openTx; {
-	case tx != nil:
-		tx.after = text
-		tx.changes = append(tx.changes, changes)
-		tx.texts = append(tx.texts, text)
-	case b.open == 0 && kind != editOther && len(b.undo) > 0 && b.undo[len(b.undo)-1].kind == kind &&
-		b.undo[len(b.undo)-1].owner == owner && (now.Sub(b.lastEdit) < groupTimeout || kind == editCompose && !b.lastEdit.IsZero()):
-		tx := &b.undo[len(b.undo)-1]
-		tx.after = text
-		tx.changes = append(tx.changes, changes)
-		tx.texts = append(tx.texts, text)
-	default:
-		b.undo = append(b.undo, transaction{before: before, after: text, changes: [][]change{changes}, texts: []rope.Text{text},
-			owner: owner, selBefore: selBefore, kind: kind})
-		if len(b.undo) > undoMax {
-			b.undo = slices.Delete(b.undo, 0, len(b.undo)-undoMax)
-		}
-		if b.open > 0 {
-			b.openTx = &b.undo[len(b.undo)-1]
-		}
-	}
-	b.lastEdit = now
-	return changes
+	return text, changes
 }
 
 // endGroup ends the group of typing, so that the next edit makes a step
@@ -594,11 +688,156 @@ func wholeChange(old, new rope.Text) change {
 	return change{oldEnd: old.Len(), newEnd: new.Len(), oldEndLine: old.LineCount() - 1, newEndLine: new.LineCount() - 1}
 }
 
-func invertChanges(cs []change) []change {
-	out := make([]change, len(cs))
-	for i, c := range cs {
-		out[i] = change{oldStart: c.newStart, oldEnd: c.newEnd, newStart: c.oldStart, newEnd: c.oldEnd,
-			oldLine: c.newLine, oldEndLine: c.newEndLine, newLine: c.oldLine, newEndLine: c.oldEndLine}
+// span is a range of a text an edit outside the history replaced, bytes
+// start to end, and the length of what replaced it: all moving the
+// history past it needs. A text's spans are in order and do not overlap.
+type span struct{ start, end, n int }
+
+// rebase moves the steps of a stack, from the last, past spans of the
+// text the last applies to, and returns the steps left and whether the
+// last is among them. A step whose edits overlap the spans leaves the
+// stack, the text staying as it is (with an undo step's edits, without
+// a redo step's): the steps below it move past it and the spans
+// together. redo says the steps are of the redo stack,
+// which makes a step's selections after it of the text its edits make
+// rather than of the text they apply to.
+func rebase(steps []transaction, c []span, redo bool) ([]transaction, bool) {
+	if len(steps) == 0 {
+		return steps, false
+	}
+	c = slices.Clone(c) // c and next take turns holding the spans
+	var start, next []span
+	var moved []Edit
+	dropped := false
+	for i := len(steps) - 1; i >= 0; i-- {
+		tx := &steps[i]
+		// Moved into moved, the lists from the last, and kept only if no
+		// list overlaps.
+		start = append(start[:0], c...)
+		moved = moved[:0]
+		ok := true
+		for j := len(tx.edits) - 1; j >= 0 && ok; j-- {
+			moved, next, ok = rebaseEdits(tx.edits[j], c, moved, next[:0])
+			c, next = next, c
+		}
+		if !ok {
+			// The spans become those of the text the step's edits make,
+			// which take it back and then make what the spans make.
+			c = slices.Clone(start)
+			for j := len(tx.edits) - 1; j >= 0; j-- {
+				c = composeSpans(madeSpans(tx.edits[j]), c)
+			}
+			next = nil
+			tx.edits = nil
+			dropped = true
+			continue
+		}
+		k := 0
+		for j := len(tx.edits) - 1; j >= 0; j-- {
+			k += copy(tx.edits[j], moved[k:])
+		}
+		// The selections the step's edits apply to are of start's text,
+		// those they make of c's.
+		at, made := &tx.selAfter, &tx.selBefore
+		if redo {
+			at, made = made, at
+		}
+		*at, *made = moveSaved(*at, start), moveSaved(*made, c)
+	}
+	if !dropped {
+		return steps, true
+	}
+	top := steps[len(steps)-1].edits != nil
+	return slices.DeleteFunc(steps, func(tx transaction) bool { return tx.edits == nil }), top
+}
+
+// rebaseEdits moves edits es and spans c, both of one text, past each
+// other, ties putting c first: it appends to es2 the edits es make of
+// the text c makes, and to c2 the spans c make of the text es makes. ok
+// is false when an edit and a span overlap, one replacing bytes the
+// other replaces or inserting inside them.
+func rebaseEdits(es []Edit, c []span, es2 []Edit, c2 []span) (_ []Edit, _ []span, ok bool) {
+	i, j, de, dc := 0, 0, 0, 0
+	for i < len(es) || j < len(c) {
+		switch {
+		case j < len(c) && (i == len(es) || c[j].end <= es[i].Start):
+			s := c[j]
+			c2 = append(c2, span{s.start + dc, s.end + dc, s.n})
+			de += s.n - (s.end - s.start)
+			j++
+		case i < len(es) && (j == len(c) || es[i].End <= c[j].start):
+			e := es[i]
+			es2 = append(es2, Edit{Start: e.Start + de, End: e.End + de, Text: e.Text})
+			dc += len(e.Text) - (e.End - e.Start)
+			i++
+		default:
+			return es2, c2, false
+		}
+	}
+	return es2, c2, true
+}
+
+// madeSpans returns the spans of the text edits es make that take it
+// back to the text es apply to.
+func madeSpans(es []Edit) []span {
+	out := make([]span, len(es))
+	d := 0
+	for i, e := range es {
+		out[i] = span{e.Start + d, e.Start + d + len(e.Text), e.End - e.Start}
+		d += len(e.Text) - (e.End - e.Start)
+	}
+	return out
+}
+
+// composeSpans returns the spans of a text x making what a makes of it
+// and then b of that: b's spans are of the text a makes. Spans that
+// overlap or touch in it make one.
+func composeSpans(a, b []span) []span {
+	out := make([]span, 0, len(a)+len(b))
+	// da is what a's spans so far add, which places the next in a's text.
+	i, j, da := 0, 0, 0
+	for i < len(a) || j < len(b) {
+		y0 := 0
+		if i < len(a) && (j == len(b) || a[i].start+da <= b[j].start) {
+			y0 = a[i].start + da
+		} else {
+			y0 = b[j].start
+		}
+		x0, y1, db := y0-da, y0, 0
+		for {
+			if i < len(a) && a[i].start+da <= y1 {
+				y1 = max(y1, a[i].start+da+a[i].n)
+				da += a[i].n - (a[i].end - a[i].start)
+				i++
+			} else if j < len(b) && b[j].start <= y1 {
+				y1 = max(y1, b[j].end)
+				db += b[j].n - (b[j].end - b[j].start)
+				j++
+			} else {
+				break
+			}
+		}
+		out = append(out, span{x0, y1 - da, y1 - y0 + db})
+	}
+	return out
+}
+
+// moveSaved moves the selections an editor saved with a step through
+// spans of their text.
+func moveSaved(saved any, c []span) any {
+	s, ok := saved.([]sel)
+	if !ok || s == nil {
+		return saved
+	}
+	cs := make([]change, len(c))
+	d := 0
+	for i, x := range c {
+		cs[i] = change{oldStart: x.start, oldEnd: x.end, newStart: x.start + d, newEnd: x.start + d + x.n}
+		d += x.n - (x.end - x.start)
+	}
+	out := make([]sel, len(s))
+	for i := range s {
+		out[i] = mapSel(s[i], cs)
 	}
 	return out
 }

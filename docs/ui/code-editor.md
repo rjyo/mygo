@@ -60,14 +60,35 @@ both from 0: `Pos` and `Offset` convert between them, and `Line`, `Slice`
 and `String` read the text. `Set` replaces the text as an edit, which undo
 takes back, and `Reset` as a new document, without history.
 
+`EditRemote` applies edits made elsewhere, as another device's or the
+result of a merge, outside the history. Undo and redo go on taking back and
+making again the buffer's own steps, on the text with those edits:
+
+```go
+buf.Edit(editor.Edit{Start: 0, End: 0, Text: "// Mine.\n"})
+buf.EditRemote(editor.Edit{Start: end, End: end, Text: "// Theirs.\n"})
+buf.Undo() // takes back "// Mine.", and "// Theirs." stays
+```
+
+A step that overlaps a remote edit can no longer be taken back or made
+again alone: it leaves the history, the text staying as it is, and the
+steps around it stay. Inserting at the edge of a step's text does not overlap it, nor does
+replacing the text next to it. So pass the ranges that changed, from a diff
+of the two texts, rather than the whole text, which overlaps every step.
+Carets, selections, folds, diagnostics and inlays move through a remote edit
+as through any, and `Modified` still compares with the saved text: call
+`MarkSaved` when the new text is what is on disk. A remote edit moves every
+step of the history, around a millisecond for a full one of 10,000 steps,
+whatever the size of the text.
+
 Lines end in `\n`, as in Zed: a text with `\r\n` line endings is kept with
 `\n` ones, and `LineEnding` says which it had, which `WriteTo` writes, so
 that a file saves as it was; `SetLineEnding` changes it.
 
 The text is a persistent tree of chunks, as Zed's rope: an edit copies a
 few kilobytes and a path of the tree, whatever the size of the document,
-and each version shares the rest with the one before. Undo keeps versions
-rather than copies, and a `Snapshot` is a version that stays as it is
+and each version shares the rest with the one before. Undo keeps the edits
+that take each step back, and a `Snapshot` is a version that stays as it is
 while the buffer changes, which other goroutines read without locks.
 Buffers' methods are safe from any goroutine; change them with
 `Window.Update` so the window shows the change.
