@@ -62,6 +62,35 @@ func TestMatch(t *testing.T) {
 		// The tag as the app spells it.
 		{[]string{"en-gb"}, []string{"zh-hans", "en-gb"}, "en-gb"},
 	} {
+		// Twice: the second from the cache.
+		for range 2 {
+			if got := Match(c.preferred, c.supported); got != c.want {
+				t.Errorf("Match(%q, %q) = %q, want %q", c.preferred, c.supported, got, c.want)
+			}
+		}
+	}
+}
+
+// Match is worked out once for the same lists (#1682): an app says each
+// message in the language it works out of them, before it runs too.
+func TestMatchCached(t *testing.T) {
+	preferred, supported := []string{"zh-TW", "en-AU"}, []string{"en", "zh-Hans", "zh-Hant"}
+	if got := Match(preferred, supported); got != "zh-Hant" {
+		t.Fatalf("Match = %q, want zh-Hant", got)
+	}
+	if n := testing.AllocsPerRun(100, func() { Match(preferred, supported) }); n != 0 {
+		t.Errorf("Match allocates %v times for lists it matched before, want 0", n)
+	}
+	// Lists that would read the same run together are told apart.
+	for _, c := range []struct {
+		preferred, supported []string
+		want                 string
+	}{
+		{[]string{"de"}, []string{"en", "de"}, "de"},
+		{[]string{"de", "en"}, []string{"de"}, "de"},
+		{[]string{"de", "en"}, []string{"en"}, "en"},
+		{[]string{"d"}, []string{"een", "de"}, ""},
+	} {
 		if got := Match(c.preferred, c.supported); got != c.want {
 			t.Errorf("Match(%q, %q) = %q, want %q", c.preferred, c.supported, got, c.want)
 		}
