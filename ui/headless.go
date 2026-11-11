@@ -52,8 +52,11 @@ type headless struct {
 	bar    TitleBar
 	access *platform.AccessTree
 	// told are the announcements of the trees, and announced those the
-	// view made.
-	told, announced []string
+	// view made; alerts are what the trees told to read at once, and
+	// screenReader is set once assistive technology is on
+	// (Tester.UseScreenReader).
+	told, announced, alerts []string
+	screenReader            bool
 	// menu is the context menu shown, at menuAt, and chosen takes its
 	// choice.
 	menu   *platform.Menu
@@ -218,6 +221,7 @@ func (h *headless) post(func()) { h.requested.Store(true) }
 // announcements.
 func (h *headless) keepAccess(t *platform.AccessTree) {
 	h.access, h.told = t, append(h.told, t.Announcements...)
+	h.alerts = append(h.alerts, t.Alerts...)
 }
 
 func (h *headless) popupMenu(m *platform.Menu, x, y float32, chosen func(int)) {
@@ -1074,12 +1078,45 @@ func (t *Tester) FailClipboard(err error) { t.h.clipboardErr = err }
 // those no app opens, or opens them again for nil.
 func (t *Tester) FailOpenURL(err error) { t.h.openErr = err }
 
+// UseScreenReader turns assistive technology on, as a screen reader
+// attaching to the window: from then on every frame's accessibility tree
+// goes to it, and live regions read out what changes after it is on, as
+// ARIA's do (a status, a log, an alert); what showed before is not read.
+// Announcements and Alerts return what it would read.
+func (t *Tester) UseScreenReader() {
+	if t.h.screenReader {
+		return
+	}
+	t.h.screenReader = true
+	// What the view announced before is read by nobody.
+	t.h.announced = nil
+	t.send(platform.SurfaceEvent{Kind: platform.AccessibilityOn})
+	t.h.alerts = nil
+}
+
 // Announcements returns what the view asked screen readers to read out
 // (Context.Announce), as a Router the titles of the pages it showed, and
-// forgets it.
+// forgets it. Once UseScreenReader is on it returns what a screen reader
+// reads politely, in order: those announcements, and the text of an ARIA
+// status (RoleStatus) when it changes and of what is added to a log
+// (RoleLog), each once.
 func (t *Tester) Announcements() []string {
 	a := t.h.announced
-	t.h.announced = nil
+	if t.h.screenReader {
+		// Announce texts are in the trees' too.
+		a = t.h.told
+	}
+	t.h.announced, t.h.told = nil, nil
+	return a
+}
+
+// Alerts returns what a screen reader reads at once, interrupting, in
+// order, and forgets it: the text of an ARIA alert (RoleAlert) as it
+// appears and whenever it changes. It is empty unless UseScreenReader is
+// on.
+func (t *Tester) Alerts() []string {
+	a := t.h.alerts
+	t.h.alerts = nil
 	return a
 }
 
