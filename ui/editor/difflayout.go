@@ -342,7 +342,7 @@ func (v *view) wrapLineNow(i int) {
 	l.text = v.text.Slice(l.start, v.text.LineEnd(i))
 	l.toks, _ = v.tokens(i, l.text, nil)
 	v.display(l)
-	if v.styled {
+	if v.styled || len(l.reps) > 0 {
 		l.faces = v.facesOf(l, nil)
 	}
 	w.set(i, len(v.wrapBreaks(l.disp, l.faces, false))+1)

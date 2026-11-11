@@ -4012,6 +4012,17 @@ either.
     may count a row too few until they show. Closing CJK punctuation
     starts no row, nor opening punctuation ends one (`canBreak`). A new
     generation of the text system measures and shapes everything anew.
+  - *Replacements* (`replace.go`). A range shown as something else is a
+    segment of a line's displayed text, as a tab or an inlay is: its Text,
+    nothing, or for an element an object replacement character the text
+    system gives the element's width (`faceRun.obj`, `Span.ObjectWidth`),
+    so that shaping, carets, selections and wraps need no case of their
+    own, lines not laid out yet counting it too. Their elements are built
+    over the text at the places the lines laid out give, a frame painting
+    them elsewhere building again (`replacementsMoved`). Lines covered
+    through their newline join the hidden spans. Replacements move as
+    selections do, and a change lays out again only the lines of those
+    that differ, so that an app can set them every frame.
   - *Highlighting* (`syntax.go`). A `Highlighter` follows the buffer's
     edits and gives tokens per line; the default tokenizes lines from the
     state the line above ended in (`lexer.go`, `lexers.go`), keeping the

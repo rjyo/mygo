@@ -278,3 +278,59 @@ func BenchmarkCodeEditorScrollWrapChinese(b *testing.B) {
 		tt.Scroll(600, 400, 0, 61)
 	}
 }
+
+// benchNote is a Markdown note of n lines, and what its live preview
+// replaces: the marks of emphasis on every line, and a link's on every
+// fourth.
+func benchNote(n int) (string, []Replacement) {
+	var b strings.Builder
+	var rs []Replacement
+	for i := range n {
+		start := b.Len()
+		b.WriteString("Some **bold** words")
+		rs = append(rs, Replacement{Start: start + 5, End: start + 7}, Replacement{Start: start + 11, End: start + 13})
+		if i%4 == 0 {
+			at := b.Len()
+			b.WriteString(" and a [link](https://example.com)")
+			rs = append(rs, Replacement{Start: at + 7, End: at + 8}, Replacement{Start: at + 12, End: at + 34})
+		}
+		b.WriteString(" on line " + strconv.Itoa(i) + ".\n")
+	}
+	return b.String(), rs
+}
+
+// BenchmarkCodeEditorTypeReplacements types a character in the middle of
+// a note of 10,000 lines and renders the frame: with no replacements, as
+// its source shows; with those of a live preview, which the edits move;
+// and with the app setting them again after each key press.
+func BenchmarkCodeEditorTypeReplacements(b *testing.B) {
+	for _, mode := range []string{"source", "moved", "set"} {
+		b.Run(mode, func(b *testing.B) {
+			text, rs := benchNote(10_000)
+			st := &State{Buffer: NewBuffer(text)}
+			tt := ui.NewTester(func(c *ui.Context) {
+				View(c, st).Fill().AutoFocus()
+			}, 1200, 800)
+			tt.SetScale(2)
+			tt.Frame()
+			if mode != "source" {
+				st.SetReplacements(rs)
+			}
+			mid := st.Buffer.Offset(Pos{Line: 5_000})
+			st.Select(mid, mid)
+			tt.Frame()
+			b.ReportAllocs()
+			for i := 0; b.Loop(); i++ {
+				if i%2 == 0 {
+					tt.Type("x")
+				} else {
+					tt.Key(0, ui.KeyBackspace)
+				}
+				if mode == "set" {
+					st.SetReplacements(st.Replacements())
+				}
+				tt.Frame()
+			}
+		})
+	}
+}

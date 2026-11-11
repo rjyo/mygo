@@ -826,7 +826,10 @@ func (rt *engine) accessElement(t *platform.AccessTree, e *node, parent int, scr
 			rt.accessInline(t, e, parent)
 			return
 		}
-		if leafRole(role) {
+		// A text field describing its text itself holds elements of its
+		// own over it, as a code editor's find bar and what replaces its
+		// ranges, which are not the text: they show.
+		if leafRole(role) && (role != platform.RoleTextField || e.accFill == nil) {
 			return
 		}
 	}

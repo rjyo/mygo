@@ -482,6 +482,27 @@ func (st *State) SetInlays(inlays []Inlay) {
 	st.ed.setInlays(inlays)
 }
 
+// SetReplacements shows ranges of the text as something else, as text,
+// as an element, or as nothing, as a Markdown editor hides the marks of
+// emphasis and draws a check box in place of "[ ]": they move with the
+// edits until set again, as inlays do. Set them again as the text or the
+// selections change, as such an editor shows the marks of the lines with
+// a caret. Empty ranges, and ranges overlapping one before them, are left
+// out.
+//
+// A range may cover lines: the lines it covers from their start through
+// their newline show no rows, as folded ones, but the one it starts on
+// when it shows something there; the line it ends in shows what follows
+// it.
+func (st *State) SetReplacements(rs []Replacement) {
+	st.ensure()
+	st.ed.setReplacements(rs)
+}
+
+// Replacements returns the replacements shown, where the edits since
+// moved them.
+func (st *State) Replacements() []Replacement { return slices.Clone(st.ed.view.repls) }
+
 // SetSuggestion shows text at offset, muted, as an edit prediction:
 // Tab inserts it, and an edit or a move of the caret drops it. An empty
 // text takes it away.

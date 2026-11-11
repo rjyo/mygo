@@ -7,7 +7,8 @@
 //	go run ./examples/code-editor
 //
 // In a Go file, complete funcdef or forrange with Tab to insert a snippet;
-// Tab and Shift+Tab visit its fields, and Escape ends snippet editing.
+// Tab and Shift+Tab visit its fields, and Escape ends snippet editing. In
+// README.md, Preview hides Markdown's marks off the caret's line.
 package main
 
 import (
@@ -39,6 +40,7 @@ type app struct {
 	layout   int // the diff's: 0 split, 1 unified
 	inline   string
 	wrap     bool
+	preview  bool // Markdown's live preview
 }
 
 func newFile(name, text string) *file {
@@ -86,6 +88,10 @@ func (a *app) view(c *ui.Context) {
 					ui.Select(c, &a.inline, []string{"Words", "Characters", "Off"})
 				}
 				ui.Box(c).Grow(1)
+				if a.page == 0 && isMarkdown(f) {
+					ui.Text(c, "Preview").TextColor(t.TextMuted)
+					ui.Switch(c, &a.preview).Label("Live preview")
+				}
 				ui.Text(c, "Wrap").TextColor(t.TextMuted)
 				ui.Switch(c, &a.wrap).Label("Soft wrap")
 			})
@@ -113,6 +119,11 @@ func (a *app) editorPage(c *ui.Context, f *file) {
 		st.ShowHover(start, end, fmt.Sprintf("%s: %d occurrence%s in %s", word, n, map[bool]string{true: "", false: "s"}[n == 1], f.name), nil)
 	}
 	st.SetDiagnostics(st.Buffer.Version(), todos(st.Buffer))
+	if a.preview && isMarkdown(f) {
+		st.SetReplacements(livePreview(st))
+	} else {
+		st.SetReplacements(nil)
+	}
 	editor.View(c, st).Grow(1).FillWidth().AutoFocus()
 	// The status bar.
 	pos := st.CursorPos()
@@ -132,6 +143,11 @@ func (a *app) editorPage(c *ui.Context, f *file) {
 		ui.Box(c).Grow(1)
 		ui.Text(c, fmt.Sprintf("%d lines · %s", st.Buffer.LineCount(), lang)).FontSize(12).TextColor(t.TextMuted)
 	})
+}
+
+func isMarkdown(f *file) bool {
+	l := f.editor.Buffer.Language()
+	return l != nil && l.Name == "Markdown"
 }
 
 func (a *app) diffPage(c *ui.Context, f *file) {

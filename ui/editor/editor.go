@@ -220,6 +220,13 @@ type editor struct {
 	diags    []Diagnostic
 	gitDiff  *gitDiff
 	brackets bracketCache
+
+	// placed are the elements of replacements the last build placed, at
+	// the scroll of placedScroll, which a frame painting them elsewhere
+	// builds again (replacementsMoved); placeScratch is where they are
+	// found anew.
+	placed, placeScratch []placed
+	placedScroll         [2]float64
 }
 
 // lastClip is what an editor last copied, which pasting its text in any
@@ -415,6 +422,8 @@ func (ed *editor) resetForBuffer() {
 	ed.selUndo, ed.selRedo = nil, nil
 	ed.folds, ed.autoclosed, ed.marked, ed.diags = nil, nil, nil, nil
 	ed.view.inlays, ed.suggestion = nil, ""
+	ed.view.repls, ed.view.replCross = nil, nil
+	ed.view.replsChanged()
 	ed.complete.close()
 	ed.hover.close()
 	ed.find.scope, ed.find.stale, ed.find.lowerVer, ed.find.lower = nil, true, 0, ""
@@ -475,6 +484,19 @@ func (ed *editor) hiddenSpans() []lineSpan {
 		out = append(out, s)
 	}
 	return out
+}
+
+// hiddenLines returns every line that shows no rows: those folds hide,
+// those a diff collapses and those replacements hide, merged.
+func (ed *editor) hiddenLines() []lineSpan {
+	hidden := ed.hiddenSpans()
+	if ds, ok := ed.o.decor.(*diffSide); ok {
+		hidden = mergeSpans(append(hidden, ds.hidden()...))
+	}
+	if r := ed.view.replacedLines(); len(r) > 0 {
+		hidden = mergeSpans(append(hidden, r...))
+	}
+	return hidden
 }
 
 // rowTop returns the top of line's rows in the content.
@@ -611,7 +633,7 @@ func (ed *editor) doReveal() {
 	// Unfold the line the caret is on.
 	if v.heights.isHidden(line) {
 		ed.unfoldLine(line)
-		v.heights.setHidden(ed.hiddenSpans())
+		v.heights.setHidden(ed.hiddenLines())
 	}
 	cr, ok := ed.caretRect(s.head)
 	if !ok {

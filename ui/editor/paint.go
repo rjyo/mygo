@@ -59,15 +59,11 @@ func (ed *editor) layout(w, h, scale float32) {
 		ed.scrollX = 0
 	}
 	v.heights.setLines(v.text.LineCount())
-	hidden := ed.hiddenSpans()
 	var blocks []block
-	if ed.o.decor != nil {
-		if ds, ok := ed.o.decor.(*diffSide); ok {
-			hidden = mergeSpans(append(hidden, ds.hidden()...))
-			blocks = ds.blocks()
-		}
+	if ds, ok := ed.o.decor.(*diffSide); ok {
+		blocks = ds.blocks()
 	}
-	v.heights.setHidden(hidden)
+	v.heights.setHidden(ed.hiddenLines())
 	v.heights.setBlocks(blocks)
 }
 
@@ -148,6 +144,12 @@ func (ed *editor) paint(p *ui.Painter, r ui.Rect) {
 		// Outlined, not blinking, as Vim's and Zed's blocks without the
 		// keyboard.
 		f.caretsOn = true
+	}
+	// Scrolled, or laid out anew, since the elements of replacements were
+	// placed, by a frame painting without building, as dragging past the
+	// edge scrolls: place them again.
+	if ed.replacementsMoved() {
+		ed.services.Invalidate()
 	}
 	ed.paintBlocks(p, r, &f)
 	text := ui.Rect{X: r.X + ed.gutterW, Y: r.Y, W: r.W - ed.gutterW, H: r.H}
@@ -538,10 +540,11 @@ func (ed *editor) paintLine(p *ui.Painter, r ui.Rect, f *frame, line int, g line
 
 // caretWidth returns the width of a block or underline caret at offset
 // at, x in row: that of the character after it, with its combining marks,
-// or of a space at the end of the line or of the row.
+// or what a replacement shows there, or of a space at the end of the line
+// or of the row.
 func (ed *editor) caretWidth(l *lineLayout, row *rowLayout, at int, x float32) float32 {
 	v := &ed.view
-	end := min(graphemeRight(v.text, at), l.start+len(l.text))
+	end := min(ed.overReplacements(at, graphemeRight(v.text, at)), l.start+len(l.text))
 	if end <= at {
 		return v.charWidth
 	}
@@ -650,7 +653,7 @@ func (ed *editor) paintWhitespace(p *ui.Painter, f *frame, l *lineLayout, row *r
 	}
 	for i := a; i < b; i++ {
 		c := s[i]
-		if c != ' ' && c != '\t' {
+		if c != ' ' && c != '\t' || l.replaced(i) {
 			continue
 		}
 		show := false

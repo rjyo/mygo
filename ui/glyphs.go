@@ -174,7 +174,8 @@ func (p *Painter) TextLine(l *text.Layout, x, y float32, color func(cluster int)
 	}
 	for _, g := range l.Lines[0].Glyphs {
 		pen := (x + g.X) * s
-		if !p.transform.Set && (pen > right || pen+(g.Advance+g.Size)*s < left) {
+		// An inline object's box draws no glyph (text.Span.ObjectWidth).
+		if g.Object || !p.transform.Set && (pen > right || pen+(g.Advance+g.Size)*s < left) {
 			continue
 		}
 		c := color(g.Cluster)

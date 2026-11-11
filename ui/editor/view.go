@@ -48,6 +48,18 @@ type view struct {
 	// inlays are texts shown in lines that are not part of them, sorted
 	// by offset.
 	inlays []inlay
+	// repls are the ranges of the text shown as something else, sorted
+	// and apart (State.SetReplacements), and replScratch the slice the
+	// next are kept in. replHidden are the lines they hide, while
+	// replHiddenOK, and contents counts those that build elements.
+	repls, replScratch []Replacement
+	// replCross tells, by replacement, whether it may cross lines: true
+	// until replacedLines looks, and again once a change reaches inside
+	// it, so that an edit looks up the lines of those alone.
+	replCross, crossScratch []bool
+	replHidden              []lineSpan
+	replHiddenOK            bool
+	contents                int
 
 	lines   lineCache
 	shaped  shapeCache
@@ -91,6 +103,9 @@ type lineLayout struct {
 	text  string // the line, without its newline
 	disp  string // as displayed: tabs expanded, inlays inserted
 	segs  []dispSeg
+	// reps are the replacements meeting the line as it was laid out,
+	// which its segments of kind segReplace show (dispSeg.rep).
+	reps  []Replacement
 	rows  []rowLayout
 	toks  []Token
 	exact bool      // toks from a confirmed state
@@ -100,12 +115,15 @@ type lineLayout struct {
 }
 
 // dispSeg maps a run of the displayed text to the line's: text, a tab
-// expanded to spaces, or an inlay.
+// expanded to spaces, an inlay, or what a replacement shows in place of
+// bytes of the line, nothing for those of a replacement after the line
+// it starts on.
 type dispSeg struct {
 	disp     int // the displayed byte it starts at
 	from, to int // the bytes of the line it shows
 	kind     uint8
 	inlay    int
+	rep      int  // the replacement, in lineLayout.reps
 	ghost    bool // a suggestion or trailing text, which a caret at it shows before
 }
 
@@ -113,6 +131,7 @@ const (
 	segText uint8 = iota
 	segTab
 	segInlay
+	segReplace
 )
 
 // rowLayout is a row of a line: a run of its displayed text, from its
@@ -142,10 +161,12 @@ const (
 )
 
 // faceRun is a run of a line's displayed text in a face, up to the
-// displayed byte end; bytes past the last run are regular.
+// displayed byte end; bytes past the last run are regular. A run of obj
+// is of inline objects that wide, the elements replacements show.
 type faceRun struct {
 	end  int
 	face uint8
+	obj  float32
 }
 
 type lineCache struct {
@@ -318,7 +339,11 @@ func (v *view) runsWidth(s string, faces []faceRun, a, b int) float32 {
 	for _, r := range faces {
 		from, to := max(prev, a), min(r.end, b)
 		prev = r.end
-		if from < to {
+		switch {
+		case from >= to:
+		case r.obj > 0:
+			x += r.obj * float32(utf8.RuneCountInString(s[from:to]))
+		default:
 			x += v.widthsOf(r.face).width(s[from:to])
 		}
 	}
@@ -461,6 +486,7 @@ func (v *view) sync(moved func(cs []change)) bool {
 		for i := range v.inlays {
 			v.inlays[i].at = mapOffset(v.inlays[i].at, cs, biasRight)
 		}
+		v.moveRepls(cs)
 		if moved != nil {
 			moved(cs)
 		}
@@ -475,6 +501,7 @@ func (v *view) sync(moved func(cs []change)) bool {
 		for i := range v.inlays {
 			v.inlays[i].at = mapOffset(v.inlays[i].at, cs, biasRight)
 		}
+		v.moveRepls(cs)
 		if moved != nil {
 			moved(cs)
 		}
@@ -537,7 +564,11 @@ func (v *view) line(n int) *lineLayout {
 	l.text = v.text.Slice(l.start, v.text.LineEnd(n))
 	l.toks, l.exact = v.tokens(n, l.text, nil)
 	v.display(l)
-	if v.styled {
+	if len(l.reps) > 0 {
+		// The view's own, which the next replacements are kept in.
+		l.reps = slices.Clone(l.reps)
+	}
+	if v.styled || len(l.reps) > 0 {
 		v.faceScratch = v.facesOf(l, v.faceScratch[:0])
 		if len(v.faceScratch) > 0 {
 			l.faces = slices.Clone(v.faceScratch)
@@ -578,59 +609,83 @@ func (v *view) tokens(n int, s string, dst []Token) ([]Token, bool) {
 }
 
 // facesOf appends to dst the faces of l's tokens, by displayed bytes,
-// with inlays regular, and returns none when all are regular.
+// with inlays regular, the text replacements show in the face of what
+// they replace and the elements they show as objects, and returns none
+// when all are regular.
 func (v *view) facesOf(l *lineLayout, dst []faceRun) []faceRun {
 	dst = dst[:0]
 	styled := false
-	for _, t := range l.toks {
-		f := v.faces[t.Kind]
-		styled = styled || f != 0
-		e := l.toDisp(t.End, false)
-		if n := len(dst); n > 0 && (dst[n-1].face == f || dst[n-1].end >= e) {
-			dst[n-1].end = max(dst[n-1].end, e)
-			continue
+	if v.styled {
+		for _, t := range l.toks {
+			f := v.faces[t.Kind]
+			styled = styled || f != 0
+			e := l.toDisp(t.End, false)
+			if n := len(dst); n > 0 && (dst[n-1].face == f || dst[n-1].end >= e) {
+				dst[n-1].end = max(dst[n-1].end, e)
+				continue
+			}
+			dst = append(dst, faceRun{end: e, face: f})
 		}
-		dst = append(dst, faceRun{e, f})
 	}
 	if !styled {
-		return dst[:0]
+		dst = dst[:0]
 	}
+	objects := false
 	for i, sg := range l.segs {
-		if sg.kind == segInlay {
-			dst = regularFaces(dst, sg.disp, sg.disp+segLen(l, i))
+		n := segLen(l, i)
+		switch {
+		case n == 0:
+		case sg.kind == segInlay && styled:
+			dst = setRun(dst, sg.disp, sg.disp+n, faceRun{})
+		case sg.kind == segReplace && l.reps[sg.rep].Content != nil:
+			dst = setRun(dst, sg.disp, sg.disp+n, faceRun{obj: v.objectWidth(&l.reps[sg.rep])})
+			objects = true
+		case sg.kind == segReplace && styled:
+			dst = setRun(dst, sg.disp, sg.disp+n, faceRun{face: v.faces[kindAt(l.toks, sg.from)]})
 		}
+	}
+	if !styled && !objects {
+		return dst[:0]
 	}
 	return dst
 }
 
-// regularFaces makes displayed bytes a to b of runs regular.
-func regularFaces(runs []faceRun, a, b int) []faceRun {
+// setRun makes displayed bytes a to b of runs f, bytes past the last run
+// being regular.
+func setRun(runs []faceRun, a, b int, f faceRun) []faceRun {
 	if a >= b {
 		return runs
 	}
-	out := make([]faceRun, 0, len(runs)+2)
-	add := func(e int, f uint8) {
+	out := make([]faceRun, 0, len(runs)+3)
+	add := func(e int, r faceRun) {
+		r.end = e
 		n := len(out)
 		switch {
 		case n > 0 && out[n-1].end >= e:
-		case n > 0 && out[n-1].face == f:
+		case n > 0 && out[n-1].face == r.face && out[n-1].obj == r.obj:
 			out[n-1].end = e
 		default:
-			out = append(out, faceRun{e, f})
+			out = append(out, r)
 		}
 	}
 	prev := 0
 	for _, r := range runs {
 		if prev < a {
-			add(min(r.end, a), r.face)
+			add(min(r.end, a), r)
 		}
 		if r.end > a && prev < b {
-			add(min(r.end, b), 0)
+			add(min(r.end, b), f)
 		}
 		if r.end > b {
-			add(r.end, r.face)
+			add(r.end, r)
 		}
 		prev = r.end
+	}
+	if prev < b {
+		if prev < a {
+			add(a, faceRun{})
+		}
+		add(b, f)
 	}
 	return out
 }
@@ -661,8 +716,13 @@ func (v *view) spansIn(s string, faces []faceRun, a, b int) string {
 		if r.face&faceBold != 0 {
 			sp.Weight = v.boldWeight()
 		}
+		if r.obj > 0 {
+			// Standing on the baseline as the font does, so that the row's
+			// metrics stay the font's.
+			sp.ObjectWidth, sp.ObjectHeight, sp.ObjectDescent = r.obj, v.ascent, v.descent
+		}
 		spans = append(spans, sp)
-		styled = styled || r.face != 0
+		styled = styled || r.face != 0 || r.obj > 0
 	}
 	v.spanScratch = spans
 	if !styled {
@@ -672,11 +732,14 @@ func (v *view) spansIn(s string, faces []faceRun, a, b int) string {
 }
 
 // display makes the displayed text of l: tabs expanded to the next tab
-// stop, by columns counted in characters, and inlays inserted.
+// stop, by columns counted in characters, inlays inserted, and the
+// ranges of replacements showing what they show in their place.
 func (v *view) display(l *lineLayout) {
 	s := l.text
 	inl := v.inlaysIn(l.start, l.start+len(s))
-	if strings.IndexByte(s, '\t') < 0 && len(inl) == 0 {
+	l.reps = v.replsIn(l.start, l.start+len(s))
+	l.segs = l.segs[:0]
+	if strings.IndexByte(s, '\t') < 0 && len(inl) == 0 && len(l.reps) == 0 {
 		l.disp, l.segs = s, nil
 		return
 	}
@@ -684,7 +747,7 @@ func (v *view) display(l *lineLayout) {
 	b.Grow(len(s) + 8)
 	col := 0
 	textFrom := 0
-	ii := 0
+	ii, ri := 0, 0
 	flush := func(to int) {
 		if to > textFrom {
 			l.segs = append(l.segs, dispSeg{disp: b.Len(), from: textFrom, to: to, kind: segText})
@@ -694,16 +757,45 @@ func (v *view) display(l *lineLayout) {
 	}
 	emitInlays := func(at int) {
 		for ii < len(inl) && inl[ii].at-l.start <= at {
-			flush(at)
 			in := inl[ii]
+			if in.at-l.start < at {
+				// Inside a replacement, passed over.
+				ii++
+				continue
+			}
+			flush(at)
 			l.segs = append(l.segs, dispSeg{disp: b.Len(), from: at, to: at, kind: segInlay, inlay: ii, ghost: in.kind == 1 || in.kind == inlayTrailing})
 			b.WriteString(in.text)
 			col += utf8.RuneCountInString(in.text)
 			ii++
 		}
 	}
-	for i, r := range s {
+	for i := 0; ; {
 		emitInlays(i)
+		// The replacements from here: what one shows, at its start, and
+		// nothing for the rest of one from a line before.
+		for ri < len(l.reps) && max(l.reps[ri].Start-l.start, 0) == i {
+			rp := &l.reps[ri]
+			to := min(rp.End-l.start, len(s))
+			flush(i)
+			shown := ""
+			if rp.Start >= l.start {
+				shown = rp.shown()
+			}
+			l.segs = append(l.segs, dispSeg{disp: b.Len(), from: i, to: to, kind: segReplace, rep: ri})
+			b.WriteString(shown)
+			col += utf8.RuneCountInString(shown)
+			textFrom = to
+			ri++
+			if to > i {
+				i = to
+				emitInlays(i)
+			}
+		}
+		if i >= len(s) {
+			break
+		}
+		r, size := utf8.DecodeRuneInString(s[i:])
 		if r == '\t' {
 			flush(i)
 			w := v.tabSize - col%v.tabSize
@@ -714,11 +806,11 @@ func (v *view) display(l *lineLayout) {
 			b.WriteString(spaces(w))
 			col += w
 			textFrom = i + 1
-			continue
+		} else {
+			col++
 		}
-		col++
+		i += size
 	}
-	emitInlays(len(s))
 	flush(len(s))
 	l.disp = b.String()
 }
@@ -745,7 +837,8 @@ func (v *view) inlaysIn(a, b int) []inlay {
 }
 
 // toDisp maps a byte of the line to its displayed byte; after places an
-// offset at an inlay after it.
+// offset at an inlay after it, and one inside a replacement after what it
+// shows, else before.
 func (l *lineLayout) toDisp(col int, after bool) int {
 	if l.segs == nil {
 		return col
@@ -764,6 +857,13 @@ func (l *lineLayout) toDisp(col int, after bool) int {
 			}
 			if col == s.to {
 				return s.disp + segLen(l, i)
+			}
+		case segReplace:
+			if col == s.to && s.to > s.from || col > s.from && col < s.to && after {
+				return s.disp + segLen(l, i)
+			}
+			if col >= s.from && col < s.to {
+				return s.disp
 			}
 		case segInlay:
 			if col == s.from {
@@ -807,8 +907,29 @@ func (l *lineLayout) fromDisp(d int) int {
 			return s.to
 		}
 		return s.from
+	case segReplace:
+		// The nearer end of what it shows; the start of what shows
+		// nothing, at the end of the line, as text follows it otherwise.
+		if n := segLen(l, i); n > 0 && d-s.disp > n/2 {
+			return s.to
+		}
+		return s.from
 	}
 	return s.from
+}
+
+// replaced reports whether byte col of the line is in a replacement,
+// which shows in its place.
+func (l *lineLayout) replaced(col int) bool {
+	if len(l.reps) == 0 {
+		return false
+	}
+	for _, s := range l.segs {
+		if s.kind == segReplace && col >= s.from && col < s.to {
+			return true
+		}
+	}
+	return false
 }
 
 // layoutRows wraps the displayed text of l into rows and shapes them.
@@ -933,6 +1054,7 @@ func (v *view) wrapBreaks(s string, faces []faceRun, fit bool) []int {
 func (v *view) rowEnd(s string, faces []faceRun, start int, x float32) int {
 	fi := sort.Search(len(faces), func(k int) bool { return faces[k].end > start })
 	cw := &v.widths
+	var obj float32
 	last := -1 // the last place to break
 	var prev rune
 	for i, r := range s[start:] {
@@ -944,12 +1066,15 @@ func (v *view) rowEnd(s string, faces []faceRun, start int, x float32) int {
 			for fi < len(faces) && faces[fi].end <= i {
 				fi++
 			}
-			cw = &v.widths
+			cw, obj = &v.widths, 0
 			if fi < len(faces) {
-				cw = v.widthsOf(faces[fi].face)
+				cw, obj = v.widthsOf(faces[fi].face), faces[fi].obj
 			}
 		}
 		w := cw.of(r)
+		if obj > 0 {
+			w = obj
+		}
 		if x+w > v.wrapWidth && i > start {
 			if last > start {
 				return last
@@ -998,7 +1123,7 @@ func (v *view) summed(s string, faces []faceRun, a, b int) bool {
 	}
 	prev := 0
 	for _, r := range faces {
-		if r.end > a && prev < b && r.face != 0 && v.widthsOf(r.face).mono <= 0 {
+		if r.end > a && prev < b && (r.obj > 0 || r.face != 0 && v.widthsOf(r.face).mono <= 0) {
 			return false
 		}
 		prev = r.end
@@ -1109,12 +1234,17 @@ func (v *view) measureWraps(near int, budget time.Duration) bool {
 			return true
 		}
 		disp := s
-		if strings.IndexByte(s, '\t') >= 0 || len(v.inlaysIn(at, at+len(s))) > 0 {
+		var faces []faceRun
+		if strings.IndexByte(s, '\t') >= 0 || len(v.inlaysIn(at, at+len(s))) > 0 || len(v.replsIn(at, at+len(s))) > 0 {
 			l := &lineLayout{n: i, start: at, text: s}
 			v.display(l)
 			disp = l.disp
+			if len(l.reps) > 0 {
+				// The widths of the elements replacements show.
+				faces = v.facesOf(l, nil)
+			}
 		}
-		w.set(i, len(v.wrapBreaks(disp, nil, false))+1)
+		w.set(i, len(v.wrapBreaks(disp, faces, false))+1)
 		return true
 	}
 	// Those around near first, so what shows is right at once.
@@ -1238,7 +1368,8 @@ type runColors struct {
 }
 
 // colorsOf makes the colors of l's tokens, by displayed bytes, with
-// inlays muted.
+// inlays muted, and the text replacements show in their Color, else that
+// of the token they replace.
 func (v *view) colorsOf(l *lineLayout, out *runColors) {
 	out.ends, out.colors = out.ends[:0], out.colors[:0]
 	for _, t := range l.toks {
@@ -1246,8 +1377,17 @@ func (v *view) colorsOf(l *lineLayout, out *runColors) {
 		out.colors = append(out.colors, v.theme.TokenColor(t.Kind))
 	}
 	for i, sg := range l.segs {
-		if sg.kind == segInlay {
+		switch sg.kind {
+		case segInlay:
 			out.overlay(sg.disp, sg.disp+segLen(l, i), v.theme.LineNumber)
+		case segReplace:
+			if n := segLen(l, i); n > 0 && l.reps[sg.rep].Content == nil {
+				c := l.reps[sg.rep].Color
+				if c.A == 0 {
+					c = v.theme.TokenColor(kindAt(l.toks, sg.from))
+				}
+				out.overlay(sg.disp, sg.disp+n, c)
+			}
 		}
 	}
 }

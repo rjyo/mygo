@@ -6,7 +6,7 @@ Package `ui/editor` is a code editor and a [diff viewer](diff-viewer.md)
 for native UI, designed after Zed's: syntax highlighting, several carets
 and selections, soft wraps, folding, finding and replacing, completions,
 hovers, diagnostics and inlay hints from the app or a language server,
-and the commands and keys of code editors. It lays out and paints only the
+ranges shown as something else, and the commands and keys of code editors. It lays out and paints only the
 lines in view, so a file of a million lines scrolls and edits as one of
 ten.
 
@@ -396,6 +396,66 @@ app.code.SetDiagnostics(buf.Version(), app.lsp.Diagnostics())
   suggestion, which Tab accepts, as an AI's.
 - `OnDefinition` is called for Cmd+click and F12 on a word.
 
+## Replacing ranges
+
+`SetReplacements` shows ranges of the text as something else, as Zed's
+folds show their placeholders: `Text`, the element `Content` builds, or
+nothing. The text stays the buffer's: it saves, copies, finds and undoes
+as it is, and assistive technology reads it. A Markdown editor's live
+preview hides the marks and draws check boxes, but on the lines with a
+caret, whose source shows to edit:
+
+```go
+var rs []editor.Replacement
+for _, m := range marks(buf) { // the app's parser
+	if !onCaretLine(m) {
+		rs = append(rs, editor.Replacement{Start: m.Start, End: m.End})
+	}
+}
+rs = append(rs, editor.Replacement{
+	Start: box.Start, End: box.End, Label: "Not done", Interactive: true,
+	Content: func(c *ui.Context, e ui.Element, r editor.Replacement) {
+		e.Children(func() {
+			if ui.ButtonBase(c).Fill().KeepFocus().Clicked() {
+				buf.Edit(editor.Edit{Start: r.End - 2, End: r.End - 1, Text: "x"})
+			}
+		})
+	},
+})
+app.code.SetReplacements(rs)
+editor.View(c, app.code).Grow(1).FillWidth()
+```
+
+Replacements move with edits, as inlays do, leaving out what is typed at
+their edges, and go when their text does. Set them again as the text or
+the selections change: laying out again only the lines whose replacements
+changed, this is cheap in every frame.
+
+- **Carets** step over what a replacement shows as over one character,
+  and deleting next to it deletes all of it. A range showing nothing
+  within a line is as if it were not there: no key press is spent on it,
+  and Backspace takes the character before it, not the hidden text.
+- **`Text`** shows in the editor's font, in `Color`, else in the color of
+  the text it replaces.
+- **`Content`** is given the element the editor places, `Width` DIPs wide
+  (a square as high as a row when 0) and as high as a row, as parts are
+  (see [Bars and popups](#bars-and-popups)). The width is the app's to
+  say, so that soft wraps count it in lines not laid out yet. A press on
+  it goes to the text, unless `Interactive`; `Label` names it for
+  assistive technology.
+- **Ranges across lines** show on the line they start on: the lines they
+  cover from their start through their newline take no rows, as folded
+  ones, but the first when it shows something; the line they end in shows
+  what follows them on a row of its own.
+
+Empty ranges, and ranges overlapping one before them, are left out.
+`Replacements` returns them as the edits moved them. Only the lines in
+view are laid out and only their elements built, so a long text may have
+as many as it needs.
+
+The [code editor example](../../examples/code-editor) has a live preview
+of its README.md.
+
 ## Code snippets
 
 A completion's `Insert` is always plain text, even with
@@ -522,7 +582,8 @@ app.code.RenderHover = func(c *ui.Context, panel ui.Element, h *editor.HoverCard
 ## Accessibility
 
 Assistive technology sees a multi-line text field, named by `Label`, with
-the text of the buffer and the newest selection, which it moves; the
+the text of the buffer, replaced ranges among it, and the newest selection,
+which it moves; the elements of replacements are named by their `Label`; the
 completions are a list, and the find bar a toolbar that tells the count
 of matches. The editor's menu, its find and go to line bars and their
 names are in the window's language
