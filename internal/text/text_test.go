@@ -1430,8 +1430,9 @@ func TestPlacement(t *testing.T) {
 			t.Errorf("baseline 20.01 drawn at %v", b)
 		}
 	case "linux":
-		if !same(at(10), at(10.9)) {
-			t.Error("not on whole pixels")
+		// Pango rounds glyph positions to the nearest whole pixel, as GTK.
+		if !same(at(10), at(10.49)) || same(at(10), at(10.5)) {
+			t.Error("not two positions a pixel")
 		}
 		if b := s.Baseline(20.9); b != 20 {
 			t.Errorf("baseline 20.9 drawn at %v", b)

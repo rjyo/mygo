@@ -1158,7 +1158,7 @@ func (e *pangoEngine) textParams() (scene.TextParams, bool) {
 
 // positions puts glyphs on whole pixels, as GTK does: Pango rounds their
 // positions, and labels sit on whole pixels.
-func (e *pangoEngine) positions(*Font, float32, bool) (int, bool) { return 1, false }
+func (e *pangoEngine) positions(*Font, float32, bool) (int, bool) { return 1, true }
 
 // decorate places underlines and strikethroughs as GTK draws a label's
 // (PangoRenderer): at the positions and thicknesses of the run's font,
