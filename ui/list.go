@@ -1670,7 +1670,7 @@ func (e *node) layoutList(w, h float32) {
 		// Above the rows scrolling under it, and still at the top when the
 		// offset moves before placing.
 		journalKeep(rt, &pinned.flags)
-		pinned.flags |= flagAbsolute
+		pinned.markAbsolute()
 		e.forgetIntrinsic()
 	}
 	e.contentW, e.contentH = float64(cw+e.padX()), content

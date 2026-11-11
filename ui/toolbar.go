@@ -140,7 +140,8 @@ func (e *node) layoutToolbar(cw float32) {
 	collapse := func(ch *node) {
 		journalKeep(e.c.rt, &ch.flags)
 		journalKeep(e.c.rt, &ch.collapsed)
-		ch.flags |= flagAbsolute | flagInvisible
+		ch.flags |= flagInvisible
+		ch.markAbsolute()
 		ch.collapsed = true
 		e.forgetIntrinsic()
 	}

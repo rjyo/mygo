@@ -114,6 +114,10 @@ var layoutBenches = []layoutBench{
 	}},
 	{"Wide/1000", func() []*benchBox { return newBenchTree(randomBox).flat(1000) }},
 	{"Wide/10000", func() []*benchBox { return newBenchTree(randomBox).flat(10000) }},
+	// A wide tree of many leaves: the walk over the children of every box
+	// in it, which the layout does for the ones out of the flow, is what
+	// makes it slower than the others.
+	{"Wide/100000", func() []*benchBox { return newBenchTree(randomBox).flat(100000) }},
 	{"DeepRandom/4000", func() []*benchBox { return newBenchTree(randomBox).deep(4000, 2) }},
 	{"DeepRandom/10000", func() []*benchBox { return newBenchTree(randomBox).deep(10000, 2) }},
 	{"DeepAuto/4000", func() []*benchBox {

@@ -320,6 +320,12 @@ type layoutStyle struct {
 	// baselines is set on the row of a field in a form, which lines up
 	// the first lines of its label and control.
 	baselines bool
+	// absoluteChild is set on a container with a child out of its flow
+	// (Absolute, Attach), which layoutAbsolute places: without one it has
+	// no walk to make. It is set as the child is added or taken out of the
+	// flow, and left set: taking a child out of the flow again only costs
+	// the walk.
+	absoluteChild bool
 
 	maxLines   int
 	single     bool
@@ -1159,7 +1165,21 @@ func (e *node) Center() *node { e.justify, e.align = Center, Center; return e }
 // its siblings. As in CSS, that box is inside the parent's border but holds
 // its padding: Top(0) puts the element just below the border, whatever the
 // padding.
-func (e *node) Absolute() *node { e.flags |= flagAbsolute; return e }
+func (e *node) Absolute() *node { e.markAbsolute(); return e }
+
+// markAbsolute takes the element out of its parent's layout and tells the
+// parent, which then walks its children for the ones to place.
+func (e *node) markAbsolute() {
+	e.flags |= flagAbsolute
+	if p := e.parent; p != nil && !p.absoluteChild {
+		// The parent's own: it walks its children for the ones out of the
+		// flow, and it does so from now on. A toolbar collapsing its
+		// controls and a list pinning a row take a child out of the flow
+		// after the build.
+		journalKeep(e.c.rt, &p.absoluteChild)
+		p.absoluteChild = true
+	}
+}
 
 // Top, Right, Bottom and Left place an Absolute element. On an element in
 // its parent's layout, they move it from where the layout put it, as CSS's
@@ -1270,7 +1290,7 @@ func (a Anchor) downFlipped() Anchor {
 // Right, Bottom and Left then move it from there; the element keeps its
 // own size.
 func (e *node) Attach(at, self Anchor) *node {
-	e.flags |= flagAbsolute
+	e.markAbsolute()
 	e.attach = attachment(1 + min(at, AnchorBottomEnd)*15 + min(self, AnchorBottomEnd))
 	return e
 }
@@ -1294,7 +1314,7 @@ func (e *node) AttachTo(target *node, at, self Anchor) *node {
 	if target == nil {
 		return e
 	}
-	e.flags |= flagAbsolute
+	e.markAbsolute()
 	e.attach = attachment(1 + min(at, AnchorBottomEnd)*15 + min(self, AnchorBottomEnd))
 	e.popover = target
 	if e.dir&dirSet == 0 {
@@ -2178,6 +2198,12 @@ func (e *node) add(child *node) {
 	e.forgetIntrinsic()
 	child.parent = e
 	child.depth = e.depth + 1
+	if child.flags&flagAbsolute != 0 && !e.absoluteChild {
+		// Taken out of the flow before it was added, as an overlay's is,
+		// which the frame adds to the root as it lays out.
+		journalKeep(e.c.rt, &e.absoluteChild)
+		e.absoluteChild = true
+	}
 	if child.zIndex != 0 {
 		journalKeep(e.c.rt, &e.zOrder)
 		e.zOrder = true // set before it was added, as on a copy leaving (ghostOf)

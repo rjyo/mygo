@@ -175,11 +175,20 @@ func place(e *node, x, y float32) {
 	}
 }
 
+// insetSet reports whether any of the element's insets is set: they are
+// what place it, and their unit tells, as the inspector's does.
+func (e *node) insetSet() bool {
+	return e.inset[0].u != unitAuto || e.inset[1].u != unitAuto || e.inset[2].u != unitAuto || e.inset[3].u != unitAuto
+}
+
 // relative returns how far the insets of an element in flow move it from
 // where the layout put it, against a content box cw×ch. Where both Left
 // and Right are set, Left wins, or Right in an element laid out right to
 // left, as in CSS.
 func (e *node) relative(cw, ch float32) (dx, dy float32) {
+	if !e.insetSet() {
+		return 0, 0 // nothing placed it: it is where the layout put it
+	}
 	if e.sticky && e.flags&flagAbsolute == 0 {
 		return 0, 0 // they hold it in its scroll container instead
 	}
@@ -1212,6 +1221,9 @@ func justifyOffsets(j Align, free float32, n int) (start, between float32) {
 // to left, as in CSS, one with neither Left nor Right goes to the right,
 // and Right wins over Left where its width leaves no room for both.
 func layoutAbsolute(e *node) {
+	if !e.absoluteChild {
+		return // no child out of the flow to place
+	}
 	pw, ph := e.w-e.border[1]-e.border[3], e.h-e.border[0]-e.border[2]
 	for c := e.first; c != nil; c = c.next {
 		if c.flags&flagAbsolute == 0 || c.leaving != 0 || c.hidden {

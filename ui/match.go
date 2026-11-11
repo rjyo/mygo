@@ -608,7 +608,8 @@ func (m *matches) claim() {
 		if g.opacitySet {
 			alpha = g.opacity
 		}
-		g.leaving, g.flags = 2, g.flags|flagAbsolute
+		g.leaving = 2
+		g.markAbsolute()
 		// Painted out of the elements around it, it keeps the text style
 		// and the theme they gave it.
 		g.ts = e.resolvedText()

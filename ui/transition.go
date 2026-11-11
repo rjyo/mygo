@@ -935,7 +935,7 @@ func (rt *engine) animateExits(root *node, now time.Time, still, instant bool) {
 			if e.flags&flagAbsolute != 0 {
 				r.ghost.leaving = 2
 			}
-			r.ghost.flags |= flagAbsolute
+			r.ghost.markAbsolute()
 			r.opacity = 1
 			if e.opacitySet {
 				r.opacity = e.opacity / max(r.shown.alpha, 0.001)
