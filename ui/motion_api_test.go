@@ -396,9 +396,73 @@ func TestInView(t *testing.T) {
 		t.Fatalf("at the top, the top is in view %v, the bottom %v", topIn, bottomIn)
 	}
 	tt.Scroll(50, 50, 0, 1000)
-	tt.Frame()
 	if topIn || !bottomIn {
 		t.Fatalf("at the bottom, the top is in view %v, the bottom %v", topIn, bottomIn)
+	}
+}
+
+// A scroll brings an element in view in the frame that scrolls: the view
+// reads it, and MyGo builds again, without another input.
+func TestInViewBuildsAgainAfterScroll(t *testing.T) {
+	var bottomIn, nearIn, halfIn bool
+	builds := 0
+	tt := coreNewTester(func(c *context) {
+		builds++
+		coreScroll(c).Size(100, 100).Children(func() {
+			coreBox(c).Key("top").Size(100, 60)
+			coreBox(c).Size(100, 200)
+			bottomIn = coreBox(c).Key("bottom").Size(100, 60).InView()
+			coreBox(c).Size(100, 150)
+			nearIn = coreBox(c).Key("near").Size(100, 60).InViewMargin(200)
+			halfIn = coreBox(c).Key("half").Size(100, 60).InViewAmount(0.5)
+		})
+	}, 200, 200)
+	tt.Frame()
+	if bottomIn || nearIn || halfIn {
+		t.Fatalf("at the top, in view: bottom %v, near %v, half %v", bottomIn, nearIn, halfIn)
+	}
+	before := builds
+	tt.Scroll(50, 50, 0, 200)
+	if !bottomIn || !nearIn || halfIn {
+		t.Fatalf("after one scroll, in view: bottom %v, near %v, half %v", bottomIn, nearIn, halfIn)
+	}
+	if got := builds - before; got != 2 {
+		t.Errorf("one scroll built %d times, want 2: the scroll's, and the one after", got)
+	}
+	settled := builds
+	if tt.FramePending() {
+		t.Error("a frame is still asked for once nothing moves")
+	}
+	tt.Frame()
+	tt.Frame()
+	if got := builds - settled; got != 2 {
+		t.Errorf("two frames built %d times, want 2", got)
+	}
+	if tt.FramePending() {
+		t.Error("a steady frame asked for another")
+	}
+	tt.Scroll(50, 50, 0, 1000)
+	if !halfIn {
+		t.Error("at the end, the last card is not half in view")
+	}
+}
+
+// A view that reads no InView builds as often as before.
+func TestInViewUnusedBuildsOnce(t *testing.T) {
+	builds := 0
+	tt := coreNewTester(func(c *context) {
+		builds++
+		coreScroll(c).Size(100, 100).Children(func() {
+			coreBox(c).Key("top").Size(100, 60)
+			coreBox(c).Size(100, 200)
+			coreBox(c).Key("bottom").Size(100, 60)
+		})
+	}, 200, 200)
+	tt.Frame()
+	before := builds
+	tt.Scroll(50, 50, 0, 1000)
+	if got := builds - before; got != 1 {
+		t.Errorf("one scroll built %d times, want 1", got)
 	}
 }
 

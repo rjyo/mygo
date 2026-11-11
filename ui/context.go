@@ -693,6 +693,9 @@ type state struct {
 	// invisible tells that the element showed nothing in the last frame,
 	// wherever it was: invisible, inert or hidden (InViewMargin).
 	invisible bool
+	// view is what InView and its kin read, once an element asks for it
+	// (watchView), for the frame that rebuilds the view when it changes.
+	view *viewWatch
 	// rtl tells that the element was laid out right to left: a scroll
 	// container's horizontal offset counts from the right, and its
 	// vertical scroll bar is on the left.

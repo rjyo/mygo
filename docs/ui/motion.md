@@ -446,7 +446,10 @@ plays, timed by `c.Now()`.
 
 `InView()` reports whether some of an element showed in the frame before,
 within the scroll containers around it, to bring it in as it scrolls into
-view. A `ScrollState` (see [Scrolling](scroll.md)) gives how far its
+view. When what it answers from changes, as a scroll brings the element in,
+MyGo builds another frame, so the view reads the new answer without waiting
+for the next input; `InViewMargin` and `InViewAmount` do the same, and an
+element that reads none of them costs no frame. A `ScrollState` (see [Scrolling](scroll.md)) gives how far its
 container scrolled, for effects that follow the scrolling:
 
 ```go

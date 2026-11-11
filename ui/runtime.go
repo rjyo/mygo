@@ -458,9 +458,12 @@ type engine struct {
 	// last one began (askBuild): one only painting for the hover's look
 	// is not asked for then, as that frame shows it.
 	buildAsked bool
-	held       bool
-	shown      time.Time
-	input      bool
+	// viewMoved tells that what an element read of whether it is in view
+	// changed in this frame's commit (watchView).
+	viewMoved bool
+	held      bool
+	shown     time.Time
+	input     bool
 	// hiddenAsked tells that a view asked whether the window shows
 	// (WindowHidden), which builds it again as that changes.
 	hiddenAsked bool
@@ -691,7 +694,7 @@ func (rt *engine) runFrame() {
 	rt.inFrame = true
 	defer rt.endFrame()
 
-	rt.buildAsked, rt.lookDue = false, false
+	rt.buildAsked, rt.lookDue, rt.viewMoved = false, false, false
 	rt.frame++
 	rt.input = false
 	rt.focusRead, rt.activeRead, rt.withinRead, rt.keysRead = false, false, false, false
@@ -895,6 +898,12 @@ func (rt *engine) runFrame() {
 	}
 	rt.announcements = rt.announcements[:0]
 	rt.next()
+	if rt.viewMoved {
+		// What a view read of whether an element is in view (watchView)
+		// changed in this commit: built again, once, to read it.
+		rt.viewMoved = false
+		rt.askBuild()
+	}
 	if len(rt.retried) > 0 || len(rt.keys) > 0 {
 		// The keys retried, and those waiting for an element that took
 		// one (routeKeys), route in a frame built anew, at once.
@@ -1622,6 +1631,15 @@ func (rt *engine) commitElement(e *node, clip Rect, hidden bool) {
 	s.invisible = invisible
 	if invisible {
 		s.vw, s.vh = 0, 0
+	}
+	if w := s.view; w != nil {
+		// What InView read in this build came from the last commit: when
+		// what it depends on moved since, its answer may have changed.
+		now := s.viewInputs()
+		if w.read == rt.frame && now != w.inputs {
+			rt.viewMoved = true
+		}
+		w.inputs = now
 	}
 	// What ignores input shows, has its text and reads to assistive
 	// technology, but takes neither the pointer nor the focus either.
