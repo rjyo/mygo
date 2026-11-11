@@ -21,6 +21,7 @@ func TestGlyphProbeJoinedEdges(t *testing.T) {
 		unavailable(t, err)
 	}
 	defer r.Release()
+	needSpecialized(t, r)
 	atlas := scene.NewAtlas(1, 128, 128)
 	mask := make([]byte, 32*32)
 	for y := range 32 {

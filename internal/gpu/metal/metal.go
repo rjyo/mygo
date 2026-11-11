@@ -85,6 +85,9 @@ const (
 	pixelFormatRGBA16Float = 115
 	pixelFormatRGBA32Float = 125
 
+	// gpuFamilyMac2 is MTLGPUFamilyMac2.
+	gpuFamilyMac2 = 2002
+
 	usageShaderRead   = 1
 	usageRenderTarget = 4
 	storageManaged    = 1
@@ -426,6 +429,11 @@ type Renderer struct {
 	// pipelines of the classes and the worker that makes them.
 	source string
 	pipes  pipeState
+	// canSpecialize tells that the device draws with the pipelines of the
+	// classes: those of Metal's Mac2 family, Apple's among them, do. Older
+	// ones, as Intel's Haswell (#1566), draw every batch with the general
+	// pipeline, and their batches are not separated by class.
+	canSpecialize bool
 	// formats has what draws into BGRA8 targets, as frames do, and into
 	// RGBA16Float ones, as frames showing colors outside the sRGB gamut do
 	// (SetWide), made for the first of those; cur is that of the target
@@ -576,7 +584,6 @@ func newRenderer() (r *Renderer, err error) {
 	// pixel more, as they draw at whole pixels.
 	r.diff.Reach = 2
 	r.ages.Forget = func(tex uintptr) { release(&tex) }
-	r.b.Classes = true
 	r.b.Opaque = true // Metal's GPUs discard what opaque cores cover
 	r.formats = [2]formatState{{format: pixelFormatBGRA8Unorm}, {format: pixelFormatRGBA16Float}}
 	r.cur = &r.formats[0]
@@ -585,6 +592,7 @@ func newRenderer() (r *Renderer, err error) {
 		r.Release()
 		return nil, err
 	}
+	r.b.Classes = r.canSpecialize
 	return r, nil
 }
 
@@ -595,6 +603,11 @@ func (r *Renderer) init() (err error) {
 		"newBufferWithLength:options:"); err != nil {
 		return err
 	}
+	// Specialized pipelines compile on a worker while frames draw: a
+	// Haswell GPU on macOS 14 (through OpenCore Legacy Patcher) hung in
+	// a frame drawn while two of them compiled (#1566). GPUs older than
+	// the Mac2 family keep to the general pipeline, from the first frame.
+	r.canSpecialize = respondsTo(r.device, "supportsFamily:") && byte(send(r.device, "supportsFamily:", gpuFamilyMac2)) != 0
 	return nil
 }
 
@@ -666,12 +679,10 @@ func (r *Renderer) makePipelines(f *formatState) (err error) {
 	if f.holePipe, err = r.newPipeline(lib, "ps", f.format, blendHole); err != nil {
 		return err
 	}
-	if f.format == pixelFormatRGBA16Float {
-		// Opaque cores are exactly 1 in coverage only to within the rasterizer's
-		// interpolation of the fragment's position, whose noise (a unit in the
-		// last place of a half, in the columns where the position crosses a
-		// power of two) blending hides in the destination's alpha but a plain
-		// write keeps: float16 targets blend them, byte for byte as whole fills.
+	if r.coresBlend(f.format) {
+		// The cores draw with the pipeline the frame already uses (see
+		// coresBlend); what they lose is the tile-based win of writing
+		// without blending.
 		f.opaquePipe = send(f.pipeline, "retain")
 	} else if f.opaquePipe, err = r.newPipeline(lib, "ps", f.format, blendNone); err != nil {
 		return err
@@ -733,6 +744,19 @@ const (
 	blendHole                  // takes the coverage of holes away
 	blendNone                  // none: writes the colors, for opaque cores
 )
+
+// coresBlend reports whether the cores of opaque fills draw with the blended
+// pipeline in targets of format. Float16 targets blend them: a core is exactly
+// 1 in coverage only to within the rasterizer's interpolation of the
+// fragment's position, and blending hides that noise in the destination's
+// alpha where a plain write keeps it. GPUs outside Metal's Mac2 family blend
+// them too: one, an Intel Iris (Haswell) whose driver OpenCore Legacy Patcher
+// backported, hung in the unblended pipeline (#1566) — a 320×740 opaque fill
+// never completed, while the same fill blended drew every time. What those
+// GPUs lose is the tile-based win of writing without blending.
+func (r *Renderer) coresBlend(format uint) bool {
+	return format == pixelFormatRGBA16Float || !r.canSpecialize
+}
 
 // newPipeline returns a pipeline drawing instances with the vertex
 // function vs and the fragment function fs of lib, blending premultiplied
@@ -1942,7 +1966,7 @@ func (r *Renderer) releaseTextures() {
 		}
 	}
 	r.b.Release()
-	r.b.Classes = true
+	r.b.Classes = r.canSpecialize
 	r.b.Opaque = true // Release empties the builder
 }
 

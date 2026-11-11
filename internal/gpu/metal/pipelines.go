@@ -15,7 +15,9 @@ import (
 // waits for one: pipeFor returns the general pipeline, which draws the same
 // pixels, until a worker goroutine has made the specialized one, and a cache
 // shared by every renderer of a device keeps them, so that a second window
-// finds them made.
+// finds them made. GPUs older than Metal's Mac2 family (canSpecialize) have
+// none: every batch draws with the general pipeline, and nothing compiles
+// behind the frames.
 
 // pipeKey names a pipeline: the pixel format of the target, the classes of
 // its batches (gpu.Batch.Classes: one, or those of joined batches) and
@@ -70,15 +72,16 @@ type pipeState struct {
 // there, and the plain and other fills drawn as opaque cores (which float16
 // targets do not use, and which shadows do not need), and the classes that
 // small batches join most (gpu.Batch.Joined): shadows with the fills casting
-// them, and fills with their labels.
-func warmSet(format uint) (keys []pipeKey) {
+// them, and fills with their labels. A device that does not specialize warms
+// none.
+func (r *Renderer) warmSet(format uint) (keys []pipeKey) {
 	for _, cl := range []uint32{1 << gpu.ClassPlain, 1 << gpu.ClassGlyph, 1 << gpu.ClassImage, 1 << gpu.ClassFill, 1 << gpu.ClassShadow, 1 << gpu.ClassSubpixel,
 		1<<gpu.ClassShadow | 1<<gpu.ClassPlain, 1<<gpu.ClassPlain | 1<<gpu.ClassGlyph} {
 		for _, cont := range []bool{false, true} {
-			if specializable(format, cl, blendOver) {
+			if r.specializable(format, cl, blendOver) {
 				keys = append(keys, pipeKey{format, cl, cont, blendOver})
 			}
-			if (cl == 1<<gpu.ClassPlain || cl == 1<<gpu.ClassFill) && specializable(format, cl, blendNone) {
+			if (cl == 1<<gpu.ClassPlain || cl == 1<<gpu.ClassFill) && r.specializable(format, cl, blendNone) {
 				keys = append(keys, pipeKey{format, cl, cont, blendNone})
 			}
 		}
@@ -88,8 +91,8 @@ func warmSet(format uint) (keys []pipeKey) {
 
 // specializable reports whether batches of the classes cl (gpu.Batch.Classes)
 // blended as mode draw with a specialized pipeline in targets of format.
-func specializable(format uint, cl uint32, mode blendMode) bool {
-	if cl&(1<<gpu.ClassGeneral) != 0 || cl >= 1<<gpu.NumClasses {
+func (r *Renderer) specializable(format uint, cl uint32, mode blendMode) bool {
+	if !r.canSpecialize || cl&(1<<gpu.ClassGeneral) != 0 || cl >= 1<<gpu.NumClasses {
 		return false
 	}
 	if format == pixelFormatRGBA16Float {
@@ -126,7 +129,7 @@ func (r *Renderer) startPipelines(f *formatState) {
 		return
 	}
 	p.warmed[i] = true
-	for _, k := range warmSet(f.format) {
+	for _, k := range r.warmSet(f.format) {
 		r.enqueueLocked(k)
 	}
 }
@@ -213,7 +216,7 @@ func (r *Renderer) buildPipeline(k pipeKey) {
 // made, by the worker or by another renderer of the device, it is the general one,
 // which draws the same pixels.
 func (r *Renderer) pipeFor(f *formatState, cl uint32, continuous bool, mode blendMode) id {
-	if mode == blendNone && f.format == pixelFormatRGBA16Float {
+	if mode == blendNone && r.coresBlend(f.format) {
 		mode = blendOver // see makePipelines
 	}
 	general := f.pipeline
@@ -223,7 +226,7 @@ func (r *Renderer) pipeFor(f *formatState, cl uint32, continuous bool, mode blen
 	case blendNone:
 		general = f.opaquePipe
 	}
-	if !specializable(f.format, cl, mode) {
+	if !r.specializable(f.format, cl, mode) {
 		return general
 	}
 	k := pipeKey{f.format, cl, continuous, mode}

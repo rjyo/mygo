@@ -5286,7 +5286,11 @@ either.
     Waiting for a drawable remains separate from waiting for an instance
     buffer, so offscreen encode timings do not establish presentation latency.
     Opaque fill cores use an unblended pipeline in BGRA8; float16 keeps
-    blending to preserve its interpolation rounding. Fragment functions are
+    blending to preserve its interpolation rounding, and GPUs outside the
+    Mac2 family keep to the blended one: one such GPU, an Intel Haswell
+    whose driver OpenCore Legacy Patcher backported, hung in the unblended
+    pipeline (#1566), and blending them costs only that GPU's tile-based
+    win of writing without blending. Fragment functions are
     specialized by batch class and continuous corners, with general shaders
     as an identical fallback. Runs of small batches of different classes
     (each covering at most 128×128 pixels, as a box's shadow then its
@@ -5296,7 +5300,12 @@ either.
     cached per device, outside the frame path. Renderer release stops and
     joins that worker before releasing its shader library. Float16 shadows
     stay general, and fills with fractional opacity avoid the plain class,
-    because specialization otherwise changes rounding. Function constant
+    because specialization otherwise changes rounding. GPUs outside
+    Metal's Mac2 family (`supportsFamily:`), as Intel's Haswell, draw every
+    batch with the general pipeline, compiling and warming none, and keep
+    their batches together: one such GPU, on a driver backported by
+    OpenCore Legacy Patcher, hung while specialized pipelines compiled
+    (#1566). Function constant
     indices 0 through 7 belong to the renderer; effects start their own at 8.
     Two seconds after the last frame, as the
     driver frees its own memory of frames, a timer shrinks the drawables,
