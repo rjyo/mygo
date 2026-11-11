@@ -474,7 +474,12 @@ On Linux tray icons use AppIndicator, which needs
 listener answers activation (with a release of the library that has the
 `activate` signal; older ones report no clicks), which GNOME's AppIndicator extension sends on
 a double click and which opens the menu on a single one after the double
-click time. `NewTray` returns an error without the library.
+click time. `NewTray` returns an error without the library. Template tray
+icons are white while the desktop prefers dark, with their alpha kept,
+and redraw when the settings portal's color scheme changes. `Tray.Dark`
+reads that desktop preference, independent of `Theme.SetSource`; without
+a portal it returns false. AppIndicator cannot report the panel's own
+theme, which can differ from the desktop's.
 
 Apps that live in the menu bar usually drop their Dock icon on macOS:
 

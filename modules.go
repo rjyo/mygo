@@ -795,7 +795,8 @@ type TrayOptions struct {
 	// Icon is a PNG image, ideally 16x16 points (32x32 pixels for Retina).
 	Icon []byte
 	// IconIsTemplate lets macOS tint a black-and-transparent icon to match
-	// the menu bar; Windows shows it white on a dark taskbar.
+	// the menu bar; Windows shows it white on a dark taskbar, and Linux
+	// while the desktop prefers dark.
 	IconIsTemplate bool
 	// Title is shown next to the icon (macOS).
 	Title   string
@@ -950,8 +951,9 @@ func (t *Tray) OnRightClick(fn func()) (off func()) { return t.onRight.add(fn, f
 // Dark reports whether the bar the icon shows on is dark: the macOS menu
 // bar, as AppKit tints its items (by the system's appearance, or the
 // wallpaper under a translucent menu bar), or the Windows taskbar, in
-// the system's mode, which may differ from the apps'. It is false on
-// Linux, where panels draw their icon themes their own way.
+// the system's mode, which may differ from the apps'. On Linux, where
+// AppIndicator tells nothing of the panel, it is the desktop's color
+// scheme (the settings portal's color-scheme), false without a portal.
 //
 // A template icon (TrayOptions.IconIsTemplate) follows the bar by itself:
 // Dark is for an icon in color, as one drawing its measures in theirs,
