@@ -6,10 +6,12 @@ import * as React from "react"
 
 import { GopherRocket } from "@/components/gopher-rocket"
 import { InstallCommand } from "@/components/install-command"
+import { SponsorBanner } from "@/components/sponsor-banner"
 import { buttonVariants } from "@/components/ui/button"
 import { getHome } from "@/lib/home"
 import { site } from "@/lib/site"
 import { cn } from "@/lib/utils"
+import { sponsors } from "@/sponsors"
 
 export const Route = createFileRoute("/")({
   loader: () => getHome(),
@@ -107,6 +109,22 @@ function Home() {
           </div>
         ))}
       </dl>
+
+      <section className="border-t px-4 py-12 sm:px-10">
+        <h2 className="label">Sponsors</h2>
+        <ul className="mt-6 grid gap-6">
+          {sponsors.map((sponsor) => (
+            <li key={sponsor.url}>
+              <SponsorBanner sponsor={sponsor} />
+            </li>
+          ))}
+        </ul>
+        <p className="mt-6 text-sm">
+          <Link to="/sponsors" className="font-medium underline decoration-gopher/45 underline-offset-[5px] hover:decoration-gopher">
+            Become a sponsor
+          </Link>
+        </p>
+      </section>
 
       <div className="border-t bg-code">
         <div role="tablist" aria-label="Kind of window" className="flex border-b">

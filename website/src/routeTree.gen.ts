@@ -15,6 +15,7 @@ import { Route as BenchmarksRouteImport } from './routes/benchmarks'
 import { Route as DocsRouteRouteImport } from './routes/docs/route'
 import { Route as MeasuresRouteImport } from './routes/measures'
 import { Route as ShowcaseRouteImport } from './routes/showcase'
+import { Route as SponsorsRouteImport } from './routes/sponsors'
 import { Route as DocsIndexRouteImport } from './routes/docs/index'
 import { Route as DocsSplatRouteImport } from './routes/docs/$'
 import { Route as DocsSearchDotjsonRouteImport } from './routes/docs/search[.]json'
@@ -49,6 +50,11 @@ const ShowcaseRoute = ShowcaseRouteImport.update({
   path: '/showcase',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SponsorsRoute = SponsorsRouteImport.update({
+  id: '/sponsors',
+  path: '/sponsors',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DocsIndexRoute = DocsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -72,6 +78,7 @@ export interface FileRoutesByFullPath {
   '/benchmarks': typeof BenchmarksRoute
   '/measures': typeof MeasuresRoute
   '/showcase': typeof ShowcaseRoute
+  '/sponsors': typeof SponsorsRoute
   '/docs/$': typeof DocsSplatRoute
   '/docs/search.json': typeof DocsSearchDotjsonRoute
   '/docs/': typeof DocsIndexRoute
@@ -82,6 +89,7 @@ export interface FileRoutesByTo {
   '/benchmarks': typeof BenchmarksRoute
   '/measures': typeof MeasuresRoute
   '/showcase': typeof ShowcaseRoute
+  '/sponsors': typeof SponsorsRoute
   '/docs/$': typeof DocsSplatRoute
   '/docs/search.json': typeof DocsSearchDotjsonRoute
   '/docs': typeof DocsIndexRoute
@@ -94,6 +102,7 @@ export interface FileRoutesById {
   '/benchmarks': typeof BenchmarksRoute
   '/measures': typeof MeasuresRoute
   '/showcase': typeof ShowcaseRoute
+  '/sponsors': typeof SponsorsRoute
   '/docs/$': typeof DocsSplatRoute
   '/docs/search.json': typeof DocsSearchDotjsonRoute
   '/docs/': typeof DocsIndexRoute
@@ -107,6 +116,7 @@ export interface FileRouteTypes {
     | '/benchmarks'
     | '/measures'
     | '/showcase'
+    | '/sponsors'
     | '/docs/$'
     | '/docs/search.json'
     | '/docs/'
@@ -117,6 +127,7 @@ export interface FileRouteTypes {
     | '/benchmarks'
     | '/measures'
     | '/showcase'
+    | '/sponsors'
     | '/docs/$'
     | '/docs/search.json'
     | '/docs'
@@ -128,6 +139,7 @@ export interface FileRouteTypes {
     | '/benchmarks'
     | '/measures'
     | '/showcase'
+    | '/sponsors'
     | '/docs/$'
     | '/docs/search.json'
     | '/docs/'
@@ -140,6 +152,7 @@ export interface RootRouteChildren {
   BenchmarksRoute: typeof BenchmarksRoute
   MeasuresRoute: typeof MeasuresRoute
   ShowcaseRoute: typeof ShowcaseRoute
+  SponsorsRoute: typeof SponsorsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -184,6 +197,13 @@ declare module '@tanstack/react-router' {
       path: '/showcase'
       fullPath: '/showcase'
       preLoaderRoute: typeof ShowcaseRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sponsors': {
+      id: '/sponsors'
+      path: '/sponsors'
+      fullPath: '/sponsors'
+      preLoaderRoute: typeof SponsorsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/docs/': {
@@ -233,6 +253,7 @@ const rootRouteChildren: RootRouteChildren = {
   BenchmarksRoute: BenchmarksRoute,
   MeasuresRoute: MeasuresRoute,
   ShowcaseRoute: ShowcaseRoute,
+  SponsorsRoute: SponsorsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

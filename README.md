@@ -15,6 +15,10 @@ Sponsored by:
   </a>
 </p>
 
+<p align="center">
+  <a href="https://mygo.egoist.dev/sponsors">Become a sponsor</a>
+</p>
+
 ---
 
 Each MyGo window shows one of two kinds of interface, and one app, or one
