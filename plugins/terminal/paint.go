@@ -1,9 +1,13 @@
 package terminal
 
 import (
+	"bytes"
+	"encoding/binary"
+	"hash/maphash"
 	"math"
 	"slices"
 	"time"
+	"unicode/utf8"
 
 	"github.com/egoist/mygo/plugins/terminal/internal/vt"
 	"github.com/egoist/mygo/ui"
@@ -38,6 +42,14 @@ type rowCache struct {
 	// filled tells that every cell has a background of its own, other
 	// than the default, from which PaddingExtend extends.
 	filled bool
+	// key is what the row was made from (rowKey), and hash its hash.
+	key  []byte
+	hash uint64
+}
+
+// clear empties the row, keeping its slices for the next.
+func (l *rowCache) clear() {
+	*l = rowCache{bgs: l.bgs[:0], runs: l.runs[:0], decos: l.decos[:0], boxes: l.boxes[:0], wide: l.wide[:0], holders: l.holders[:0], key: l.key[:0]}
 }
 
 type bgSpan struct {
@@ -153,22 +165,152 @@ func (v *view) paint(p *ui.Painter, r ui.Rect) {
 		rs.EndUpdate()
 	}
 	colors := rs.Colors()
-	full := rs.Dirty() == vt.Full || colors != v.colors || contrast != v.contrast
-	v.colors, v.contrast, v.cursor = colors, contrast, rs.Cursor()
 	cols, rows := rs.Size()
-	if len(v.lines) != rows {
-		v.lines = append(v.lines[:0], make([]rowCache, rows)...)
-		full = true
+	// No row of the last frame is taken when the colors or the number
+	// of rows changed: every row is made again.
+	prev := v.lines
+	if colors != v.colors || contrast != v.contrast || len(prev) != rows {
+		prev = nil
 	}
-	rs.Rows()
-	for y := 0; y < rows && rs.NextRow(); y++ {
-		line := &v.lines[y]
-		if full || !line.ok || rs.RowDirty() {
-			v.buildRow(line, rs, cols)
-		}
-	}
+	all := prev == nil || rs.Dirty() == vt.Full
+	v.colors, v.contrast, v.cursor = colors, contrast, rs.Cursor()
+	v.updateRows(rs, prev, all, cols, rows)
 	rs.Clean()
 	v.draw(p, r)
+}
+
+// updateRows makes the rows of the frame from the render state. A row the
+// render state did not mark as changed keeps its place. A row it marked
+// takes a row of the last frame, prev, made from the same cells, as a
+// row that scrolled up does, and only a row that shows something new is
+// made again. all tells that any row may have changed, as when the screen
+// scrolled, which marks every row.
+//
+// The rows of the frame go into v.spare's places, which become v.lines,
+// and prev's become v.spare. A row moves by swapping places with the row
+// it replaces, so that each row's slices are its own and the next frame
+// reuses them.
+func (v *view) updateRows(rs *vt.RenderState, prev []rowCache, all bool, cols, rows int) {
+	next := v.spare
+	if cap(next) < rows {
+		next = make([]rowCache, rows)
+	}
+	next = next[:rows]
+	v.taken = append(v.taken[:0], make([]bool, len(prev))...)
+	take := func(line *rowCache, j int) {
+		*line, prev[j] = prev[j], *line
+		v.taken[j] = true
+	}
+	y := 0
+	for rs.Rows(); y < rows && rs.NextRow(); y++ {
+		line := &next[y]
+		// A row the render state left as it was keeps its place, unless a
+		// row above showing the same took it: that row's slot then holds
+		// one from an older frame.
+		if !all && prev[y].ok && !v.taken[y] && !rs.RowDirty() {
+			take(line, y)
+			continue
+		}
+		cells := rs.RowCells()
+		v.key = v.rowKey(v.key[:0], rs, cells, cols)
+		h := maphash.Bytes(rowSeed, v.key)
+		if j := v.sameRow(prev, y, h, v.key); j >= 0 {
+			take(line, j)
+			continue
+		}
+		v.buildRow(line, rs, cells, cols)
+		line.key, line.hash = append(line.key[:0], v.key...), h
+	}
+	for ; y < rows; y++ {
+		next[y].clear()
+	}
+	v.lines, v.spare = next, v.lines
+}
+
+// rowSeed seeds the hashes of rows' keys.
+var rowSeed = maphash.MakeSeed()
+
+// sameRow returns the index of a row of prev not taken yet made from key,
+// whose hash is h, trying the one at y first; or -1.
+func (v *view) sameRow(prev []rowCache, y int, h uint64, key []byte) int {
+	same := func(j int) bool {
+		l := &prev[j]
+		return !v.taken[j] && l.ok && l.hash == h && bytes.Equal(l.key, key)
+	}
+	if y < len(prev) && same(y) {
+		return y
+	}
+	for j := range prev {
+		if same(j) {
+			return j
+		}
+	}
+	return -1
+}
+
+// rowKey appends to k what buildRow makes the render state's current row
+// from: the cells of its columns, their styles, graphemes and
+// backgrounds, and its selection. The ids of styles are the row's page's
+// own: each style is written in full where it first appears, and the
+// cells after it refer to it by its place among the row's styles. The
+// empty cells that end the row are only counted.
+func (v *view) rowKey(k []byte, rs *vt.RenderState, cells []vt.Cell, cols int) []byte {
+	u32 := binary.LittleEndian.AppendUint32
+	cells = cells[:min(len(cells), cols)]
+	n := len(cells)
+	for len(cells) > 0 && cells[len(cells)-1] == (vt.Cell{}) {
+		cells = cells[:len(cells)-1]
+	}
+	a, b, sel := rs.RowSelection()
+	k = slices.Grow(k, 17+11*len(cells))
+	k = u32(k, uint32(cols))
+	k = u32(k, uint32(n))
+	k = u32(k, uint32(a))
+	k = u32(k, uint32(b))
+	k = append(k, bit(sel))
+	ids := v.keyStyles[:0]
+	for x, c := range cells {
+		k = u32(k, uint32(c.Codepoint))
+		k = append(k, byte(c.Wide), bit(c.Grapheme)|bit(c.HasBackground)<<1|bit(c.Palette)<<2, c.Background.R, c.Background.G, c.Background.B)
+		// The style's place among the row's, from 1, or 0 for the
+		// default, and the style itself where it first appears.
+		n := 0
+		if c.Style != 0 {
+			n = slices.Index(ids, c.Style) + 1
+		}
+		if c.Style != 0 && n == 0 {
+			ids = append(ids, c.Style)
+			k = binary.LittleEndian.AppendUint16(k, uint16(len(ids)))
+			k = appendStyle(k, rs.CellStyle(x))
+		} else {
+			k = binary.LittleEndian.AppendUint16(k, uint16(n))
+		}
+		if c.Grapheme {
+			v.graphemes = rs.CellGraphemes(x, v.graphemes[:0])
+			k = u32(k, uint32(len(v.graphemes)))
+			for _, r := range v.graphemes {
+				k = u32(k, uint32(r))
+			}
+		}
+	}
+	v.keyStyles = ids
+	return k
+}
+
+// appendStyle appends a style to a row's key.
+func appendStyle(k []byte, s vt.Style) []byte {
+	for _, c := range [...]vt.Color{s.FG, s.BG, s.UnderlineColor} {
+		k = append(k, c.Kind, c.Index, c.RGB.R, c.RGB.G, c.RGB.B)
+	}
+	k = append(k, bit(s.Bold)|bit(s.Italic)<<1|bit(s.Faint)<<2|bit(s.Blink)<<3|bit(s.Inverse)<<4|bit(s.Invisible)<<5|bit(s.Strikethrough)<<6|bit(s.Overline)<<7)
+	return binary.LittleEndian.AppendUint32(k, uint32(s.Underline))
+}
+
+func bit(b bool) byte {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 // resolved is a cell's style with its colors resolved.
@@ -269,10 +411,11 @@ func contrast(a, b float32) float32 {
 	return (a + 0.05) / (b + 0.05)
 }
 
-// buildRow makes the cache of the render state's current row.
-func (v *view) buildRow(line *rowCache, rs *vt.RenderState, cols int) {
-	*line = rowCache{ok: true, bgs: line.bgs[:0], runs: line.runs[:0], decos: line.decos[:0], boxes: line.boxes[:0], wide: line.wide[:0], holders: line.holders[:0], filled: true}
-	cells := rs.RowCells()
+// buildRow makes the cache of the render state's current row, whose
+// cells RowCells returned.
+func (v *view) buildRow(line *rowCache, rs *vt.RenderState, cells []vt.Cell, cols int) {
+	line.clear()
+	line.ok, line.filled = true, true
 	line.selA, line.selB, line.sel = rs.RowSelection()
 	def := resolved{fg: color(v.colors.Foreground), bg: color(v.colors.Background)}
 	def.shapeFg = def.fg
@@ -426,9 +569,9 @@ func (v *view) shapeRun(line *rowCache, text []rune, cols []int16, widths []int8
 	if len(text) == 0 {
 		return
 	}
-	shaped := v.shape(string(text), variant, 1)
+	shaped := v.shape(text, variant, 1)
 	cw, fw := float32(v.cellW)/v.scale, float32(v.fitW)/v.scale
-	out := glyphRun{glyphs: make([]ui.Glyph, 0, len(shaped)), cols: make([]int16, 0, len(shaped)), c: fg}
+	out := line.nextRun(fg, 0)
 	// The glyphs of a cell, or of the cells a ligature spans, keep their
 	// places relative to each other and are centered in the cells, as the
 	// glyphs of fallback fonts, wider or narrower than a cell, are. Those
@@ -463,7 +606,7 @@ func (v *view) shapeRun(line *rowCache, text []rune, cols []int16, widths []int8
 		if f := fit / (x1 - x0); f < 0.95 && x1 > x0 {
 			// Too wide: the same text, smaller.
 			f = max(f, 0.5)
-			small := v.shape(string(text[first:last+1]), variant, f)
+			small := v.shape(text[first:last+1], variant, f)
 			if len(small) > 0 {
 				group, dy = small, -(1-f)*mid
 				x0, x1 = small[0].X, small[0].X+small[0].Advance
@@ -481,7 +624,7 @@ func (v *view) shapeRun(line *rowCache, text []rune, cols []int16, widths []int8
 			if len(out.glyphs) > 0 {
 				line.runs = append(line.runs, out)
 			}
-			out = glyphRun{c: fg, dy: dy}
+			out = line.nextRun(fg, dy)
 		}
 		for _, gl := range group {
 			gl.X = cellX + off + (gl.X - x0)
@@ -493,19 +636,41 @@ func (v *view) shapeRun(line *rowCache, text []rune, cols []int16, widths []int8
 	line.runs = append(line.runs, out)
 }
 
+// nextRun returns an empty run of glyphs to append to the row next, with
+// the slices of the run that was there when the row was made before.
+func (l *rowCache) nextRun(c ui.Color, dy float32) glyphRun {
+	r := glyphRun{c: c, dy: dy}
+	if n := len(l.runs); n < cap(l.runs) {
+		old := l.runs[:n+1][n]
+		r.glyphs, r.cols = old.glyphs[:0], old.cols[:0]
+	}
+	return r
+}
+
 // shape shapes text in a variant of the font, at a fraction of its size,
-// from the cache.
-func (v *view) shape(text string, variant int, scale float32) []ui.Glyph {
-	k := shapeKey{text, variant, scale}
+// from the cache. The cache's key is the variant, the fraction and the
+// text in UTF-8, written in v.shapeKey: text shaped before costs no
+// string.
+func (v *view) shape(text []rune, variant int, scale float32) []ui.Glyph {
+	k := append(v.shapeKey[:0], byte(variant))
+	k = binary.LittleEndian.AppendUint32(k, math.Float32bits(scale))
+	for _, r := range text {
+		k = utf8.AppendRune(k, r)
+	}
+	v.shapeKey = k
 	if g, ok := v.shaped.get(k); ok {
 		return g
 	}
+	key := string(k)
 	f := v.fonts[variant&3]
 	f.Size *= scale
-	g := ui.Shape(text, f)
-	v.shaped.put(k, g)
+	g := ui.Shape(key[keyText:], f)
+	v.shaped.put(key, g)
 	return g
 }
+
+// keyText is where the text starts in a key of the cache of shaped text.
+const keyText = 5
 
 // draw draws the rows and the cursor.
 func (v *view) draw(p *ui.Painter, r ui.Rect) {
@@ -859,18 +1024,12 @@ func bar(sb vt.Scrollbar, box ui.Rect) ui.Scrollbar {
 // lru caches shaped text.
 type lru struct {
 	cap  int
-	m    map[shapeKey]*lruEntry
+	m    map[string]*lruEntry
 	head lruEntry // a ring of the entries, most recent first
 }
 
-type shapeKey struct {
-	text    string
-	variant int
-	scale   float32
-}
-
 type lruEntry struct {
-	k          shapeKey
+	k          string
 	g          []ui.Glyph
 	prev, next *lruEntry
 }
@@ -881,12 +1040,13 @@ func (c *lru) init(n int) {
 }
 
 func (c *lru) clear() {
-	c.m = map[shapeKey]*lruEntry{}
+	c.m = map[string]*lruEntry{}
 	c.head.prev, c.head.next = &c.head, &c.head
 }
 
-func (c *lru) get(k shapeKey) ([]ui.Glyph, bool) {
-	e := c.m[k]
+// get returns the glyphs of the key k, written in bytes.
+func (c *lru) get(k []byte) ([]ui.Glyph, bool) {
+	e := c.m[string(k)]
 	if e == nil {
 		return nil, false
 	}
@@ -895,7 +1055,7 @@ func (c *lru) get(k shapeKey) ([]ui.Glyph, bool) {
 	return e.g, true
 }
 
-func (c *lru) put(k shapeKey, g []ui.Glyph) {
+func (c *lru) put(k string, g []ui.Glyph) {
 	if len(c.m) >= c.cap {
 		last := c.head.prev
 		c.unlink(last)

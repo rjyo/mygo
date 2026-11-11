@@ -171,6 +171,17 @@ type view struct {
 	scrollbar vt.Scrollbar
 	lines     []rowCache
 	shaped    lru
+	// spare holds the rows of the frame before, whose slices the next
+	// frame's rows take (updateRows); taken marks the rows of the last
+	// frame the next has taken, and key, keyStyles and graphemes hold a
+	// row's key as it is written (rowKey).
+	spare     []rowCache
+	taken     []bool
+	key       []byte
+	keyStyles []uint16
+	graphemes []rune
+	// shapeKey holds the key of text to shape as it is written (shape).
+	shapeKey []byte
 	// images are the placements of images that show, and bitmaps their
 	// images' (readImages).
 	images  []shownImage
