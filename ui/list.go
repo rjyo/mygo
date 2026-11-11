@@ -74,8 +74,10 @@ type ListState struct {
 	// choice follows its item as rows come and go, and becomes -1 when the
 	// item is no longer among the rows: the list writes that as it builds,
 	// so what the app builds after the list in the same pass reads -1. An
-	// app that shows another set of rows in the same list can start it
-	// afresh (list = ListState{}), which forgets the item chosen before.
+	// app that chooses another item at the row the choice had, as rows
+	// change, chooses it with Choose. An app that shows another set of rows
+	// in the same list can start it afresh (list = ListState{}), which
+	// forgets the item chosen before.
 	Selected *int
 	// Selection, when set, lets the user choose several rows, which it
 	// holds by their keys: a click chooses one, Cmd-click (Ctrl-click on
@@ -342,6 +344,22 @@ func (s *ListState) ScrollIntoView(row int) {
 func (s *ListState) ScrollToEnd() {
 	s.req = listRequest{set: true, end: true}
 	s.scrolled = true
+}
+
+// Choose chooses row, as setting *Selected does, -1 for none, and tells
+// the list that the app chose it: with a Key, the list otherwise takes
+// *Selected left at the row it chose last for its item staying chosen,
+// and moves the choice with that item as rows come above it. Choose the
+// row of another item that lands there, as a new file sorted above the
+// one chosen, then chosen, and the choice stays with the new item. Call
+// it from the view, or as the rows change. It does nothing without
+// Selected.
+func (s *ListState) Choose(row int) {
+	if s.Selected == nil {
+		return
+	}
+	*s.Selected = row
+	s.selKey = nil
 }
 
 // HoldPlace keeps the list where it is in the next layout rather than
