@@ -17,7 +17,8 @@ import (
 type piece struct {
 	link  int
 	spans []ui.Span
-	// dest is where a mention or a reference goes (Options.Resolve).
+	// dest is where a mention, a reference (Options.Resolve) or code
+	// (Options.CodeLink) goes.
 	dest string
 }
 
@@ -46,12 +47,13 @@ type para struct {
 	objects []mathObject
 	runes   int
 	fading  bool // its spans fade in: build them anew next frame
-	// refs are the inlines of its mentions and references, and resolved
-	// where each went, "" for those left text, as Options.Resolve, when
-	// withResolve, answered: it builds anew when it answers otherwise.
-	refs        []int
-	resolved    []string
-	withResolve bool
+	// refs are the inlines of its mentions, references and code, and
+	// resolved where each went, "" for those left text, as Options.Resolve
+	// and CodeLink, which resolvers says were set, answered: it builds anew
+	// when they answer otherwise.
+	refs      []int
+	resolved  []string
+	resolvers uint8
 	// width is the width of its text on one line, once measured.
 	width    float32
 	measured bool
@@ -90,13 +92,15 @@ type spanBuilder struct {
 	math func(tex string, size float32) (InlineObject, bool)
 	// linkIcon makes the objects at the start of links (Options.LinkIcon).
 	linkIcon func(dest string, size float32) (InlineObject, bool)
-	// resolve makes mentions and references links (Options.Resolve).
-	resolve func(in parser.Inline) (string, bool)
+	// resolve makes mentions, references and code links (Options.Resolve
+	// and CodeLink), and resolvers says which of those are set.
+	resolve   func(in parser.Inline) (string, bool)
+	resolvers uint8
 }
 
 // build makes the paragraph of block i, of base style s.
 func (sb *spanBuilder) build(p *para, base spanStyle) {
-	*p = para{pieces: p.pieces[:0], marks: p.marks[:0], refs: p.refs[:0], resolved: p.resolved[:0], withResolve: sb.resolve != nil}
+	*p = para{pieces: p.pieces[:0], marks: p.marks[:0], refs: p.refs[:0], resolved: p.resolved[:0], resolvers: sb.resolvers}
 	sb.p = p
 	sb.in = sb.d.Inlines(sb.block)
 	sb.html = sb.html[:0]
@@ -316,7 +320,22 @@ func (sb *spanBuilder) inlines(from, to int, s spanStyle) {
 			if z-a == len(n.Text)+2 && sb.d.Source()[a] == ' ' {
 				a++
 			}
-			sb.add(n.Text, a, min(a+len(n.Text), z), z-a == len(n.Text), cs, link)
+			dest := ""
+			if sb.resolve != nil && sb.resolvers&2 != 0 {
+				if d, ok := sb.resolve(*n); ok {
+					dest = d
+				}
+				sb.p.refs = append(sb.p.refs, k)
+				sb.p.resolved = append(sb.p.resolved, dest)
+			}
+			if dest == "" || s.inLink {
+				sb.add(n.Text, a, min(a+len(n.Text), z), z-a == len(n.Text), cs, link)
+				continue
+			}
+			// A link of its own that keeps the code's look.
+			cs.inLink = true
+			sb.add(n.Text, a, min(a+len(n.Text), z), z-a == len(n.Text), cs, k)
+			sb.cur.dest = dest
 		case parser.Emphasis:
 			cs := s
 			cs.italic = true
