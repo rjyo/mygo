@@ -332,7 +332,7 @@ func (p *Painter) element(e *node) {
 		e.dropGroupLayer()
 	}
 	saved := p.opacity
-	if e.flags&flagDisabled != 0 && !e.undimmed {
+	if e.flags&flagDisabled != 0 && !e.undimmed && !p.Theme().DisableAutoDimming {
 		p.opacity *= 0.5
 	}
 	// In its layer (paintEffect, paintGroup), the layer takes its fade.

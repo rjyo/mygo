@@ -175,7 +175,7 @@ func (e *node) spanStyle() (Span, float32) {
 	switch {
 	case e.flags&flagInvisible != 0:
 		alpha = 0
-	case e.flags&flagDisabled != 0 && !e.undimmed:
+	case e.flags&flagDisabled != 0 && !e.undimmed && !e.theme().DisableAutoDimming:
 		alpha = 0.5
 	}
 	if e.opacitySet {
