@@ -108,6 +108,16 @@ func (p *PTY) ClearScreen() error { return nil }
 // Pid returns the process's ID.
 func (p *PTY) Pid() int { return p.cmd.Process.Pid }
 
+// Foreground returns the ID of the process group in the foreground of
+// the terminal, 0 when it can't tell.
+func (p *PTY) Foreground() int {
+	var pgrp int32
+	if ioctl(p.master, syscall.TIOCGPGRP, unsafe.Pointer(&pgrp)) != nil {
+		return 0
+	}
+	return int(pgrp)
+}
+
 // Close closes the terminal, which hangs up the processes that have it:
 // they get SIGHUP. It does not wait for them to exit.
 func (p *PTY) Close() error { return p.master.Close() }

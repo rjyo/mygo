@@ -554,6 +554,9 @@ type Terminal struct {
 	proc   *pty.PTY
 	launch *pty.Options
 	timer  *time.Timer // starts the program when no view does
+	// fg is the process group last seen in the foreground of proc's
+	// terminal (see resetLeftModes).
+	fg int
 
 	srcOnce sync.Once
 	srcErr  error
@@ -847,6 +850,7 @@ func (t *Terminal) write(p []byte) {
 		if t.opts.ShellIntegration {
 			t.prompt.feed(p)
 		}
+		t.resetLeftModes()
 		t.term.Write(p)
 		ev, t.events = t.events, events{}
 		if ev.title {
@@ -856,6 +860,31 @@ func (t *Terminal) write(p []byte) {
 	t.mu.Unlock()
 	t.fire(ev, title)
 	t.redraw()
+}
+
+// leftModes turns off what a program asks of the terminal for itself, as
+// a full-screen one does: reports of the mouse, of focus and of keys in
+// the kitty keyboard protocol or with modifyOtherKeys, and a hidden
+// cursor. The shell's own bracketed pastes stay.
+const leftModes = "\x1b[?9;1000;1002;1003;1004;1005;1006;1015;1016l\x1b[=0;1u\x1b[>4;0m\x1b[?25h"
+
+// resetLeftModes turns off leftModes when the program's shell takes its
+// terminal back from a job, which a program killed (or crashed) leaves on:
+// otherwise the shell gets the mouse's and keys' reports as text. A job
+// that ends well turned them off already. It runs with t.mu held, before
+// the output that follows, so that the shell sets what it wants again.
+func (t *Terminal) resetLeftModes() {
+	if t.proc == nil {
+		return
+	}
+	fg := t.proc.Foreground()
+	if fg == 0 {
+		return
+	}
+	if fg != t.fg && fg == t.proc.Pid() && t.fg != 0 {
+		t.term.Write([]byte(leftModes))
+	}
+	t.fg = fg
 }
 
 func (t *Terminal) fire(ev events, title string) {

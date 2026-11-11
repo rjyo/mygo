@@ -205,6 +205,9 @@ var windowsBuild = sync.OnceValue(func() uint32 {
 // Pid returns the process's ID.
 func (p *PTY) Pid() int { return p.pid }
 
+// Foreground returns 0: a console has no process groups in its foreground.
+func (p *PTY) Foreground() int { return 0 }
+
 // Close closes the console, which ends the processes attached to it. Read
 // returns io.EOF once it wrote what it had.
 func (p *PTY) Close() error {
