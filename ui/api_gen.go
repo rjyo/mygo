@@ -5171,14 +5171,20 @@ func (_handle Element) FixedLineHeight(v float32) Element {
 // as Tab does and the web's focus() does; ScrollIntoView lines it up
 // otherwise. While a pointer button is held it scrolls nothing: what a
 // press focuses, as the line a grip moves, is under the pointer.
-func (_handle Element) Focus() Element {
+//
+// Its options, as the web's focus() options, keep the scroll where the
+// user left it: the focus returned to a cell of a grid when a dialog
+// closes, without scrolling the grid.
+//
+//	cell.Focus(ui.FocusOptions{PreventScroll: true})
+func (_handle Element) Focus(options ...FocusOptions) Element {
 	_node := _handle.node()
 	if _node == nil {
 		return Element{}
 	}
 	_ctx := _node.c
 	_ = _ctx
-	return wrapElement(_node.Focus())
+	return wrapElement(_node.Focus(options...))
 }
 
 // FocusGroup makes the elements inside the element that take the focus one

@@ -154,3 +154,62 @@ func TestFocusUnderAPressKeepsTheScroll(t *testing.T) {
 	}
 	tt.Release(10, 180)
 }
+
+// FocusOptions' PreventScroll gives the focus without scrolling, as the
+// web's focus({ preventScroll: true }) does, also through a field that
+// gives the focus to its input; Focus without it scrolls.
+func TestFocusPreventScroll(t *testing.T) {
+	for _, field := range []bool{false, true} {
+		for _, prevent := range []bool{false, true} {
+			t.Run(fmt.Sprintf("field=%v/prevent=%v", field, prevent), func(t *testing.T) {
+				var s ui.ScrollState
+				var query string
+				ask, focused := false, false
+				tt := ui.NewTester(func(c *ui.Context) {
+					ui.Scroll(c.Key("scroll")).Height(100).Width(200).TrackScroll(&s).Children(func() {
+						ui.Box(c.Key("space")).Height(300).Width(100).Shrink(0)
+						var e ui.Element
+						if field {
+							e = ui.SearchField(c.Key("q"), &query).Width(150)
+						} else {
+							e = ui.Button(c.Key("b"), "Below")
+						}
+						if ask {
+							e.Focus(ui.FocusOptions{PreventScroll: prevent})
+							ask = false
+						}
+						focused = e.Focused()
+					})
+				}, 400, 300)
+				tt.Frame()
+				if s.Y != 0 || focused {
+					t.Fatalf("at the start: offset %v, focused %v", s.Y, focused)
+				}
+				ask = true
+				tt.Frame()
+				tt.Frame()
+				if !focused {
+					t.Error("the element did not get the focus")
+				}
+				if prevent && s.Y != 0 {
+					t.Errorf("PreventScroll scrolled to %v", s.Y)
+				}
+				if !prevent && s.Y <= 0 {
+					t.Errorf("Focus left the offset at %v, out of view", s.Y)
+				}
+			})
+		}
+	}
+}
+
+// Focus takes at most one FocusOptions.
+func TestFocusTwoOptionsPanic(t *testing.T) {
+	defer func() {
+		if r := recover(); r != "ui: Focus takes at most one FocusOptions" {
+			t.Errorf("recovered %v", r)
+		}
+	}()
+	ui.NewTester(func(c *ui.Context) {
+		ui.Box(c).Focus(ui.FocusOptions{}, ui.FocusOptions{})
+	}, 100, 100)
+}

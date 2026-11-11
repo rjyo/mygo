@@ -220,7 +220,12 @@ focus moves: calling `Focus` in every frame leaves the user's scrolling
 alone. A click focuses an element where it is, and so does `Focus` while
 a pointer button is held, as for a line that takes the focus from a press
 on its grip. To line it up otherwise, call `ScrollIntoView` with its
-options in the frame it takes the focus.
+options in the frame it takes the focus. To keep the scroll where it is,
+as the web's `focus({ preventScroll: true })`, pass `ui.FocusOptions`:
+`cell.Focus(ui.FocusOptions{PreventScroll: true})` gives the focus back to
+a cell of a grid when a dialog closes, without scrolling the grid. It holds
+through a field that gives the focus to its input. The zero options are
+those of `Focus()` without them.
 
 `TabStop(false)` makes an element focusable but out of Tab's order, as
 HTML's `tabindex="-1"`: it takes the focus from a click, from `Focus` and

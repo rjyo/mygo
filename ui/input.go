@@ -1820,9 +1820,31 @@ func (e *node) FocusWithin() bool {
 // as Tab does and the web's focus() does; ScrollIntoView lines it up
 // otherwise. While a pointer button is held it scrolls nothing: what a
 // press focuses, as the line a grip moves, is under the pointer.
-func (e *node) Focus() *node {
-	e.focus(true)
+//
+// Its options, as the web's focus() options, keep the scroll where the
+// user left it: the focus returned to a cell of a grid when a dialog
+// closes, without scrolling the grid.
+//
+//	cell.Focus(ui.FocusOptions{PreventScroll: true})
+func (e *node) Focus(options ...FocusOptions) *node {
+	if len(options) > 1 {
+		panic("ui: Focus takes at most one FocusOptions")
+	}
+	var o FocusOptions
+	if len(options) > 0 {
+		o = options[0]
+	}
+	e.focus(!o.PreventScroll)
 	return e
+}
+
+// FocusOptions say how Focus gives the focus, as the web's FocusOptions
+// do. The zero options do what Focus does without them.
+type FocusOptions struct {
+	// PreventScroll keeps the containers around the element where they
+	// are when the focus moves to it, as the web's preventScroll does,
+	// rather than scrolling them as little as shows it.
+	PreventScroll bool
 }
 
 // focus gives the element the keyboard focus, as Focus does, and scrolls

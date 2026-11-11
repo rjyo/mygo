@@ -259,7 +259,7 @@ func timeline(c *ui.Context) bool {
 }
 
 func declared(c *ui.Context) bool {
-	var focuser interface{ Focus() ui.Element }
+	var focuser interface{ AutoFocus() ui.Element }
 	focuser = ui.Text(c, "focus")
 	return focuser != nil
 }
