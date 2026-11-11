@@ -547,6 +547,32 @@ func TestListChooseAtTheSameIndex(t *testing.T) {
 	}
 }
 
+// A list moved to another window, as a tab torn off into its own, keeps
+// its ListState: the new window's first frame and pass number the old
+// one's last, which is no second List. Two Lists in one window still panic.
+func TestListStateMovesToAnotherWindow(t *testing.T) {
+	var s ListState
+	list := func(c *context) { coreList(c, &s, 3, func(i int) { coreText(c, "row").Height(20) }).Grow(1) }
+	inFirst := true
+	first := coreNewTester(func(c *context) {
+		if inFirst {
+			list(c)
+		}
+	}, 200, 200)
+	inFirst = false
+	first.Frame()
+	if _, ok := rowBox(coreNewTester(list, 200, 200), &s, 0); !ok {
+		t.Fatal("the moved list shows no row 0")
+	}
+
+	defer func() {
+		if r := recover(); r != "ui: a ListState shown by two Lists" {
+			t.Fatalf("two Lists in one window: got %v", r)
+		}
+	}()
+	coreNewTester(func(c *context) { list(c); list(c) }, 200, 400)
+}
+
 // Without Selected, the cursor is the list's own, which the user moves:
 // it follows its item as rows come above it, though the item is not
 // chosen, and is gone with it.
