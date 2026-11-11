@@ -9,6 +9,7 @@ import (
 	"image/draw"
 	"image/png"
 	"io"
+	"math"
 	"time"
 )
 
@@ -89,6 +90,9 @@ func NewAPNGDecoder(data []byte) (VideoDecoder, error) {
 			}
 			ihdr = chunk
 			w, h = int(binary.BigEndian.Uint32(chunk)), int(binary.BigEndian.Uint32(chunk[4:]))
+			if w <= 0 || h <= 0 || uint64(w)*uint64(h) > math.MaxInt/4 {
+				return nil, errors.New("ui: a PNG of an invalid size")
+			}
 		case "PLTE", "tRNS":
 			extra = append(extra, raw)
 		case "acTL":

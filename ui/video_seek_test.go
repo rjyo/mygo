@@ -275,6 +275,46 @@ func TestAPNGDecoderFrames(t *testing.T) {
 	}
 }
 
+// TestAPNGDecoderDimensions checks that a PNG whose picture is empty or
+// too large for its pixel buffer returns an error instead of panicking.
+func TestAPNGDecoderDimensions(t *testing.T) {
+	var plain bytes.Buffer
+	if err := png.Encode(&plain, image.NewRGBA(image.Rect(0, 0, 1, 1))); err != nil {
+		t.Fatal(err)
+	}
+	for _, src := range []struct {
+		name string
+		data []byte
+	}{
+		{"plain", plain.Bytes()},
+		{"animated", testAPNG(t, 1, 1, false, apngFrameSpec{w: 1, h: 1})},
+	} {
+		for _, size := range []struct {
+			name string
+			w, h uint32
+		}{
+			{"zero width", 0, 1},
+			{"zero height", 1, 0},
+			{"pixel buffer overflow", 0x7fffffff, 0x7fffffff},
+			{"largest dimensions", 0xffffffff, 0xffffffff},
+		} {
+			t.Run(src.name+"/"+size.name, func(t *testing.T) {
+				// Replace only IHDR, including its checksum; keep the frames.
+				hdr := append([]byte(nil), src.data[16:29]...)
+				binary.BigEndian.PutUint32(hdr, size.w)
+				binary.BigEndian.PutUint32(hdr[4:], size.h)
+				var b bytes.Buffer
+				b.Write(pngSignature)
+				writeChunk(&b, "IHDR", hdr)
+				b.Write(src.data[33:])
+				if _, err := NewAPNGDecoder(b.Bytes()); err == nil {
+					t.Fatal("a PNG of an invalid size decoded")
+				}
+			})
+		}
+	}
+}
+
 // blend is src, premultiplied, over dst.
 func blend(dst, src color.RGBA) color.RGBA {
 	k := 255 - uint32(src.A)
