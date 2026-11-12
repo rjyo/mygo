@@ -97,6 +97,36 @@ func TestRepaintLiveBuilds(t *testing.T) {
 	}
 }
 
+// A repaint while a frame is held out of sight (holdFrame) asks for
+// none: the frame built as the window shows paints it.
+func TestRepaintWhileHeld(t *testing.T) {
+	at, draws := 0, 0
+	tt := newRepaintTester(liveView(&at, &draws))
+	tt.SetSize(200, 100)
+	tt.frame(0)
+	tt.h.hidden = true
+	tt.rt.surfaceFrame()
+	if !tt.rt.held {
+		t.Fatal("the frame out of sight was not held")
+	}
+	for i := range 3 {
+		tt.h.requested.Store(false)
+		tt.rt.repaint()
+		if tt.h.requested.Load() {
+			t.Fatalf("repaint %d while held asked for a frame", i)
+		}
+	}
+	tt.h.hidden = false
+	tt.rt.event(platform.SurfaceEvent{Kind: platform.SurfaceShown})
+	if !tt.h.requested.Load() {
+		t.Fatal("the window showing asked for no frame")
+	}
+	n := draws
+	if built, _ := tt.frame(0); !built || draws == n {
+		t.Fatalf("the frame as the window shows built %v, drew the live drawing %d times", built, draws-n)
+	}
+}
+
 // Services.Repaint posts one repaint until a frame takes it.
 func TestRepaintPostsOnce(t *testing.T) {
 	at, draws := 0, 0

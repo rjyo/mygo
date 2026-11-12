@@ -1375,6 +1375,8 @@ func (rt *engine) repaint() {
 	rt.repaintPosted.Store(false)
 	switch {
 	case rt.closed:
+	case rt.held:
+		// A frame waits for the window to show (holdFrame), built whole.
 	case rt.asked || rt.animating || rt.inFrame || rt.c.root == nil:
 		rt.changed()
 	case rt.redraw && rt.repaintDue.IsZero():
