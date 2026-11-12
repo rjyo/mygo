@@ -14,9 +14,11 @@ type DragRequest struct {
 	Operations                transfer.Operation
 	Session                   string
 	X, Y                      float64
-	Preview                   []byte // premultiplied BGRA, one pixel per DIP
+	Preview                   []byte // premultiplied BGRA, Scale pixels per DIP
 	Width, Height, HotX, HotY int
-	Done                      func(transfer.Result)
+	// Scale is 1, except on macOS, which displays a denser preview as is.
+	Scale float64
+	Done  func(transfer.Result)
 }
 
 // DataDragEvent is a synchronous destination query. The core resolves
