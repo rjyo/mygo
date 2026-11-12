@@ -17,6 +17,8 @@ import (
 type Terminal struct {
 	h  uintptr
 	id uintptr
+	// changes counts what can change the cells (Changes).
+	changes uint64
 	// Effects are called during Write, on its goroutine; they must not
 	// call Write.
 	effects Effects
@@ -254,11 +256,13 @@ func (t *Terminal) Write(p []byte) {
 		// A read that writes no refusal, as OSC 52's, leaves silent set;
 		// it is for that read alone.
 		t.silent = false
+		t.changes++
 	}
 }
 
 // Resize sets the size of the screen in cells, and of a cell in pixels.
 func (t *Terminal) Resize(cols, rows, cellWidth, cellHeight int) error {
+	t.changes++
 	return result(call(fnTerminalResize, t.h, uintptr(clamp16(cols)), uintptr(clamp16(rows)), uintptr(max(cellWidth, 1)), uintptr(max(cellHeight, 1))))
 }
 
@@ -280,7 +284,14 @@ func (t *Terminal) Cursor() (x, y int) {
 }
 
 // Reset resets the terminal fully (RIS).
-func (t *Terminal) Reset() { call(fnTerminalReset, t.h) }
+func (t *Terminal) Reset() {
+	t.changes++
+	call(fnTerminalReset, t.h)
+}
+
+// Changes counts the writes, resizes and resets so far: the cells, their
+// scrolling aside, are as they were while it stays the same.
+func (t *Terminal) Changes() uint64 { return t.changes }
 
 // SetColors sets the default colors, which programs may change: the
 // foreground, the background, the cursor's (nil for the text's) and the
