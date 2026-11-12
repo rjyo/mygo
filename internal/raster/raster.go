@@ -159,7 +159,7 @@ func (d *drawer) draw(dst *Image, s *scene.Scene, area image.Rectangle, bounds [
 		d.drawOps(dst, s, area, bounds, from, i, px, b)
 		b = nil
 		if fx.Effect.Backdrop {
-			d.bd.read(dst, s.BackdropOf(op.Transform.Bounds(op.Rect), fx.Blur, dst.W, dst.H))
+			d.bd.read(dst, s.EffectBackdrop(op.Transform.Bounds(op.Rect), fx, dst.W, dst.H))
 			d.bd.img.Transform = op.Transform
 			b = &d.bd.img
 		}

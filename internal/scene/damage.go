@@ -179,7 +179,7 @@ func (d *Differ) AddBackdrops(s *Scene, damage []image.Rectangle) []image.Rectan
 			if fx.Effect == nil || !fx.Effect.Backdrop {
 				continue
 			}
-			need := s.BackdropOf(op.Transform.Bounds(op.Rect), fx.Blur, s.Width, s.Height).Area.Union(d.next[i])
+			need := s.EffectBackdrop(op.Transform.Bounds(op.Rect), fx, s.Width, s.Height).Area.Union(d.next[i])
 			for _, r := range damage {
 				if r.Overlaps(need) && !need.In(r) {
 					damage = addRect(damage, need)

@@ -37,6 +37,11 @@ type Effect struct {
 	Name string
 	// Backdrop tells that the effect reads its backdrop.
 	Backdrop bool
+	// Contained tells that the effect reads only the backdrop under it,
+	// its edges extended beyond, as CSS's backdrop-filter does: what is
+	// drawn around it does not show through, so a change there, as a
+	// frame of video beside it, leaves it as it was.
+	Contained bool
 	// Metal and HLSL are the effect's shader in Metal Shading Language
 	// and HLSL, with the code compiled ahead of time from it; GLSL is its
 	// shader in GLSL 3.30 and GLSL ES 3.00, which drivers compile.
