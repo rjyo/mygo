@@ -8,6 +8,7 @@ package scene
 import (
 	"image"
 	"image/draw"
+	"math"
 	"sync/atomic"
 )
 
@@ -391,6 +392,18 @@ func (s *Scene) BackdropOf(r Rect, blur float32, w, h int) Backdrop {
 		w, h = min(w, s.Drawn.X), min(h, s.Drawn.Y)
 	}
 	return BackdropOf(r, blur, w, h)
+}
+
+// EffectBackdrop returns the backdrop the effect fx over r, its bounds in
+// pixels, reads in a frame of w×h pixels: BackdropOf, or for a Contained
+// effect only what is under r.
+func (s *Scene) EffectBackdrop(r Rect, fx *EffectOp, w, h int) Backdrop {
+	bk := s.BackdropOf(r, fx.Blur, w, h)
+	if fx.Effect != nil && fx.Effect.Contained {
+		bk.Area = bk.Area.Intersect(image.Rect(int(math.Floor(float64(r.X))), int(math.Floor(float64(r.Y))),
+			int(math.Ceil(float64(r.X+r.W))), int(math.Ceil(float64(r.Y+r.H)))))
+	}
+	return bk
 }
 
 // EachCanvas calls fn with the canvases the scene draws anew or shows,
