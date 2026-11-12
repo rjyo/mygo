@@ -183,8 +183,12 @@ func (v *view) paint(p *ui.Painter, r ui.Rect) {
 	}
 	all := prev == nil || rs.Dirty() == vt.Full
 	v.colors, v.contrast, v.cursor = colors, contrast, rs.Cursor()
-	v.updateRows(rs, prev, all, cols, rows)
+	changed := v.updateRows(rs, prev, all, cols, rows)
 	rs.Clean()
+	if changed && len(v.hover) > 0 {
+		// A frame finds the link under the pointer in what now shows.
+		v.services.Invalidate()
+	}
 	v.draw(p, r)
 }
 
@@ -193,13 +197,14 @@ func (v *view) paint(p *ui.Painter, r ui.Rect) {
 // takes a row of the last frame, prev, made from the same cells, as a
 // row that scrolled up does, and only a row that shows something new is
 // made again. all tells that any row may have changed, as when the screen
-// scrolled, which marks every row.
+// scrolled, which marks every row. It tells whether a row shows
+// something other than it did, or the same cells wrapped otherwise.
 //
 // The rows of the frame go into v.spare's places, which become v.lines,
 // and prev's become v.spare. A row moves by swapping places with the row
 // it replaces, so that each row's slices are its own and the next frame
 // reuses them.
-func (v *view) updateRows(rs *vt.RenderState, prev []rowCache, all bool, cols, rows int) {
+func (v *view) updateRows(rs *vt.RenderState, prev []rowCache, all bool, cols, rows int) (changed bool) {
 	next := v.spare
 	if cap(next) < rows {
 		next = make([]rowCache, rows)
@@ -220,6 +225,7 @@ func (v *view) updateRows(rs *vt.RenderState, prev []rowCache, all bool, cols, r
 			take(line, y)
 			continue
 		}
+		changed = true
 		cells := rs.RowCells()
 		v.key = v.rowKey(v.key[:0], rs, cells, cols)
 		h := maphash.Bytes(rowSeed, v.key)
@@ -234,6 +240,7 @@ func (v *view) updateRows(rs *vt.RenderState, prev []rowCache, all bool, cols, r
 		next[y].clear()
 	}
 	v.lines, v.spare = next, v.lines
+	return changed
 }
 
 // rowSeed seeds the hashes of rows' keys.
@@ -783,8 +790,10 @@ func (v *view) draw(p *ui.Painter, r ui.Rect) {
 		p.Clip(ui.Rect{X: b, Y: r.Y, W: r.X + r.W - b, H: r.H}, 0, func() { text(ui.Color{}) })
 	}
 	v.drawImages(p, aboveText, ox, oy)
-	if h := v.hover; h.on() && h.row < len(v.lines) {
-		v.drawDeco(p, deco{h.x0, h.x1, vt.UnderlineSingle, v.linkColor(&v.lines[h.row], h)}, ox, oy+float32(h.row)*ch, cw, ch, base)
+	for _, h := range v.hover {
+		if h.row < len(v.lines) {
+			v.drawDeco(p, deco{h.x0, h.x1, vt.UnderlineSingle, v.linkColor(&v.lines[h.row], h)}, ox, oy+float32(h.row)*ch, cw, ch, base)
+		}
 	}
 	if cur.W > 0 && !block {
 		if v.focused || v.cursor.Style != vt.CursorBlock {
