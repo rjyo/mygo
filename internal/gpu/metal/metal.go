@@ -352,8 +352,11 @@ type texture struct {
 	// chroma is the texture of the chroma of a frame of video in NV12,
 	// whose luma tex is, and cv the CVMetalTextures tex and chroma wrap,
 	// owned, for a frame in a CVPixelBuffer (see video.go).
-	chroma    id
-	cv        [2]uintptr
+	chroma id
+	cv     [2]uintptr
+	// planes are the memory tex and chroma show, for a frame of video in
+	// memory (see video.go).
+	planes    [2]plane
 	w, h      int
 	gen, ver  uint64
 	lastFrame uint64

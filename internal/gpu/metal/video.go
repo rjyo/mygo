@@ -93,22 +93,23 @@ func (r *Renderer) surfaceTexture(img *scene.Image, s *scene.Surface) id {
 		t = nil
 	}
 	if t == nil {
-		luma := r.newTexture(img.W, img.H, pixelFormatR8Unorm, usageShaderRead, s.Planes[0].Pix, s.Planes[0].Stride)
-		chroma := r.newTexture(cw, ch, pixelFormatRG8Unorm, usageShaderRead, s.Planes[1].Pix, s.Planes[1].Stride)
-		if luma == 0 || chroma == 0 {
-			release(&luma)
-			release(&chroma)
+		t = &texture{w: img.W, h: img.H}
+		var ok bool
+		t.tex, t.planes[0], ok = r.newPlaneTexture(img.W, img.H, pixelFormatR8Unorm, 1)
+		if ok {
+			t.chroma, t.planes[1], ok = r.newPlaneTexture(cw, ch, pixelFormatRG8Unorm, 2)
+		}
+		if !ok {
+			r.dropTexture(t)
 			return 0
 		}
-		t = &texture{tex: luma, chroma: chroma, w: img.W, h: img.H, ver: img.Version()}
 		r.images[img.ID()] = t
 	} else {
 		r.waitLast() // frames in flight read these textures
-		replace := sel("replaceRegion:mipmapLevel:withBytes:bytesPerRow:")
-		msgReplaceRegion(t.tex, replace, mtlRegion{W: uint(img.W), H: uint(img.H), D: 1}, 0, unsafe.Pointer(&s.Planes[0].Pix[0]), uint(s.Planes[0].Stride))
-		msgReplaceRegion(t.chroma, replace, mtlRegion{W: uint(cw), H: uint(ch), D: 1}, 0, unsafe.Pointer(&s.Planes[1].Pix[0]), uint(s.Planes[1].Stride))
-		t.ver = img.Version()
 	}
+	t.planes[0].fill(s.Planes[0].Pix, s.Planes[0].Stride)
+	t.planes[1].fill(s.Planes[1].Pix, s.Planes[1].Stride)
+	t.ver = img.Version()
 	t.lastFrame = r.frame
 	return t.tex
 }
@@ -181,6 +182,10 @@ func (r *Renderer) dropTexture(t *texture) {
 	}
 	release(&t.tex)
 	release(&t.chroma)
+	for i := range t.planes {
+		release(&t.planes[i].buf)
+		t.planes[i] = plane{}
+	}
 }
 
 // releaseHeld releases the CVMetalTextures given up while the frame of a
@@ -206,4 +211,61 @@ func (r *Renderer) releaseVideo() {
 		purego.SyscallN(cfRelease, r.video.cache)
 		r.video.cache = 0
 	}
+}
+
+// A plane is the memory a texture of a plane of video in memory shows:
+// with a GPU sharing the CPU's memory, a buffer of rows of pitch bytes, of
+// which a row of the frame fills the first n; else the texture's own,
+// which fill replaces.
+type plane struct {
+	tex, buf id
+	mem      []byte
+	pitch, n int
+	w, h     int
+}
+
+// fill copies the rows of pix, stride bytes apart, into p.
+func (p *plane) fill(pix []byte, stride int) {
+	if p.buf == 0 {
+		if len(pix) > 0 {
+			msgReplaceRegion(p.tex, sel("replaceRegion:mipmapLevel:withBytes:bytesPerRow:"), mtlRegion{W: uint(p.w), H: uint(p.h), D: 1}, 0, unsafe.Pointer(&pix[0]), uint(stride))
+		}
+		return
+	}
+	for y, o := 0, 0; o < len(p.mem) && y*stride+p.n <= len(pix); y, o = y+1, o+p.pitch {
+		copy(p.mem[o:o+p.n], pix[y*stride:])
+	}
+}
+
+// newPlaneTexture returns an owned w×h texture of a plane of video, of
+// pixels of size bytes, and the plane it shows. Each frame replaces its
+// contents: replaceRegion into a texture of the GPU's own layout has the
+// driver tile, and on Apple's GPUs compress, every frame on the CPU,
+// which cost more than the rest of showing it. Where the GPU shares the
+// CPU's memory, the texture is linear, in a buffer: a frame is a copy.
+// Elsewhere, shared textures don't exist, and frames replace the
+// texture's contents.
+func (r *Renderer) newPlaneTexture(w, h int, format uint, size int) (id, plane, bool) {
+	p := plane{n: w * size, w: w, h: h}
+	if !respondsTo(r.device, "hasUnifiedMemory") || byte(send(r.device, "hasUnifiedMemory")) == 0 {
+		p.tex = r.newTexture(w, h, format, usageShaderRead, nil, 0)
+		return p.tex, p, p.tex != 0
+	}
+	align := int(send(r.device, "minimumLinearTextureAlignmentForPixelFormat:", uintptr(format)))
+	if align <= 0 {
+		align = 256
+	}
+	p.pitch = (p.n + align - 1) / align * align
+	p.buf = send(r.device, "newBufferWithLength:options:", uintptr(p.pitch*h), 0) // shared storage
+	if p.buf == 0 {
+		return 0, plane{}, false
+	}
+	p.mem = unsafe.Slice((*byte)(ptr(send(p.buf, "contents"))), p.pitch*h)
+	desc := send(class("MTLTextureDescriptor"), "texture2DDescriptorWithPixelFormat:width:height:mipmapped:", uintptr(format), uintptr(w), uintptr(h), 0)
+	if desc != 0 {
+		send(desc, "setUsage:", usageShaderRead)
+		send(desc, "setStorageMode:", 0) // shared, as the buffer
+		p.tex = send(p.buf, "newTextureWithDescriptor:offset:bytesPerRow:", desc, 0, uintptr(p.pitch))
+	}
+	return p.tex, p, p.tex != 0
 }
