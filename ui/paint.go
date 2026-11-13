@@ -1822,6 +1822,17 @@ func (p *Painter) Clip(r Rect, radius float32, fn func()) {
 	p.clip = saved
 }
 
+// ClipRadii restricts what fn draws to r with corners of their own radii,
+// clockwise from the top left, as FillRadii and Element.Radius take them:
+// a device's screen whose corners differ.
+func (p *Painter) ClipRadii(r Rect, radii [4]float32, fn func()) {
+	saved := p.clip
+	p.pushClip(r, radii)
+	fn()
+	p.popClip()
+	p.clip = saved
+}
+
 // Transform transforms what fn draws by t around the point (ox, oy), which
 // t leaves where it is, after the painter's own transforms: it nests. A
 // view that pans and zooms, as a map or a diagram, draws its content
