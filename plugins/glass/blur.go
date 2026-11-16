@@ -26,6 +26,11 @@ type Blur struct {
 	// where the gradient is opaque, by less where it is translucent, and
 	// not at all where it is transparent. Its colors do not show.
 	Mask *ui.LinearGradient
+	// Contained blurs only what is under the element, its edges extended
+	// beyond, as CSS's backdrop-filter does, rather than what is around
+	// it too: a change around it, as video playing beside it, then
+	// redraws none of it.
+	Contained bool
 }
 
 // PaintMaterial paints the blur over box, rounded by radii.
@@ -107,7 +112,7 @@ func paintBlur(p *ui.Painter, box ui.Rect, radii [4]float32, b Blur) {
 	// The rectangle of the element, in pixels, as the painter snaps it.
 	px := scene.Rect{X: round(box.X * s), Y: round(box.Y * s)}
 	px.W, px.H = round((box.X+box.W)*s)-px.X, round((box.Y+box.H)*s)-px.Y
-	blurOps(px, radii == [4]float32{}, b.Radius*s, b.Mask, func(r scene.Rect, fx scene.EffectOp) {
+	blurOps(px, radii == [4]float32{}, b.Radius*s, b.Mask, b.Contained, func(r scene.Rect, fx scene.EffectOp) {
 		p.Effect(fx.Effect, ui.Rect{X: r.X / s, Y: r.Y / s, W: r.W / s, H: r.H / s}, radii, fx.Blur, fx.Params)
 	})
 }
@@ -116,7 +121,11 @@ func paintBlur(p *ui.Painter, box ui.Rect, radii [4]float32, b Blur) {
 // (blurLevels) of a blur of most pixels over r, in pixels, along mask: a
 // level after another, each where the blur is more than its lo when r is
 // square, which it then reads only what is under.
-func blurOps(r scene.Rect, square bool, most float32, mask *ui.LinearGradient, op func(r scene.Rect, fx scene.EffectOp)) {
+func blurOps(r scene.Rect, square bool, most float32, mask *ui.LinearGradient, contained bool, op func(r scene.Rect, fx scene.EffectOp)) {
+	fx := blurEffect
+	if contained {
+		fx = containedBlurEffect
+	}
 	if r.W <= 0 || r.H <= 0 || most <= 0 {
 		return
 	}
@@ -135,7 +144,7 @@ func blurOps(r scene.Rect, square bool, most float32, mask *ui.LinearGradient, o
 				continue
 			}
 		}
-		op(lr, scene.EffectOp{Effect: blurEffect, Blur: l.blur, Params: [5][4]float32{line, {at0, at1, l.lo, l.hi}}})
+		op(lr, scene.EffectOp{Effect: fx, Blur: l.blur, Params: [5][4]float32{line, {at0, at1, l.lo, l.hi}}})
 	}
 }
 
