@@ -1144,7 +1144,7 @@ func (b *Builder) addEffect(s *scene.Scene, op *scene.Op) {
 		}
 	}
 	if fx.Effect.Backdrop {
-		bk := s.BackdropOf(op.Transform.Bounds(op.Rect), fx.Blur, s.Width, s.Height)
+		bk := s.EffectBackdrop(op.Transform.Bounds(op.Rect), fx, s.Width, s.Height)
 		if bk.Area.Empty() {
 			return
 		}
