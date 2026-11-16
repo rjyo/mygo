@@ -31,6 +31,10 @@ type paintPart struct {
 	// from and to are where it painted the frame being painted, at the
 	// end of the scene's operations.
 	from, to int
+	// live tells that it asked only by noting Live: a frame painting
+	// again paints it only when Services.Repaint asked, and keeps what it
+	// painted last otherwise, as a terminal's grid between outputs.
+	live bool
 }
 
 // draw calls e's Draw callback (DrawOver's when after) with box, noting
@@ -52,15 +56,15 @@ func (p *Painter) draw(e *node, box Rect, after bool) {
 	sp := &rt.paths.spill
 	sp.run++
 	opened := sp.opened
-	p.drawing, p.asked = true, false
+	p.drawing, p.asked, p.live = true, false, false
 	fn(p, box)
 	p.drawing = false
 	sp.run++
-	if p.asked {
+	if p.asked || p.live {
 		rt.partTransient += rt.text.TransientUses() - uses
 		sp.inParts += sp.opened - opened
 		rt.drawn = append(rt.drawn, paintPart{e: e, after: after, box: box, start: start, end: len(p.s.Ops), painter: state,
-			under: append([]opaqueBox(nil), state.under...), holes: append([]Rect(nil), state.holes...)})
+			under: append([]opaqueBox(nil), state.under...), holes: append([]Rect(nil), state.holes...), live: p.live && !p.asked})
 	}
 }
 
@@ -92,8 +96,10 @@ func sceneData(s *scene.Scene) int {
 // moved or forgot the glyphs the rest of the scene draws, as another
 // window making room in them does, or when the rest of the scene draws
 // masks drawn for its frame alone, in room of the atlas that the frames
-// since drew over: painted whole again, they last.
-func (rt *engine) repaintParts() bool {
+// since drew over: painted whole again, they last. Parts that only noted
+// Live are painted again when live tells that Services.Repaint asked, and
+// keep their operations otherwise.
+func (rt *engine) repaintParts(live bool) bool {
 	s := &rt.scene
 	if rt.untracked || len(rt.drawn) == 0 || rt.insp.open || rt.drag != nil || rt.noParts ||
 		sceneData(s) > 2*rt.partsBase+partsGrowth || atlasGenerations(s) != rt.atlases || rt.transient {
@@ -118,15 +124,21 @@ func (rt *engine) repaintParts() bool {
 		if pt.after {
 			fn = pt.e.paintAfterFn
 		}
+		if pt.live && !live && !rt.showsSpill(pt.start, pt.end) {
+			// Unchanged: what it painted last goes on.
+			pt.from, pt.to = pt.start, pt.end
+			continue
+		}
 		// A part that no longer asks to be painted again stays, as what
 		// it painted last stays in the scene.
 		pt.from = len(s.Ops)
-		p.drawing, p.asked = true, false
+		p.drawing, p.asked, p.live = true, false, false
 		rt.paths.spill.run++
 		fn(p, pt.box)
 		rt.paths.spill.run++
 		p.drawing = false
 		pt.to = len(s.Ops)
+		pt.live = p.live && !p.asked
 		rt.under, rt.holes = p.under[:0], p.holes[:0]
 	}
 	ops, last := rt.partOps[:0], 0
@@ -142,4 +154,26 @@ func (rt *engine) repaintParts() bool {
 	rt.partOps, s.Ops = s.Ops[:0], ops
 	rt.finishSpills()
 	return true
+}
+
+// showsSpill tells whether the window scene's ops from up to to show a
+// layer of spilled paths. A paint in parts frees those layers for the
+// parts it paints again (openSpill), so a Live part showing one is
+// painted again too, rather than kept showing a layer another part takes.
+func (rt *engine) showsSpill(from, to int) bool {
+	layers := rt.paths.spill.layers
+	if len(layers) == 0 {
+		return false
+	}
+	for _, op := range rt.scene.Ops[from:to] {
+		if op.Image == nil {
+			continue
+		}
+		for _, l := range layers {
+			if l.s == &rt.scene && op.Image == l.img {
+				return true
+			}
+		}
+	}
+	return false
 }
