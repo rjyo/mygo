@@ -194,3 +194,48 @@ func TestLiveWaitsForRepaint(t *testing.T) {
 		same("a repaint")
 	}
 }
+
+// TestLiveSpillKept: a Live part that drew a path spilled to a layer keeps
+// showing it while another part is painted again and spills too.
+func TestLiveSpillKept(t *testing.T) {
+	defer func(was bool) { spillEveryPath = was }(spillEveryPath)
+	spillEveryPath = true
+	tt := newRepaintTester(func(c *context) {
+		coreColumn(c).Gap(4).Children(func() {
+			coreBox(c).Size(100, 20).Draw(func(p *Painter, r Rect) {
+				p.Live()
+				var red Path
+				red.MoveTo(r.X, r.Y).LineTo(r.X+100, r.Y).LineTo(r.X+100, r.Y+20).LineTo(r.X, r.Y+20).Close()
+				p.FillPath(&red, RGB(255, 0, 0))
+			})
+			coreBox(c).Size(100, 20).Draw(func(p *Painter, r Rect) {
+				p.After(5 * time.Millisecond)
+				var blue Path
+				blue.MoveTo(r.X, r.Y).LineTo(r.X+50, r.Y).LineTo(r.X+50, r.Y+20).LineTo(r.X, r.Y+20).Close()
+				p.FillPath(&blue, RGB(0, 0, 255))
+			})
+		})
+	})
+	red := func() bool {
+		r, g, b, _ := tt.Image().At(80, 10).RGBA()
+		return r == 0xffff && g == 0 && b == 0
+	}
+	if !red() {
+		t.Fatal("frame 1: no red at (80,10)")
+	}
+	p0 := tt.rt.partPaints
+	tt.frame(10 * time.Millisecond)
+	if tt.rt.partPaints == p0 {
+		t.Fatal("the frame painted whole, not in parts")
+	}
+	got := bytes.Clone(tt.Image().Pix)
+	if !red() {
+		t.Errorf("after a frame painting the other part again, red is gone at (80,10)")
+	}
+	tt.rt.noParts = true
+	tt.frame(0)
+	tt.rt.noParts = false
+	if !bytes.Equal(got, tt.Image().Pix) {
+		t.Errorf("the frame painting again differs from the frame painted whole")
+	}
+}

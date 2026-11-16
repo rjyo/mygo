@@ -124,7 +124,7 @@ func (rt *engine) repaintParts(live bool) bool {
 		if pt.after {
 			fn = pt.e.paintAfterFn
 		}
-		if pt.live && !live {
+		if pt.live && !live && !rt.showsSpill(pt.start, pt.end) {
 			// Unchanged: what it painted last goes on.
 			pt.from, pt.to = pt.start, pt.end
 			continue
@@ -154,4 +154,26 @@ func (rt *engine) repaintParts(live bool) bool {
 	rt.partOps, s.Ops = s.Ops[:0], ops
 	rt.finishSpills()
 	return true
+}
+
+// showsSpill tells whether the window scene's ops from up to to show a
+// layer of spilled paths. A paint in parts frees those layers for the
+// parts it paints again (openSpill), so a Live part showing one is
+// painted again too, rather than kept showing a layer another part takes.
+func (rt *engine) showsSpill(from, to int) bool {
+	layers := rt.paths.spill.layers
+	if len(layers) == 0 {
+		return false
+	}
+	for _, op := range rt.scene.Ops[from:to] {
+		if op.Image == nil {
+			continue
+		}
+		for _, l := range layers {
+			if l.s == &rt.scene && op.Image == l.img {
+				return true
+			}
+		}
+	}
+	return false
 }
