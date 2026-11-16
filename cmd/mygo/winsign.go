@@ -30,6 +30,8 @@ type Windows struct {
 	// Windows shows keep the name. Changing it moves new installs only:
 	// an installed app is updated in its folder (default: name).
 	InstallDirName string `json:"installDirName"`
+	// Icon replaces icon for the executable and the installer.
+	Icon string `json:"icon"`
 	// Certificate is a code signing certificate (.pfx) to sign the
 	// executable, the installer and its uninstaller with, which keeps
 	// SmartScreen from warning users; signing the uninstaller needs NSIS
