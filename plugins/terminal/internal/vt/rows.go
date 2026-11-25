@@ -23,6 +23,21 @@ func (t *Terminal) ScrollbackRows() int {
 	return int(n)
 }
 
+// RowWrapped reports whether row y of the viewport soft-wraps into the
+// next.
+func (t *Terminal) RowWrapped(y int) bool {
+	ref, found := t.CellAt(0, y)
+	if !found {
+		return false
+	}
+	var raw uint64
+	if !ok(call(fnGridRefRow, uintptr(unsafe.Pointer(&ref)), uintptr(unsafe.Pointer(&raw)))) {
+		return false
+	}
+	var v bool
+	return ok(call(fnRowData, uintptr(raw), rowDataWrap, uintptr(unsafe.Pointer(&v)))) && v
+}
+
 // KittyKeyboardFlags returns the flags of the kitty keyboard protocol
 // programs set.
 func (t *Terminal) KittyKeyboardFlags() int {

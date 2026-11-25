@@ -39,7 +39,7 @@ func View(c *ui.Context, t *Terminal) ui.Element {
 	e := ui.Box(c).Direction(ui.LeftToRight).Focusable().FocusRing(false).Clip().Label("Terminal")
 	v.build(c, e)
 	cursor := v.pointerAt
-	if v.hover.on() {
+	if len(v.hover) > 0 {
 		cursor = ui.CursorPointer
 	}
 	e.Cursor(cursor)
@@ -225,10 +225,14 @@ type view struct {
 	// which shows underlined, hoverLink what it opens and hoverPath
 	// whether that is a file path (HoveredLink); linkPress: the primary
 	// button pressed one, and the press is the link's until the release.
-	hover     linkSpan
+	hover     []linkSpan
 	hoverLink string
 	hoverPath bool
 	linkPress bool
+	// linkText is the rows links read, as of linkState: reading them takes
+	// milliseconds, and Command held over a link does it every frame.
+	linkText  []linkRow
+	linkState linkState
 	// pointerAt is the pointer over the grid (pointerShape); tracking whether
 	// the program took the mouse as of the last frame, and modeShape the
 	// shape that taking or leaving it showed, while the program's shape
@@ -316,7 +320,7 @@ func (v *view) build(c *ui.Context, e ui.Element) {
 		}
 		// The hand over a link follows Command as it is pressed and let
 		// go of, with the pointer still.
-		v.hover, v.hoverLink, v.hoverPath = linkSpan{}, "", false
+		v.hover, v.hoverLink, v.hoverPath = nil, "", false
 		if e.Hovered() {
 			v.hoverLink, v.hoverPath, v.hover = v.linkUnder(c.Modifiers(), v.pointer[0], v.pointer[1])
 		}
@@ -1102,7 +1106,7 @@ func (v *view) pointerEvent(ev ui.InputEvent) bool {
 	// Command over a link: a hand, and a click opens it, before a
 	// program that takes the mouse sees it.
 	link, path, hover := v.linkUnder(ev.Mods, ev.X, ev.Y)
-	if hover != v.hover {
+	if !slices.Equal(hover, v.hover) {
 		v.hover, v.hoverLink, v.hoverPath = hover, link, path
 		v.services.Invalidate()
 	}
@@ -1193,75 +1197,44 @@ func (v *view) pointerEvent(ev ui.InputEvent) bool {
 	return false
 }
 
-// linkSpan is the cells of a link in the viewport: from column x0 of row
-// up to column x1 of row last, over the rows between in full, as a link
-// soft-wraps from one row onto the next; the zero span is no link.
-type linkSpan struct{ row, x0, x1, last int }
-
-func (s linkSpan) on() bool { return s.last > s.row || s.x1 > s.x0 }
-
-// cells returns the columns of the span on row r, a up to b.
-func (s linkSpan) cells(r, cols int) (a, b int) {
-	a, b = 0, cols
-	if r == s.row {
-		a = s.x0
-	}
-	if r == s.last {
-		b = s.x1
-	}
-	return a, b
-}
-
-// spanOf is the span of the cells a up to b, counted across the viewport
-// row after row.
-func (v *view) spanOf(a, b int) linkSpan {
-	return linkSpan{row: a / v.cols, x0: a % v.cols, x1: (b-1)%v.cols + 1, last: (b - 1) / v.cols}
-}
-
-// wraps reports whether row r of the viewport soft-wraps into the next;
-// t.mu is held.
-func (v *view) wraps(r int) bool {
-	if r < 0 || r >= v.rows-1 {
-		return false
-	}
-	_, wrap := v.t.term.Row(r)
-	return wrap
-}
+// linkSpan is the cells of a link in a row of the viewport, columns x0 up
+// to x1; the zero span is no link.
+type linkSpan struct{ row, x0, x1 int }
 
 // HoveredLink returns the link Command (Control elsewhere) is held over
 // in the view, which a click opens and which shows underlined, as
 // Options.OpenLink takes it; whether it is a file path; and the rectangle
-// of its cells in DIPs, relative to the view: around the rows it wraps
-// over, for one that does. It returns "" over no link,
+// around its cells in DIPs, relative to the view, on all the rows it wraps
+// over. It returns "" over no link,
 // or while no view shows the terminal. An app shows a preview of a link
 // with it, over the view: read it in the view function, after View.
 func (t *Terminal) HoveredLink() (link string, path bool, at ui.Rect) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	v := t.v
-	if v == nil || !v.hover.on() || v.scale == 0 {
+	if v == nil || len(v.hover) == 0 || v.scale == 0 {
 		return "", false, ui.Rect{}
 	}
 	cw, ch := float32(v.cellW)/v.scale, float32(v.cellH)/v.scale
-	h := v.hover
-	x0, x1 := h.x0, h.x1
-	if h.last > h.row {
-		x0, x1 = 0, v.cols // around the rows it wraps over
+	first, last := v.hover[0], v.hover[len(v.hover)-1]
+	x0, x1 := first.x0, first.x1
+	for _, h := range v.hover {
+		x0, x1 = min(x0, h.x0), max(x1, h.x1)
 	}
 	return v.hoverLink, v.hoverPath, ui.Rect{
 		X: float32(v.ox)/v.scale + float32(x0)*cw,
-		Y: float32(v.oy)/v.scale + float32(h.row)*ch,
+		Y: float32(v.oy)/v.scale + float32(first.row)*ch,
 		W: float32(x1-x0) * cw,
-		H: float32(h.last-h.row+1) * ch,
+		H: float32(last.row-first.row+1) * ch,
 	}
 }
 
 // linkUnder is the link a click with mods at (x, y) opens, whether it is
 // a file path, and its cells: none without Command, or while the primary
 // button selects or the program has a press; t.mu is held.
-func (v *view) linkUnder(mods ui.Modifiers, x, y float32) (link string, path bool, at linkSpan) {
+func (v *view) linkUnder(mods ui.Modifiers, x, y float32) (link string, path bool, at []linkSpan) {
 	if mods&ui.Cmd == 0 || v.selecting || v.reporting || v.cellW == 0 || v.overScrollbar(x, y) {
-		return "", false, linkSpan{}
+		return "", false, nil
 	}
 	return v.linkAt(v.cellAt(x, y))
 }
@@ -1338,56 +1311,90 @@ func (v *view) dragScrollbar(y float32) {
 }
 
 // linkAt is the link at the cell: a hyperlink (OSC 8), a URL printed as
-// text, or with Options.OpenLink a file path, or ""; one that soft-wraps
-// onto the next rows, as a long URL does, is the link as a whole. t.mu is
-// held.
-func (v *view) linkAt(col, row int) (link string, path bool, at linkSpan) {
+// text, or with Options.OpenLink a file path, or ""; and its cells on each
+// row, a URL or a path wrapping over several; t.mu is held.
+func (v *view) linkAt(col, row int) (link string, path bool, at []linkSpan) {
 	t := v.t
-	if v.cols == 0 {
-		return "", false, linkSpan{}
-	}
 	if url := v.hyperlinkAt(col, row); url != "" {
-		// The hyperlink's cells are those around the cell with its URL,
-		// counted across the rows it wraps over.
-		// A row's edge is crossed only where it wraps.
-		at := func(i int) bool { return v.hyperlinkAt(i%v.cols, i/v.cols) == url }
-		a, b := row*v.cols+col, row*v.cols+col+1
-		for a > 0 && (a%v.cols != 0 || v.wraps(a/v.cols-1)) && at(a-1) {
-			a--
-		}
-		for b < v.rows*v.cols && (b%v.cols != 0 || v.wraps(b/v.cols-1)) && at(b) {
-			b++
-		}
-		return url, false, v.spanOf(a, b)
+		return url, false, v.hyperlinkSpans(url, col, row)
 	}
-	// The text of the rows the cell's row wraps with, each rune at its
-	// cell counted across the viewport.
-	top, bottom := row, row
-	for top > 0 && v.wraps(top-1) {
-		top--
+	b, ok := newLinkBlock(v.linkRows(), v.cols, col, row)
+	if !ok {
+		return "", false, nil
 	}
-	for v.wraps(bottom) {
-		bottom++
-	}
-	var text []rune
-	var cols []int
-	for r := top; r <= bottom; r++ {
-		rt, rc := t.term.RowText(r)
-		text = append(text, rt...)
-		for _, c := range rc {
-			cols = append(cols, r*v.cols+c)
-		}
-	}
-	i := row*v.cols + col
-	if url, a, b := urlAt(text, cols, i); url != "" {
-		return url, false, v.spanOf(a, b)
+	if url, spans := b.find(urlAt, true, col, row); url != "" {
+		return url, false, spans
 	}
 	if t.opts.OpenLink != nil {
-		if p, a, b := pathAt(text, cols, i); p != "" {
-			return p, true, v.spanOf(a, b)
+		if p, spans := b.find(pathAt, false, col, row); p != "" {
+			return p, true, spans
 		}
 	}
-	return "", false, linkSpan{}
+	return "", false, nil
+}
+
+// linkState tells that the view's rows are as they were.
+type linkState struct {
+	changes uint64
+	bar     vt.Scrollbar
+}
+
+// linkRows is the view's rows as links read them; t.mu is held.
+func (v *view) linkRows() []linkRow {
+	term := v.t.term
+	state := linkState{term.Changes(), term.Scrollbar()}
+	if len(v.linkText) != v.rows || state != v.linkState {
+		v.linkText, v.linkState = make([]linkRow, v.rows), state
+		for y := range v.linkText {
+			r := &v.linkText[y]
+			r.text, r.cols = term.RowText(y)
+			r.wrap = term.RowWrapped(y)
+		}
+	}
+	return v.linkText
+}
+
+// hyperlinkSpans is the cells of the hyperlink at the cell, in its pane,
+// and of the rows it goes on to (linkBlock.runsOn). The library gives a
+// hyperlink's URI and not its id, so links of one URI that meet at a wrap
+// read as one, which only changes what shows underlined; t.mu is held.
+func (v *view) hyperlinkSpans(url string, col, row int) []linkSpan {
+	b, ok := newLinkBlock(v.linkRows(), v.cols, col, row)
+	if !ok {
+		return []linkSpan{v.hyperlinkRun(url, col, row, 0, v.cols)}
+	}
+	spans := []linkSpan{v.hyperlinkRun(url, col, row, b.x0, b.x1)}
+	for s := spans[0]; s.x0 == b.x0 && s.row > 0; s = spans[0] {
+		x := b.x1 - 1
+		if v.hyperlinkAt(x, s.row-1) != url {
+			x-- // the link may stop at a gutter, or a spacer
+		}
+		if x < b.x0 || v.hyperlinkAt(x, s.row-1) != url {
+			break
+		}
+		above := v.hyperlinkRun(url, x, s.row-1, b.x0, b.x1)
+		if !b.runsOn(above.row, above.x1) {
+			break
+		}
+		spans = slices.Insert(spans, 0, above)
+	}
+	for s := spans[len(spans)-1]; b.runsOn(s.row, s.x1) && v.hyperlinkAt(b.x0, s.row+1) == url; s = spans[len(spans)-1] {
+		spans = append(spans, v.hyperlinkRun(url, b.x0, s.row+1, b.x0, b.x1))
+	}
+	return spans
+}
+
+// hyperlinkRun is the cells of the hyperlink around the cell of its row,
+// within columns x0 up to x1; t.mu is held.
+func (v *view) hyperlinkRun(url string, col, row, x0, x1 int) linkSpan {
+	from, to := col, col+1
+	for from > x0 && v.hyperlinkAt(from-1, row) == url {
+		from--
+	}
+	for to < x1 && v.hyperlinkAt(to, row) == url {
+		to++
+	}
+	return linkSpan{row, from, to}
 }
 
 // hyperlinkAt is the URL of the hyperlink (OSC 8) at the cell, or ""; t.mu
