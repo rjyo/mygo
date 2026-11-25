@@ -1154,6 +1154,20 @@ func (t *Terminal) Snapshot() []byte {
 	return t.term.VT()
 }
 
+// KittyKeyboardFlags returns the flags of the kitty keyboard protocol the
+// program set (CSI > flags u), 0 when it uses legacy keys. An app that
+// sends a key's sequence itself, rather than letting the view encode it,
+// can ask it first: such a program reads Shift+Enter as CSI 13 ; 2 u, not
+// as the ESC CR legacy terminals are taught to send for it.
+func (t *Terminal) KittyKeyboardFlags() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.term == nil {
+		return 0
+	}
+	return t.term.KittyKeyboardFlags()
+}
+
 // Send sends data to the program as if typed.
 func (t *Terminal) Send(data []byte) {
 	if len(data) > 0 {
