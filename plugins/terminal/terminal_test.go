@@ -200,6 +200,26 @@ func itoa(i int) string {
 	return strings.TrimSpace(strings.Repeat(" ", 0) + string(rune('0'+i/100%10)) + string(rune('0'+i/10%10)) + string(rune('0'+i%10)))
 }
 
+func TestKittyKeyboardFlags(t *testing.T) {
+	loadLib(t)
+	term, err := New(Options{Conn: newPipe()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer term.Close()
+	if f := term.KittyKeyboardFlags(); f != 0 {
+		t.Fatalf("flags before = %d, want 0", f)
+	}
+	term.Feed([]byte("\x1b[>7u"))
+	if f := term.KittyKeyboardFlags(); f != 7 {
+		t.Fatalf("flags after push = %d, want 7", f)
+	}
+	term.Feed([]byte("\x1b[<u"))
+	if f := term.KittyKeyboardFlags(); f != 0 {
+		t.Fatalf("flags after pop = %d, want 0", f)
+	}
+}
+
 func TestScrollback(t *testing.T) {
 	loadLib(t)
 	term, err := New(Options{Conn: newPipe()})
