@@ -3,6 +3,8 @@ package text
 import (
 	"image"
 	"math"
+	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -1343,6 +1345,77 @@ func TestRegisterAppFontReachesSystemsNewMakes(t *testing.T) {
 		if !monospaced(s) {
 			t.Errorf("%s: text does not use the app's font", name)
 		}
+	}
+}
+
+// TestRegisterFontFile registers the fonts of a file as RegisterFont does
+// their data: under the family given, in Systems New makes after it too,
+// and listed under that family alone, not again under the file's own
+// among the system's (on macOS, which registers the file for the process).
+func TestRegisterFontFile(t *testing.T) {
+	const family = "MyGo Test File Mono"
+	path := filepath.Join(t.TempDir(), "gomono.ttf")
+	if err := os.WriteFile(path, gomono.TTF, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	installed := slices.ContainsFunc(newSystem().FontFamilies(), func(f FontFamily) bool { return strings.EqualFold(f.Name, "Go Mono") })
+	s := newSystem()
+	if err := s.RegisterFontFile(path, family); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.RegisterFontFile(path, family); err != nil {
+		t.Fatalf("a file registered again: %v", err)
+	}
+	monospaced := func(s *System) bool {
+		width := func(text string) float32 {
+			return s.Layout(Params{Text: text, Style: Style{Size: 20, Family: family}}).Lines[0].Width
+		}
+		i, m := width("iiiiiiii"), width("mmmmmmmm")
+		return i > m-0.5 && i < m+0.5
+	}
+	if !monospaced(s) {
+		t.Error("text does not use the file's font")
+	}
+	for _, f := range s.FontFamilies() {
+		if strings.EqualFold(f.Name, "Go Mono") && !installed {
+			t.Errorf("the file's own family is listed: %+v", f)
+		}
+	}
+	if err := s.RegisterFontFile(filepath.Join(t.TempDir(), "none.ttf"), family); err == nil {
+		t.Error("a missing file registers")
+	}
+	junk := filepath.Join(t.TempDir(), "junk.ttf")
+	os.WriteFile(junk, []byte("not a font"), 0o644)
+	if err := s.RegisterFontFile(junk, family); err == nil {
+		t.Error("a file that is no font registers")
+	}
+}
+
+// An app's font file (RegisterAppFontFile) reaches Systems New makes, as
+// its data does, from a relative path too.
+func TestRegisterAppFontFileReachesSystemsNewMakes(t *testing.T) {
+	const family = "MyGo Test App File Mono"
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "gomono.ttf"), gomono.TTF, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	monospaced := func(s *System) bool {
+		width := func(text string) float32 {
+			return s.Layout(Params{Text: text, Style: Style{Size: 20, Family: family}}).Lines[0].Width
+		}
+		i, m := width("iiiiiiii"), width("mmmmmmmm")
+		return i > m-0.5 && i < m+0.5
+	}
+	if err := RegisterAppFontFile("gomono.ttf", family); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(t.TempDir())
+	if s := New(); !monospaced(s) {
+		t.Error("a System New makes does not use the app's font file")
+	}
+	if !monospaced(Shared()) {
+		t.Error("Shared does not use the app's font file")
 	}
 }
 

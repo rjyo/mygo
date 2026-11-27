@@ -5,6 +5,8 @@ import (
 	"encoding/binary"
 	"image"
 	"math"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -579,6 +581,7 @@ var appFonts struct {
 
 type appFontData struct {
 	data   []byte
+	path   string // the file of RegisterAppFontFile, in place of data
 	family string
 }
 
@@ -590,10 +593,44 @@ func RegisterAppFont(data []byte, family string) error {
 	if err := Shared().RegisterFont(data, family); err != nil {
 		return err
 	}
-	appFonts.mu.Lock()
-	appFonts.fonts = append(appFonts.fonts, appFontData{data, family})
-	appFonts.mu.Unlock()
+	addAppFont(appFontData{data: data, family: family})
 	return nil
+}
+
+// RegisterAppFontFile registers a font file as RegisterAppFont does its
+// data (System.RegisterFontFile). Systems New makes register the file too,
+// where the engine takes files (macOS); the others get the data read now,
+// so only macOS needs the file to stay.
+func RegisterAppFontFile(path, family string) error {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	s := Shared()
+	s.mu.Lock()
+	f := appFontData{path: abs, family: family}
+	if _, files := s.engine().(fileRegisterer); files {
+		err = s.registerFile(abs, family)
+	} else if f.data, err = os.ReadFile(abs); err == nil {
+		// Read once: Shared and later Systems get the same font.
+		f.path = ""
+		err = s.eng.register(f.data, family)
+	}
+	if err == nil {
+		s.fontsChanged()
+	}
+	s.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	addAppFont(f)
+	return nil
+}
+
+func addAppFont(f appFontData) {
+	appFonts.mu.Lock()
+	appFonts.fonts = append(appFonts.fonts, f)
+	appFonts.mu.Unlock()
 }
 
 // takeAppFonts registers in a System New made the app's fonts registered
@@ -611,7 +648,11 @@ func (s *System) takeAppFonts() {
 	}
 	for _, f := range fonts {
 		// Shared's engine read it already.
-		_ = s.engine().register(f.data, f.family)
+		if f.path != "" {
+			_ = s.registerFile(f.path, f.family)
+		} else {
+			_ = s.engine().register(f.data, f.family)
+		}
 	}
 	s.fontsChanged()
 }
@@ -789,6 +830,37 @@ func (s *System) RegisterFont(data []byte, family string) error {
 	}
 	s.fontsChanged()
 	return nil
+}
+
+// RegisterFontFile adds the fonts of a TrueType or OpenType file (or
+// collection) as RegisterFont does their data. On macOS the file must stay
+// where it is, unchanged, while the app runs: Core Text maps it, where it
+// keeps a copy of fonts from data for as long as the process runs, and
+// makes more of them over time.
+func (s *System) RegisterFontFile(path, family string) error {
+	path, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.registerFile(path, family); err != nil {
+		return err
+	}
+	s.fontsChanged()
+	return nil
+}
+
+// registerFile adds the fonts of a file to the engine. s.mu is held.
+func (s *System) registerFile(path, family string) error {
+	if r, ok := s.engine().(fileRegisterer); ok {
+		return r.registerFile(path, family)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	return s.eng.register(data, family)
 }
 
 // fontsChanged forgets what the fonts registered so far made. s.mu is

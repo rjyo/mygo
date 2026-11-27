@@ -74,6 +74,12 @@ type engine interface {
 	resetScratch()
 }
 
+// fileRegisterer is an engine that adds the fonts of a font file other
+// than by its data (System.RegisterFontFile); the others read the file.
+type fileRegisterer interface {
+	registerFile(path, family string) error
+}
+
 // shapeScratch is room engines take the glyphs, runs and lines shape returns
 // from, which live until the System lays out the next text: a layout
 // copies them into its own lines. Engines embed it.

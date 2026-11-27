@@ -42,6 +42,15 @@ func RegisterFont(data []byte, family string) error {
 	return text.RegisterAppFont(data, family)
 }
 
+// RegisterFontFile registers the fonts of a TrueType or OpenType file, or
+// collection, as RegisterFont does their data. Prefer it on macOS for
+// fonts the app keeps on disk: Core Text maps the file, where it keeps a
+// copy of fonts given as data for as long as the app runs, and makes
+// more copies of them over time. The file must stay while the app runs.
+func RegisterFontFile(path, family string) error {
+	return text.RegisterAppFontFile(path, family)
+}
+
 // A FontFamily is a font family text can use, as FontFamilies lists it.
 type FontFamily struct {
 	// Name is the family as Font and Theme take it.
