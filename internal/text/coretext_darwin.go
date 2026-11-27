@@ -10,6 +10,7 @@ import (
 	"log"
 	"maps"
 	"math"
+	"os"
 	"runtime"
 	"slices"
 	"strings"
@@ -115,6 +116,10 @@ var ct struct {
 	descriptorMatching    func(desc, mandatory uintptr) uintptr
 	descriptorAttribute   func(desc, name uintptr) uintptr
 	descriptorsFromData   func(data uintptr) uintptr
+	descriptorsFromURL    func(url uintptr) uintptr
+	registerURL           func(url uintptr, scope uint32, err *uintptr) bool
+	urlFromPath           func(alloc uintptr, path *byte, n int, isDir bool) uintptr
+	errorGetCode          func(err uintptr) int
 	availableFamilyNames  func() uintptr
 	fontGetAscent         func(font uintptr) float64
 	fontGetDescent        func(font uintptr) float64
@@ -297,6 +302,20 @@ func loadCoreText() error {
 	// Optional: adding fonts from memory (macOS 10.13), sRGB by name.
 	if sym, err := purego.Dlsym(text, "CTFontManagerCreateFontDescriptorsFromData"); err == nil && sym != 0 {
 		purego.RegisterFunc(&ct.descriptorsFromData, sym)
+	}
+	// Adding fonts from files: registered for the process, so Core Text
+	// maps the file rather than keeping a copy of it (registerFile).
+	if sym, err := purego.Dlsym(text, "CTFontManagerCreateFontDescriptorsFromURL"); err == nil && sym != 0 {
+		purego.RegisterFunc(&ct.descriptorsFromURL, sym)
+	}
+	if sym, err := purego.Dlsym(text, "CTFontManagerRegisterFontsForURL"); err == nil && sym != 0 {
+		purego.RegisterFunc(&ct.registerURL, sym)
+	}
+	if sym, err := purego.Dlsym(cf, "CFURLCreateFromFileSystemRepresentation"); err == nil && sym != 0 {
+		purego.RegisterFunc(&ct.urlFromPath, sym)
+	}
+	if sym, err := purego.Dlsym(cf, "CFErrorGetCode"); err == nil && sym != 0 {
+		purego.RegisterFunc(&ct.errorGetCode, sym)
 	}
 	if sym, err := purego.Dlsym(cg, "CGColorSpaceCreateWithName"); err == nil && sym != 0 {
 		purego.RegisterFunc(&ct.colorSpaceWithName, sym)
@@ -1631,7 +1650,11 @@ func (e *coreText) appFamilies() []FontFamily {
 // Text alone, which is thread-safe, without the engine's state.
 func (e *coreText) systemFamilies() func() []FontFamily {
 	return func() []FontFamily {
+		// The names and the families the app's files brought, at once.
+		fileFonts.mu.Lock()
 		arr := ct.availableFamilyNames()
+		hide := maps.Clone(fileFonts.introduced)
+		fileFonts.mu.Unlock()
 		if arr == 0 {
 			return nil
 		}
@@ -1639,8 +1662,8 @@ func (e *coreText) systemFamilies() func() []FontFamily {
 		var out []FontFamily
 		for i := range ct.arrayGetCount(arr) {
 			name := goString(ct.arrayGetValueAtIndex(arr, i))
-			if name == "" || strings.HasPrefix(name, ".") {
-				continue // the system's hidden families
+			if name == "" || strings.HasPrefix(name, ".") || hide[strings.ToLower(name)] {
+				continue // the system's hidden families, and the app's files'
 			}
 			out = append(out, FontFamily{Name: name, Monospaced: monospacedFamily(name)})
 		}
@@ -1683,6 +1706,116 @@ func (e *coreText) register(data []byte, family string) error {
 		return errors.New("mygo: cannot add font: not a font Core Text reads")
 	}
 	defer ct.release(descs)
+	return e.addFaces(descs, family)
+}
+
+// registerFile adds the fonts of a font file, as register does its data.
+//
+// 🔴 Not by its data: Core Text keeps every font it makes from data in a
+// registry of the process for as long as it runs, the data copied with
+// it, and makes such fonts anew from time to time, so an app's few
+// megabytes of fonts grew to gigabytes over hours (moshi #793). A file
+// registered for the process is mapped instead, and its fonts are the
+// system's own kind.
+func (e *coreText) registerFile(path, family string) error {
+	if ct.descriptorsFromURL == nil || ct.registerURL == nil || ct.urlFromPath == nil || ct.errorGetCode == nil {
+		noFileFonts.Do(func() {
+			log.Print("mygo: Core Text cannot register font files here; fonts are added from their data, which it keeps copies of")
+		})
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return e.register(data, family)
+	}
+	if path == "" {
+		return errors.New("mygo: no font file")
+	}
+	p := []byte(path)
+	url := ct.urlFromPath(0, &p[0], len(p), false)
+	if url == 0 {
+		return errors.New("mygo: cannot add font: bad path")
+	}
+	defer ct.release(url)
+	// Registering and the families it brings are one step for listings
+	// (systemFamilies), which see both or neither.
+	fileFonts.mu.Lock()
+	defer fileFonts.mu.Unlock()
+	before := familiesBeforeFiles()
+	// A file registered already (as each System New makes registers the
+	// app's files again) keeps its registration. Any other failure stops
+	// here: the descriptors of a file not registered are fonts from its
+	// data, which Core Text keeps copies of.
+	var cerr uintptr
+	if !ct.registerURL(url, ctFontManagerScopeProcess, &cerr) {
+		code := -1
+		if cerr != 0 {
+			code = ct.errorGetCode(cerr)
+			ct.release(cerr)
+		}
+		if code != ctFontManagerErrorAlreadyRegistered {
+			return fmt.Errorf("mygo: cannot add font %s: Core Text error %d", path, code)
+		}
+	}
+	descs := ct.descriptorsFromURL(url)
+	if descs == 0 {
+		return errors.New("mygo: cannot add font: not a font Core Text reads")
+	}
+	defer ct.release(descs)
+	// Registered for the process, the file's own families join the font
+	// manager's, which list the app's fonts apart: those the system did
+	// not have before (systemFamilies).
+	for i := range ct.arrayGetCount(descs) {
+		if s := ct.descriptorAttribute(ct.arrayGetValueAtIndex(descs, i), ct.familyNameAttribute); s != 0 {
+			if name := strings.ToLower(goString(s)); !before[name] {
+				fileFonts.introduced[name] = true
+			}
+			ct.release(s)
+		}
+	}
+	return e.addFaces(descs, family)
+}
+
+const (
+	// ctFontManagerScopeProcess is kCTFontManagerScopeProcess.
+	ctFontManagerScopeProcess = 1
+	// ctFontManagerErrorAlreadyRegistered is
+	// kCTFontManagerErrorAlreadyRegistered.
+	ctFontManagerErrorAlreadyRegistered = 105
+)
+
+// noFileFonts tells once that registerFile adds fonts from their data.
+var noFileFonts sync.Once
+
+// fileFonts are the font families of the process before the app
+// registered files (before, listed at the first), and those the files
+// brought (introduced), lowercased: the process's, which every System's
+// engine sees. mu is held while a file registers.
+var fileFonts struct {
+	mu         sync.Mutex
+	before     map[string]bool
+	introduced map[string]bool
+}
+
+// familiesBeforeFiles returns the families the system had before the
+// app's first file. fileFonts.mu is held.
+func familiesBeforeFiles() map[string]bool {
+	if fileFonts.before == nil {
+		fileFonts.before = map[string]bool{}
+		fileFonts.introduced = map[string]bool{}
+		if arr := ct.availableFamilyNames(); arr != 0 {
+			for i := range ct.arrayGetCount(arr) {
+				fileFonts.before[strings.ToLower(goString(ct.arrayGetValueAtIndex(arr, i)))] = true
+			}
+			ct.release(arr)
+		}
+	}
+	return fileFonts.before
+}
+
+// addFaces adds the faces of descs under family, or each one's own family
+// when it is empty.
+func (e *coreText) addFaces(descs uintptr, family string) error {
 	n := ct.arrayGetCount(descs)
 	if n == 0 {
 		return errors.New("mygo: cannot add font: not a font Core Text reads")
