@@ -50,6 +50,14 @@ var blurEffect = &scene.Effect{
 	Pixels:   func() scene.EffectPixels { return &blurPixels{} },
 }
 
+// containedBlurEffect is blurEffect reading only what is under it
+// (Blur.Contained).
+var containedBlurEffect = func() *scene.Effect {
+	fx := *blurEffect
+	fx.Contained = true
+	return &fx
+}()
+
 // material is a pane of glass, in device pixels: the effect's parameters.
 //
 //   - blur is the standard deviation of the blur of what shows through;

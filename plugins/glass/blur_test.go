@@ -187,7 +187,7 @@ func TestBlurString(t *testing.T) {
 // blurOp appends the levels of a blur of most pixels over r to s, along
 // mask, as paintBlur paints them.
 func blurOp(s *scene.Scene, r scene.Rect, radii [4]float32, most float32, mask *ui.LinearGradient, opacity float32) {
-	blurOps(r, radii == [4]float32{}, most, mask, func(lr scene.Rect, fx scene.EffectOp) {
+	blurOps(r, radii == [4]float32{}, most, mask, false, func(lr scene.Rect, fx scene.EffectOp) {
 		s.Ops = append(s.Ops, scene.Op{Kind: scene.OpEffect, Rect: lr, Radii: radii, Start: int32(len(s.Effects)), Opacity: opacity})
 		s.Effects = append(s.Effects, fx)
 	})
@@ -196,8 +196,8 @@ func blurOp(s *scene.Scene, r scene.Rect, radii [4]float32, most float32, mask *
 // blurScene returns a 320×140 scene of blurs over stripes, which the
 // renderers must draw alike: an even blur, rounded; a progressive blur
 // from the top, and one at an angle within a rounded clip; a blur with a
-// plateau, half transparent; a blur over what is partly transparent; and
-// a hard scroll edge's tone.
+// plateau, half transparent; a blur over what is partly transparent; a
+// contained blur; and a hard scroll edge's tone.
 func blurScene() *scene.Scene {
 	s := &scene.Scene{Width: 320, Height: 140}
 	red := scene.Color{R: 220, G: 40, B: 40, A: 255}
@@ -221,6 +221,11 @@ func blurScene() *scene.Scene {
 	blurOp(s, scene.Rect{X: 150.5, Y: 70.25, W: 60, H: 60}, [4]float32{}, 8,
 		&ui.LinearGradient{From: ui.RGBA(0, 0, 0, 0.4), To: black, Angle: 90, Start: 0.3, End: 0.7}, 0.6)
 	blurOp(s, scene.Rect{X: 230, Y: 20, W: 70, H: 100}, r4(10), 5, nil, 0)
+	// A contained blur, reading only what is under it.
+	blurOps(scene.Rect{X: 100, Y: 61, W: 52, H: 8}, true, 6, nil, true, func(r scene.Rect, fx scene.EffectOp) {
+		s.Ops = append(s.Ops, scene.Op{Kind: scene.OpEffect, Rect: r, Start: int32(len(s.Effects))})
+		s.Effects = append(s.Effects, fx)
+	})
 	// A hard scroll edge's tone, over the edge of nothing.
 	p2, p3 := blurTone{saturation: 0.25, offset: 0.03, mix: 0.6, color: [3]float32{0.9, 0.95, 1}}.params()
 	s.Ops = append(s.Ops, scene.Op{Kind: scene.OpEffect, Rect: scene.Rect{X: 234, Y: 0, W: 86, H: 16}, Start: int32(len(s.Effects))})
@@ -281,5 +286,52 @@ func BenchmarkBlur(b *testing.B) {
 				raster.Render(img, s)
 			}
 		})
+	}
+}
+
+// TestContainedBlur checks that a contained blur reads only what is under
+// it: beside black, its edge stays white, where a blur reaching around it
+// darkens; and a change beside it redraws none of it.
+func TestContainedBlur(t *testing.T) {
+	sceneOf := func(contained bool, beside scene.Color) *scene.Scene {
+		s := &scene.Scene{Width: 100, Height: 40}
+		s.Ops = append(s.Ops,
+			scene.Op{Kind: scene.OpFill, Rect: scene.Rect{W: 50, H: 40}, Color: scene.Color{R: 255, G: 255, B: 255, A: 255}},
+			scene.Op{Kind: scene.OpFill, Rect: scene.Rect{X: 50, W: 50, H: 40}, Color: beside})
+		blurOps(scene.Rect{W: 48, H: 40}, true, 8, nil, contained, func(r scene.Rect, fx scene.EffectOp) {
+			s.Ops = append(s.Ops, scene.Op{Kind: scene.OpEffect, Rect: r, Start: int32(len(s.Effects))})
+			s.Effects = append(s.Effects, fx)
+		})
+		return s
+	}
+	black := scene.Color{A: 255}
+	edge := func(contained bool) byte {
+		s := sceneOf(contained, black)
+		img := raster.NewImage(s.Width, s.Height)
+		raster.Render(img, s)
+		return img.Pix[20*img.Stride+4*47+1]
+	}
+	if g := edge(true); g < 250 {
+		t.Errorf("the contained blur's edge beside black is %d, not white", g)
+	}
+	if g := edge(false); g > 230 {
+		t.Errorf("the blur's edge beside black is %d: it doesn't reach around it", g)
+	}
+
+	red := scene.Color{R: 255, A: 255}
+	for _, contained := range []bool{true, false} {
+		var d scene.Differ
+		d.Diff(sceneOf(contained, black))
+		d.Remember(sceneOf(contained, black))
+		s := sceneOf(contained, red)
+		damage, ok := d.Diff(s)
+		if !ok {
+			t.Fatal("the differ didn't compare the frames")
+		}
+		damage = d.AddBackdrops(s, damage)
+		grew := len(damage) != 1 || damage[0] != image.Rect(50, 0, 100, 40)
+		if grew == contained {
+			t.Errorf("contained %v: a change beside the blur redraws %v", contained, damage)
+		}
 	}
 }
